@@ -1,11 +1,10 @@
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { AnimatePresence, motion } from 'motion/react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 export const ToastContainer: React.FC = () => {
   const { toasts, dismissToast } = useApp();
-
-  if (toasts.length === 0) return null;
 
   return (
     <div
@@ -14,15 +13,21 @@ export const ToastContainer: React.FC = () => {
       aria-label="Notifications"
       aria-live="polite"
     >
+      <AnimatePresence initial={false}>
       {toasts.map((toast) => {
         const isSuccess = toast.type === 'success';
         const isError = toast.type === 'error';
         const isInfo = toast.type === 'info';
 
         return (
-          <div
+          <motion.div
             key={toast.id}
-            className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-[2px] border max-w-[340px] w-full animate-toast-in ${
+            layout
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ duration: 0.4, ease: 'easeInOut' }}
+            className={`pointer-events-auto flex items-start gap-3 px-4 py-3 border max-w-[340px] w-full ${
               isError
                 ? 'bg-[#141517] border-[#B42318] text-white'
                 : 'bg-[#141517] border-[#141517] text-white'
@@ -49,9 +54,10 @@ export const ToastContainer: React.FC = () => {
             >
               <X className="w-3.5 h-3.5" />
             </button>
-          </div>
+          </motion.div>
         );
       })}
+      </AnimatePresence>
     </div>
   );
 };

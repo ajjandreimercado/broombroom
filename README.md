@@ -1,20 +1,36 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Broom Broom
 
-# Run and deploy your AI Studio app
+Vehicle marketplace for the Philippines (cars, motorcycles, trucks, e-bikes, scooters, ATVs).
+Vite + React 19 + Tailwind CSS v4. Demo data only; there is no backend yet.
 
-This contains everything you need to run your app locally.
+## Three sites, one build
 
-View your app in AI Studio: https://ai.studio/apps/79c87fcc-45f7-4c7e-9c1a-4c649d7de459
+The same build serves three sites. Which one you get depends on the hostname (see `src/portals.ts`):
 
-## Run Locally
+| Site | Production (placeholder) | Local |
+|---|---|---|
+| Marketplace (buyers) | `broombroom.ph` | http://localhost:3000 |
+| Salesperson portal | `sell.broombroom.ph` | http://sell.localhost:3000 |
+| Admin console | `admin.broombroom.ph` | http://admin.localhost:3000 |
 
-**Prerequisites:**  Node.js
+The portals have no links from the public site except "Sell on Broom Broom". The admin console is reachable only by its own address.
 
+## Run locally
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm install
+npm run dev
+```
+
+Then open the three local addresses above. Chrome, Edge and Firefox resolve `*.localhost` to your machine without any setup.
+
+## Deploy
+
+1. Build once with `npm run build`, which writes `dist/`.
+2. Serve `dist/` on all three hostnames. Point `broombroom.ph`, `sell.broombroom.ph` and `admin.broombroom.ph` at the same static host (for example Cloudflare Pages or Netlify, adding each hostname as a custom domain).
+3. Only if the portals sit on unrelated domains, set the `VITE_*_URL` values from `.env.example` before building.
+
+## Before this is truly production-ready
+
+- **Backend and real auth.** Sign-in is mocked, and data lives in each site's own browser storage. Because each subdomain is a separate origin, the three sites do not share data yet: an application sent on the marketplace will not appear in the salesperson portal until a shared API and database exist.
+- **Server-side access control.** The admin console is hidden only by its address. Real admin access must be enforced by the backend, for example by role checks on every API call and by restricting the admin hostname (Cloudflare Access or similar).

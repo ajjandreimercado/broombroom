@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { AnimatePresence, motion } from 'motion/react';
+import { backdropMotion, modalMotion } from '../motion.ts';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
 import { X, Mail, Lock, Phone, User, KeyRound, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
@@ -29,7 +31,6 @@ export const AuthModal: React.FC = () => {
 
   const [error, setError] = useState('');
 
-  if (!authModalOpen) return null;
 
   const switchMode = (m: typeof mode) => { setError(''); setMode(m); };
 
@@ -85,11 +86,15 @@ export const AuthModal: React.FC = () => {
   const iconClass = 'absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#6B767D] pointer-events-none';
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-[#141517]/50 flex items-center justify-center p-4 animate-fade-in"
+    <AnimatePresence>
+    {authModalOpen && (
+    <motion.div
+      key="auth"
+      {...backdropMotion}
+      className="fixed inset-0 z-50 bg-[#141517]/50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) { setError(''); setAuthModalOpen(false); } }}
     >
-      <div className="w-full max-w-[420px] bg-[#F7F8F8] border border-[#141517] animate-modal-in overflow-hidden">
+      <motion.div {...modalMotion} className="w-full max-w-[420px] bg-[#F7F8F8] border border-[#141517] overflow-hidden">
 
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between bg-[#141517]">
@@ -308,7 +313,7 @@ export const AuthModal: React.FC = () => {
                 {[1, 2, 3].map((s) => (
                   <div
                     key={s}
-                    className={`h-1 rounded-full transition-all duration-200 ${
+                    className={`h-1 rounded-full transition-[width,flex-grow,background-color] duration-200 ${
                       s === forgotStep ? 'bg-[#1D5FD1] flex-1' : s < forgotStep ? 'bg-[#1D5FD1]/40 w-8' : 'bg-[#C9D1D6] w-8'
                     }`}
                   />
@@ -379,7 +384,9 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 };

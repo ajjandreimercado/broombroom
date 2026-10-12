@@ -33,7 +33,7 @@ export const GuidesView: React.FC = () => {
             <article
               key={guide.id}
               onClick={() => navigateTo('guide_detail', { guideSlug: guide.slug })}
-              className="bg-white rounded-[2px] border border-[#C9D1D6] overflow-hidden hover:border-[#141517] transition-all cursor-pointer flex flex-col justify-between group"
+              className="bg-white rounded-[2px] border border-[#C9D1D6] overflow-hidden hover:border-[#141517] transition-colors cursor-pointer flex flex-col justify-between group"
             >
               <div className="aspect-16/9 bg-[#141517] overflow-hidden relative">
                 <img

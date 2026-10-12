@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { motion } from 'motion/react';
+import { indicatorTransition } from '../motion.ts';
 import { VehicleCard } from '../components/VehicleCard.tsx';
 import { VehicleCategory } from '../types.ts';
 import { StampedLog, LogEntry } from '../components/StampedLog.tsx';
@@ -212,16 +214,18 @@ export const IntroView: React.FC = () => {
                   className={`relative shrink-0 pb-2 text-[14px] cursor-pointer whitespace-nowrap ${active ? 'text-[#141517] font-semibold' : 'text-[#4E585E] hover:text-[#141517]'}`}
                 >
                   {tab.label}
-                  {active && <span className="absolute left-0 right-0 bottom-0 h-[3px] bg-[#1B7F35] animate-rule-in" aria-hidden="true" />}
+                  {active && <motion.span layoutId="lot-tab" transition={indicatorTransition} className="absolute left-0 right-0 bottom-0 h-[3px] bg-[#1B7F35]" aria-hidden="true" />}
                 </button>
               );
             })}
           </div>
         </div>
 
-        <div key={activeCategoryTab} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12 mt-6 animate-view-fade">
-          {spotlightVehicles.map((vehicle) => (
-            <VehicleCard key={vehicle.id} vehicle={vehicle} />
+        <div key={activeCategoryTab} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12 mt-6">
+          {spotlightVehicles.map((vehicle, i) => (
+            <div key={vehicle.id} className="gb-rise flex" style={{ animationDelay: `${i * 50}ms` }}>
+              <VehicleCard vehicle={vehicle} />
+            </div>
           ))}
         </div>
 

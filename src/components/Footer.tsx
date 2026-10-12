@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
+import { portalUrl } from '../portals.ts';
 import { VehicleCategory } from '../types.ts';
 
 export const Footer: React.FC = () => {
@@ -32,7 +33,7 @@ export const Footer: React.FC = () => {
         { label: 'Marketplace', onClick: () => navigateTo('marketplace') },
         { label: 'Deals', onClick: () => navigateTo('deals') },
         { label: 'How it works', onClick: () => navigateTo('how_it_works') },
-        { label: 'Seller hub', onClick: () => navigateTo('seller', { sellerTab: 'dashboard' }) },
+        { label: 'Sell on Broom Broom', onClick: () => window.location.assign(portalUrl('seller')) },
       ],
     },
     {

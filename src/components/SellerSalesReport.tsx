@@ -526,7 +526,7 @@ export const SellerSalesReport: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setTimeframe(tab.id)}
-                  className={`px-4 py-2 rounded-[2px] text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-4 py-2 rounded-[2px] text-xs font-bold transition-colors cursor-pointer ${
                     timeframe === tab.id
                       ? 'bg-[#141517] text-white'
                       : 'text-[#4E585E] hover:text-[#141517] hover:bg-gray-200/60'
@@ -623,11 +623,11 @@ export const SellerSalesReport: React.FC = () => {
             </div>
             <div className="w-full h-2.5 bg-gray-200 rounded-full mt-3 overflow-hidden flex">
               <div
-                className="bg-[#1D5FD1] h-full transition-all duration-500"
+                className="bg-[#1D5FD1] h-full transition-[width,height] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
                 style={{ width: `${reportData.financingPercentage}%` }}
               />
               <div
-                className="bg-[#141517] h-full transition-all duration-500"
+                className="bg-[#141517] h-full transition-[width,height] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
                 style={{ width: `${reportData.cashPercentage}%` }}
               />
             </div>
@@ -657,7 +657,7 @@ export const SellerSalesReport: React.FC = () => {
             <div className="inline-flex items-center p-1 rounded-[2px] bg-[#EEF1F2] border border-[#C9D1D6] text-xs font-bold">
               <button
                 onClick={() => setChartViewMode('revenue')}
-                className={`px-3 py-1.5 rounded-[2px] transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer flex items-center gap-1.5 ${
                   chartViewMode === 'revenue'
                     ? 'bg-white text-[#141517]'
                     : 'text-[#4E585E] hover:text-[#141517]'
@@ -668,7 +668,7 @@ export const SellerSalesReport: React.FC = () => {
               </button>
               <button
                 onClick={() => setChartViewMode('units')}
-                className={`px-3 py-1.5 rounded-[2px] transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-[2px] transition-colors cursor-pointer flex items-center gap-1.5 ${
                   chartViewMode === 'units'
                     ? 'bg-white text-[#141517]'
                     : 'text-[#4E585E] hover:text-[#141517]'
@@ -717,7 +717,7 @@ export const SellerSalesReport: React.FC = () => {
                   className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer relative"
                 >
                   {/* Top value chip - Visible and readable */}
-                  <div className="mb-2 text-center transition-all duration-200">
+                  <div className="mb-2 text-center transition-colors duration-200">
                     <span
                       className={`inline-block tabular-nums text-[11px] font-bold px-2 py-0.5 rounded-[2px] ${
                         dp.revenue > 0
@@ -736,7 +736,7 @@ export const SellerSalesReport: React.FC = () => {
                   {/* Refined Modern Bar */}
                   <div className="w-full max-w-[56px] bg-[#EEF1F2]/80 rounded-t-[2px] overflow-hidden flex flex-col justify-end h-full group-hover:bg-gray-200 transition-colors">
                     <div
-                      className={`w-full transition-all duration-500 rounded-t-[2px] ${
+                      className={`w-full transition-[width,height] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] rounded-t-[2px] ${
                         currentVal > 0
                           ? chartViewMode === 'revenue'
                             ? 'bg-[#1D5FD1] group-hover:bg-[#174CA8]'
@@ -821,7 +821,7 @@ export const SellerSalesReport: React.FC = () => {
               <div
                 key={idx}
                 style={{ width: `${cat.share}%`, backgroundColor: cat.color }}
-                className="h-full transition-all duration-500 hover:opacity-90 relative group cursor-pointer"
+                className="h-full transition-[width,height] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] hover:opacity-90 relative group cursor-pointer"
                 onClick={() => setSelectedCategory(cat.key as VehicleCategory)}
                 title={`${cat.name}: ${cat.share}% (${formatPHP(cat.amount)})`}
               />
@@ -856,7 +856,7 @@ export const SellerSalesReport: React.FC = () => {
               <div
                 key={i}
                 onClick={() => setSelectedCategory(isSelected ? 'all' : (cat.key as VehicleCategory))}
-                className={`p-5 rounded-[2px] border transition-all cursor-pointer flex flex-col justify-between space-y-4 ${
+                className={`p-5 rounded-[2px] border transition-colors cursor-pointer flex flex-col justify-between space-y-4 ${
                   isSelected
                     ? 'bg-[#F7F8F8] border-[#1D5FD1] ring-2 ring-[#1D5FD1]/20'
                     : 'bg-white border-[#C9D1D6] hover:border-[#141517] hover:bg-[#F7F8F8]/50'
@@ -1105,7 +1105,7 @@ export const SellerSalesReport: React.FC = () => {
                     <td className="py-4 pr-2 text-center">
                       <button
                         onClick={() => setViewingReceiptTx(tx)}
-                        className="px-3 py-1.5 bg-[#EEF1F2] hover:bg-[#1D5FD1] hover:text-white text-[#2A2E31] rounded-[2px] text-xs font-bold transition-all flex items-center gap-1.5 mx-auto cursor-pointer"
+                        className="px-3 py-1.5 bg-[#EEF1F2] hover:bg-[#1D5FD1] hover:text-white text-[#2A2E31] rounded-[2px] text-xs font-bold transition-colors flex items-center gap-1.5 mx-auto cursor-pointer"
                         title="View Official Certificate of Sale & Deed"
                       >
                         <FileText className="w-3.5 h-3.5" />

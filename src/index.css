@@ -170,6 +170,9 @@ select:focus, textarea:focus {
 .animate-toast-in   { animation: toast-in 220ms var(--ease-out) both; }
 .animate-slide-up   { animation: slide-up 300ms var(--ease-out) both; }
 .animate-rule-in    { animation: rule-in 700ms var(--ease-out) both; transform-origin: left; }
+/* Group entrance; delay set per item (50ms steps). Decorative, never blocks clicks. */
+.gb-rise            { animation: view-fade 300ms var(--ease-out) both; }
+.gb-rise > *        { flex: 1; min-width: 0; }
 .delay-100 { animation-delay: 100ms; }
 .delay-150 { animation-delay: 150ms; }
 .delay-200 { animation-delay: 200ms; }

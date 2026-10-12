@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { portalUrl } from '../portals.ts';
 import { StampedLog, LogEntry } from '../components/StampedLog.tsx';
 import {
   Search,
@@ -100,7 +101,7 @@ export const HowItWorksView: React.FC = () => {
           </div>
           <div className="lg:col-span-5 flex flex-wrap gap-3 lg:justify-end">
             <button
-              onClick={() => navigateTo('seller', { sellerTab: 'add_vehicle' })}
+              onClick={() => window.location.assign(portalUrl('seller'))}
               className="px-6 py-3.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[14px] cursor-pointer flex items-center gap-2"
             >
               List a vehicle

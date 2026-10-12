@@ -1,6 +1,8 @@
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { ArrowLeftRight, X, Plus, Sparkles } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { sheetMotion } from '../motion.ts';
+import { ArrowLeftRight, X, Plus } from 'lucide-react';
 
 export const CompareDock: React.FC = () => {
   const {
@@ -15,22 +17,27 @@ export const CompareDock: React.FC = () => {
   } = useApp();
 
   // Compare dock is strictly for buyer role on marketplace / buyer views
-  if (
+  const visible = !(
     comparedVehicleIds.length === 0 ||
     compareModalOpen ||
     currentView === 'seller' ||
     currentView === 'admin' ||
     (currentUser && currentUser.role !== 'buyer')
-  ) {
-    return null;
-  }
+  );
 
   const comparedVehicles = comparedVehicleIds
     .map((id) => vehicles.find((v) => v.id === id))
     .filter(Boolean);
 
   return (
-    <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[94vw] w-auto animate-slide-up">
+    <AnimatePresence>
+    {visible && (
+    <motion.div
+      key="dock"
+      {...sheetMotion}
+      className="fixed bottom-4 sm:bottom-6 inset-x-0 mx-auto w-fit z-40 max-w-[94vw]"
+      style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+    >
       <div className="bg-[#141517] border border-[#141517] px-3 sm:px-5 py-2.5 sm:py-3 flex items-center gap-3 sm:gap-5 text-white">
         
         {/* Left Indicator & Thumbnails */}
@@ -115,6 +122,8 @@ export const CompareDock: React.FC = () => {
         </div>
 
       </div>
-    </div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 };

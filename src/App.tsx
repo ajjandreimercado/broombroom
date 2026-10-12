@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { PORTAL, PORTAL_LABEL, portalUrl } from './portals.ts';
+import { MotionConfig } from 'motion/react';
 import { AppProvider, useApp } from './context/AppContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { Footer } from './components/Footer.tsx';
@@ -17,21 +19,81 @@ import { ApplicationWizardView } from './views/ApplicationWizardView.tsx';
 import { AccountView } from './views/AccountView.tsx';
 import { SellerDashboardView } from './views/SellerDashboardView.tsx';
 import { AdminDashboardView } from './views/AdminDashboardView.tsx';
-import { GuidesView } from './views/GuidesView.tsx';
-import { GuideDetailView } from './views/GuideDetailView.tsx';
 import { HowItWorksView } from './views/HowItWorksView.tsx';
 import { HelpView } from './views/HelpView.tsx';
 import { LegalView } from './views/LegalView.tsx';
 
-const AppContent: React.FC = () => {
-  const { currentView } = useApp();
+const PortalSignIn: React.FC = () => {
+  const { setAuthModalOpen } = useApp();
+  const copy =
+    PORTAL === 'seller'
+      ? 'Sign in to manage your listings, review purchase applications and answer buyers.'
+      : 'Sign in to moderate listings, verify sellers and review reports.';
+  return (
+    <section className="gb-container py-20 sm:py-28">
+      <div className="max-w-xl border-t-2 border-[#141517] pt-8">
+        <h1 className="font-display text-[clamp(2.2rem,5vw,3.6rem)] leading-[0.95] text-[#141517]">{PORTAL_LABEL[PORTAL]}</h1>
+        <p className="mt-5 text-[16px] leading-relaxed text-[#4E585E] max-w-[46ch]">{copy}</p>
+        <div className="mt-8 flex flex-wrap items-center gap-5">
+          <button
+            onClick={() => setAuthModalOpen(true)}
+            className="px-6 py-3.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[14px] font-semibold cursor-pointer"
+          >
+            Sign in
+          </button>
+          <a href={portalUrl('buyer')} className="text-[14px] font-semibold text-[#141517] underline decoration-[#8C989F] hover:decoration-[#141517] underline-offset-4">
+            Back to the marketplace
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+};
 
-  const renderCurrentView = () => {
+const PortalFooter: React.FC = () => {
+  const { navigateTo } = useApp();
+  return (
+    <footer className="bg-[#141517] text-[#C9D1D6]">
+      <div className="gb-container py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px]">
+        <p>© 2026 Broom Broom · {PORTAL_LABEL[PORTAL]}</p>
+        <div className="flex items-center gap-5">
+          <a href={portalUrl('buyer')} className="hover:text-white">Marketplace</a>
+          <button onClick={() => navigateTo('help')} className="hover:text-white cursor-pointer">Help</button>
+          <button onClick={() => navigateTo('terms')} className="hover:text-white cursor-pointer">Terms</button>
+          <button onClick={() => navigateTo('privacy')} className="hover:text-white cursor-pointer">Privacy</button>
+        </div>
+      </div>
+    </footer>
+  );
+};
+
+// Views each site may show; anything else falls back to that site's home.
+const SHARED_VIEWS = ['help', 'terms', 'privacy'];
+
+const AppContent: React.FC = () => {
+  const { currentView, currentUser } = useApp();
+
+  useEffect(() => {
+    document.title = PORTAL === 'buyer' ? 'Broom Broom · A Happy Ride | Vehicle Marketplace' : `${PORTAL_LABEL[PORTAL]} · Broom Broom`;
+  }, []);
+
+  const renderShared = () => {
+    switch (currentView) {
+      case 'help':
+        return <HelpView />;
+      case 'terms':
+        return <LegalView initialType="terms" />;
+      case 'privacy':
+        return <LegalView initialType="privacy" />;
+      default:
+        return null;
+    }
+  };
+
+  const renderBuyerView = () => {
     switch (currentView) {
       case 'intro':
         return <IntroView />;
-      case 'marketplace':
-        return <MarketplaceView />;
       case 'deals':
         return <DealsView />;
       case 'vehicle_detail':
@@ -40,45 +102,41 @@ const AppContent: React.FC = () => {
         return <ApplicationWizardView />;
       case 'account':
         return <AccountView />;
-      case 'seller':
-        return <SellerDashboardView />;
-      case 'admin':
-        return <AdminDashboardView />;
-      case 'guides':
-      case 'guide_detail':
-        return <MarketplaceView />;
       case 'how_it_works':
         return <HowItWorksView />;
-      case 'help':
-        return <HelpView />;
-      case 'terms':
-        return <LegalView initialType="terms" />;
-      case 'privacy':
-        return <LegalView initialType="privacy" />;
       default:
-        return <MarketplaceView />;
+        return SHARED_VIEWS.includes(currentView) ? renderShared() : <MarketplaceView />;
     }
   };
 
+  const renderPortalView = () => {
+    if (!currentUser) return <PortalSignIn />;
+    if (SHARED_VIEWS.includes(currentView)) return renderShared();
+    return PORTAL === 'seller' ? <SellerDashboardView /> : <AdminDashboardView />;
+  };
+
+  const isBuyerSite = PORTAL === 'buyer';
 
   return (
-    <div className={`min-h-screen flex flex-col overflow-x-hidden bg-[#F7F8F8] text-[#141517]`}>
+    <div className="min-h-screen flex flex-col overflow-x-hidden bg-[#F7F8F8] text-[#141517]">
       <Navbar />
-      <main key={currentView} className="flex-1 animate-view-fade">{renderCurrentView()}</main>
-      <Footer />
+      <main key={currentView} className="flex-1 animate-view-fade">{isBuyerSite ? renderBuyerView() : renderPortalView()}</main>
+      {isBuyerSite ? <Footer /> : <PortalFooter />}
       <AuthModal />
       <ReportModal />
       <ToastContainer />
-      <CompareDock />
-      <CompareModal />
+      {isBuyerSite && <CompareDock />}
+      {isBuyerSite && <CompareModal />}
     </div>
   );
 };
 
 export default function App() {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <MotionConfig reducedMotion="user">
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </MotionConfig>
   );
 }

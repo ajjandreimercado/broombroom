@@ -1,5 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { PORTAL, PORTAL_LABEL, portalUrl } from '../portals.ts';
+import { AnimatePresence, motion } from 'motion/react';
+import { popoverMotion, indicatorTransition, EASE_OUT } from '../motion.ts';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
 import {
   Bookmark,
@@ -7,7 +10,7 @@ import {
   User as UserIcon,
   Menu,
   X,
-  ShieldCheck,
+  ArrowUpRight,
   Store,
   LogOut,
   ChevronDown,
@@ -22,7 +25,6 @@ export const Navbar: React.FC = () => {
     isAuthenticated,
     setAuthModalOpen,
     logout,
-    switchRole,
     updateFilter,
     notifications,
     markNotificationRead,
@@ -58,12 +60,16 @@ export const Navbar: React.FC = () => {
   }, [currentView]);
 
 
-  const navLinks = [
-    { label: 'Home', view: 'intro' as const },
-    { label: 'Marketplace', view: 'marketplace' as const },
-    { label: 'Deals', view: 'deals' as const },
-    { label: 'How It Works', view: 'how_it_works' as const },
-  ];
+  const isBuyerSite = PORTAL === 'buyer';
+  const navLinks = isBuyerSite
+    ? [
+        { label: 'Home', view: 'intro' as const },
+        { label: 'Marketplace', view: 'marketplace' as const },
+        { label: 'Deals', view: 'deals' as const },
+        { label: 'How It Works', view: 'how_it_works' as const },
+      ]
+    : [];
+  const homeView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : 'intro';
 
   /* ── SURFACE TOKENS ── */
   const bg = 'bg-[#141517] border-b border-[#141517]';
@@ -81,12 +87,17 @@ export const Navbar: React.FC = () => {
 
           {/* ── LOGO ── */}
           <button
-            onClick={() => navigateTo('intro')}
+            onClick={() => navigateTo(homeView)}
             className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity duration-150 inline-flex items-center"
-            aria-label="Groom Broom Home"
+            aria-label={`Broom Broom ${PORTAL_LABEL[PORTAL]} home`}
           >
             <GroomBroomLogo size="md" />
           </button>
+          {!isBuyerSite && (
+            <span className="hidden sm:block pl-4 border-l border-[#4E585E] text-[13.5px] font-semibold text-white whitespace-nowrap">
+              {PORTAL_LABEL[PORTAL]}
+            </span>
+          )}
 
           {/* ── NAV LINKS (Desktop) ── */}
           <nav className="hidden lg:flex items-stretch self-stretch gap-6 ml-4" aria-label="Main navigation">
@@ -103,8 +114,10 @@ export const Navbar: React.FC = () => {
                 >
                   {link.label}
                   {isActive && (
-                    <span
-                      className="absolute -bottom-px left-0 right-0 h-[3px] bg-[#1B7F35] animate-rule-in"
+                    <motion.span
+                      layoutId="nav-underline"
+                      transition={indicatorTransition}
+                      className="absolute -bottom-px left-0 right-0 h-[3px] bg-[#1B7F35]"
                       aria-hidden="true"
                     />
                   )}
@@ -116,38 +129,21 @@ export const Navbar: React.FC = () => {
           {/* ── SPACER ── */}
           <div className="flex-1" />
 
-          {/* ── ROLE SWITCHER (Desktop) ── */}
-          <div
-            className="hidden md:flex items-center text-[12px] border border-[#4E585E] divide-x divide-[#4E585E]"
-          >
-            {(['buyer', 'seller', 'admin'] as const).map((role) => {
-              const isActiveRole =
-                role === 'buyer'
-                  ? currentUser?.role === 'buyer' && currentView !== 'seller' && currentView !== 'admin'
-                  : role === 'seller'
-                  ? currentUser?.role === 'seller' || currentView === 'seller'
-                  : currentUser?.role === 'admin' || currentView === 'admin';
-              return (
-                <button
-                  key={role}
-                  onClick={() => switchRole(role)}
-                  aria-pressed={isActiveRole}
-                  className={`px-3 py-1.5 transition-colors duration-150 cursor-pointer capitalize ${
-                    isActiveRole
-                      ? 'bg-white text-[#141517] font-semibold'
-                      : 'text-[#C9D1D6] hover:text-white hover:bg-white/10 font-medium'
-                  }`}
-                >
-                  {role}
-                </button>
-              );
-            })}
-          </div>
+          {!isBuyerSite && (
+            <a
+              href={portalUrl('buyer')}
+              className="hidden md:inline-flex items-center gap-1.5 text-[13px] font-medium text-[#C9D1D6] hover:text-white"
+            >
+              Open marketplace
+              <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </a>
+          )}
 
           {/* ── ICON BUTTONS ── */}
           <div className="flex items-center gap-1 sm:gap-2">
 
             {/* Saved */}
+            {isBuyerSite && (
             <button
               onClick={() => {
                 if (!isAuthenticated) { setAuthModalOpen(true); return; }
@@ -164,6 +160,7 @@ export const Navbar: React.FC = () => {
                 </span>
               )}
             </button>
+            )}
 
             {/* Notifications */}
             <div className="relative" ref={notifDropRef}>
@@ -180,9 +177,12 @@ export const Navbar: React.FC = () => {
                 )}
               </button>
 
+              <AnimatePresence>
               {notifDropdownOpen && (
-                <div
-                  className={`absolute right-0 mt-2 w-[300px] rounded-[2px] border z-50 animate-fade-up overflow-hidden ${dropBg}`}
+                <motion.div
+                  {...popoverMotion}
+                  style={{ transformOrigin: 'top right' }}
+                  className={`absolute right-0 mt-2 w-[300px] border z-50 overflow-hidden ${dropBg}`}
                   role="menu"
                 >
                   <div className={`px-4 py-3 flex items-center justify-between border-b border-[#DDE3E6]`}>
@@ -236,8 +236,9 @@ export const Navbar: React.FC = () => {
                       ))
                     )}
                   </div>
-                </div>
+                </motion.div>
               )}
+              </AnimatePresence>
             </div>
 
             {/* User / Sign In */}
@@ -258,9 +259,12 @@ export const Navbar: React.FC = () => {
                   <ChevronDown className={`w-3 h-3 text-[#C9D1D6] transition-transform duration-150 ${userDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
+                <AnimatePresence>
                 {userDropdownOpen && (
-                  <div
-                    className={`absolute right-0 mt-2 w-[220px] rounded-[2px] border z-50 animate-fade-up overflow-hidden py-1 ${dropBg}`}
+                  <motion.div
+                    {...popoverMotion}
+                    style={{ transformOrigin: 'top right' }}
+                    className={`absolute right-0 mt-2 w-[220px] border z-50 overflow-hidden py-1 ${dropBg}`}
                     role="menu"
                   >
                     {/* User info */}
@@ -273,7 +277,7 @@ export const Navbar: React.FC = () => {
                       </p>
                     </div>
 
-                    {[
+                    {isBuyerSite && [
                       { icon: UserIcon, label: 'My Account', action: () => navigateTo('account', { accountTab: 'profile' }) },
                       { icon: Bookmark, label: 'Saved Vehicles', action: () => navigateTo('account', { accountTab: 'saved' }) },
                       { icon: FileText, label: 'My Applications', action: () => navigateTo('account', { accountTab: 'applications' }) },
@@ -291,20 +295,25 @@ export const Navbar: React.FC = () => {
 
                     <div className="my-1 border-t border-[#DDE3E6]" />
 
-                    {[
-                      { icon: Store, label: 'Seller Dashboard', action: () => navigateTo('seller', { sellerTab: 'dashboard' }) },
-                      { icon: ShieldCheck, label: 'Admin Console', action: () => navigateTo('admin', { adminTab: 'dashboard' }) },
-                    ].map(({ icon: Icon, label, action }) => (
-                      <button
-                        key={label}
-                        onClick={() => { action(); setUserDropdownOpen(false); }}
-                        className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-[13px] text-[#4E585E] transition-colors duration-150 cursor-pointer ${dropItemHover}`}
+                    {isBuyerSite ? (
+                      <a
+                        href={portalUrl('seller')}
+                        className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-[13px] text-[#4E585E] transition-colors duration-150 ${dropItemHover}`}
                         role="menuitem"
                       >
-                        <Icon className="w-3.5 h-3.5 shrink-0" />
-                        {label}
-                      </button>
-                    ))}
+                        <Store className="w-3.5 h-3.5 shrink-0" />
+                        Sell on Broom Broom
+                      </a>
+                    ) : (
+                      <a
+                        href={portalUrl('buyer')}
+                        className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-[13px] text-[#4E585E] transition-colors duration-150 ${dropItemHover}`}
+                        role="menuitem"
+                      >
+                        <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                        Open marketplace
+                      </a>
+                    )}
 
                     <div className="my-1 border-t border-[#DDE3E6]" />
 
@@ -316,8 +325,9 @@ export const Navbar: React.FC = () => {
                       <LogOut className="w-3.5 h-3.5 shrink-0" />
                       Sign Out
                     </button>
-                  </div>
+                  </motion.div>
                 )}
+                </AnimatePresence>
               </div>
             ) : (
               <button
@@ -342,9 +352,14 @@ export const Navbar: React.FC = () => {
       </div>
 
       {/* ── MOBILE MENU ── */}
+      <AnimatePresence>
       {mobileMenuOpen && (
-        <div
-          className="lg:hidden border-t border-[#C9D1D6] bg-[#F7F8F8] animate-fade-up"
+        <motion.div
+          initial={{ opacity: 0, transform: 'translateY(-8px)' }}
+          animate={{ opacity: 1, transform: 'translateY(0px)' }}
+          exit={{ opacity: 0, transform: 'translateY(-8px)' }}
+          transition={{ duration: 0.2, ease: EASE_OUT }}
+          className="lg:hidden border-t border-[#C9D1D6] bg-[#F7F8F8]"
         >
           <div className="gb-container py-3">
 
@@ -365,32 +380,18 @@ export const Navbar: React.FC = () => {
               );
             })}
 
-            {/* Role Switcher Mobile */}
-            <div className="pt-4">
-              <p className="gb-label mb-2 px-1">
-                Portal role
-              </p>
-              <div className="flex border border-[#8C989F] divide-x divide-[#8C989F]">
-                {(['buyer', 'seller', 'admin'] as const).map((role) => (
-                  <button
-                    key={role}
-                    onClick={() => { switchRole(role); setMobileMenuOpen(false); }}
-                    className={`flex-1 py-2.5 text-[12.5px] font-semibold transition-colors duration-150 cursor-pointer capitalize ${
-                      (role === 'buyer' ? currentUser?.role === 'buyer' && currentView !== 'seller' && currentView !== 'admin'
-                        : role === 'seller' ? currentUser?.role === 'seller' || currentView === 'seller'
-                        : currentUser?.role === 'admin' || currentView === 'admin')
-                        ? 'bg-[#141517] text-white'
-                        : 'text-[#4E585E] hover:bg-[#EEF1F2]'
-                    }`}
-                  >
-                    {role}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Other site */}
+            <a
+              href={portalUrl(isBuyerSite ? 'seller' : 'buyer')}
+              className="w-full px-1 py-3 flex items-center justify-between font-display text-[18px] text-[#4E585E] hover:text-[#141517]"
+            >
+              {isBuyerSite ? 'Sell on Broom Broom' : 'Open marketplace'}
+              <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+            </a>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </header>
   );
 };

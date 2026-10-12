@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApp, FilterState } from '../context/AppContext.tsx';
 import { VehicleCard } from '../components/VehicleCard.tsx';
+import { AnimatePresence, motion } from 'motion/react';
+import { indicatorTransition, backdropMotion, sheetMotion } from '../motion.ts';
 import { VehicleCategory } from '../types.ts';
 import {
   Search,
@@ -242,7 +244,7 @@ export const MarketplaceView: React.FC = () => {
                   }`}
                 >
                   {cat.label}
-                  {isSelected && <span className="absolute left-0 right-0 -bottom-px h-[3px] bg-[#1B7F35] animate-rule-in" aria-hidden="true" />}
+                  {isSelected && <motion.span layoutId="market-tab" transition={indicatorTransition} className="absolute left-0 right-0 -bottom-px h-[3px] bg-[#1B7F35]" aria-hidden="true" />}
                 </button>
               );
             })}
@@ -303,12 +305,15 @@ export const MarketplaceView: React.FC = () => {
       </div>
 
       {/* ── MOBILE FILTER DRAWER ── */}
+      <AnimatePresence>
       {mobileFilterOpen && (
-        <div
+        <motion.div
+          key="filters"
+          {...backdropMotion}
           className="fixed inset-0 z-50 flex items-end justify-center bg-[#141517]/50"
           onClick={(e) => { if (e.target === e.currentTarget) setMobileFilterOpen(false); }}
         >
-          <div className="w-full max-w-lg bg-[#F7F8F8] border-t-2 border-[#141517] animate-slide-up max-h-[85vh] flex flex-col overflow-hidden">
+          <motion.div {...sheetMotion} className="w-full max-w-lg bg-[#F7F8F8] border-t-2 border-[#141517] max-h-[85vh] flex flex-col overflow-hidden">
             {/* Drawer header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#DDE3E6] shrink-0">
               <h3 className="font-display text-[18px] text-[#141517]">Filters</h3>
@@ -341,9 +346,10 @@ export const MarketplaceView: React.FC = () => {
                 Show {filteredVehicles.length} results
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 };

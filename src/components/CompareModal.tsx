@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { AnimatePresence, motion } from 'motion/react';
+import { backdropMotion, modalMotion } from '../motion.ts';
 import { Stamp } from './Stamp.tsx';
 import { Vehicle } from '../types.ts';
 import {
@@ -221,11 +223,14 @@ export const CompareModal: React.FC = () => {
     { id: 'trust', label: 'By Certified & Trust', icon: <ShieldCheck className="w-3.5 h-3.5 text-[#141517]" /> },
   ];
 
-  if (!compareModalOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-8 bg-[#141517]/50 animate-fade-in overflow-y-auto"
+    <AnimatePresence>
+    {compareModalOpen && (
+    <motion.div
+      key="compare"
+      {...backdropMotion}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-8 bg-[#141517]/50 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) setCompareModalOpen(false);
       }}
@@ -233,7 +238,7 @@ export const CompareModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="compare-modal-title"
     >
-      <div className="bg-[#F7F8F8] text-[#141517] border border-[#141517] max-w-6xl w-full max-h-[92vh] flex flex-col overflow-hidden my-auto animate-modal-in">
+      <motion.div {...modalMotion} className="bg-[#F7F8F8] text-[#141517] border border-[#141517] max-w-6xl w-full max-h-[92vh] flex flex-col overflow-hidden my-auto">
         
         {/* ── HEADER ── */}
         <div className="px-5 sm:px-7 py-4 border-b border-[#C9D1D6] bg-white flex items-center justify-between gap-4 shrink-0">
@@ -281,7 +286,7 @@ export const CompareModal: React.FC = () => {
             <button
               key={tag.id}
               onClick={() => setActiveTag(tag.id)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] text-[12px] font-bold transition-all duration-150 cursor-pointer border ${
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] text-[12px] font-bold transition-colors duration-150 cursor-pointer border ${
                 activeTag === tag.id
                   ? 'bg-[#141517] text-white border-[#141517]'
                   : 'bg-white text-[#4E585E] border-[#C9D1D6] hover:border-[#8C989F] hover:text-[#141517]'
@@ -478,7 +483,7 @@ export const CompareModal: React.FC = () => {
                         <div className="relative">
                           <button
                             onClick={() => setAddDropdownOpen(!addDropdownOpen)}
-                            className="w-full py-8 border-2 border-dashed border-[#8C989F] hover:border-[#1D5FD1] rounded-[2px] flex flex-col items-center justify-center gap-2 text-[#4E585E] hover:text-[#1D5FD1] transition-all cursor-pointer bg-white/60 hover:bg-white"
+                            className="w-full py-8 border-2 border-dashed border-[#8C989F] hover:border-[#1D5FD1] rounded-[2px] flex flex-col items-center justify-center gap-2 text-[#4E585E] hover:text-[#1D5FD1] transition-colors cursor-pointer bg-white/60 hover:bg-white"
                           >
                             <div className="w-9 h-9 rounded-full bg-[#F7F8F8] border border-[#C9D1D6] flex items-center justify-center">
                               <Plus className="w-4 h-4" />
@@ -716,7 +721,9 @@ export const CompareModal: React.FC = () => {
           </div>
         </div>
 
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 };

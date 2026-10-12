@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
+import { portalUrl } from '../portals.ts';
 import { SellerTab } from '../context/AppContext.tsx';
 import { Vehicle, VehicleCategory, VehicleCondition, TransmissionType, FuelType, VehicleStatus, ApplicationStatus } from '../types.ts';
 import { SellerSalesReport } from '../components/SellerSalesReport.tsx';
@@ -418,9 +419,7 @@ export const SellerDashboardView: React.FC = () => {
                         </button>
 
                         <button
-                          onClick={() =>
-                            navigateTo('vehicle_detail', { vehicleId: vehicle.id })
-                          }
+                          onClick={() => window.open(portalUrl('buyer', `?vehicle=${vehicle.id}`), '_blank', 'noopener')}
                           className="px-3 py-1.5 bg-[#EEF1F2] hover:bg-gray-200 text-[#141517] text-xs font-semibold rounded-[2px] flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5" />

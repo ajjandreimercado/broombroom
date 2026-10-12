@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { Stamp } from '../components/Stamp.tsx';
+import { portalUrl } from '../portals.ts';
+import { AnimatePresence, motion } from 'motion/react';
+import { EASE_OUT } from '../motion.ts';
 import {
   Bookmark,
   MessageSquare,
@@ -112,7 +115,7 @@ export const VehicleDetailView: React.FC = () => {
 
   const handleShare = () => {
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
+      navigator.clipboard.writeText(portalUrl('buyer', `?vehicle=${vehicle.id}`));
       showToast('Link Copied', vehicle.title);
     }
   };
@@ -195,18 +198,24 @@ export const VehicleDetailView: React.FC = () => {
           <div className="lg:col-span-7 space-y-14">
             <div>
               <div className="relative aspect-[16/10] overflow-hidden bg-[#EEF1F2] group">
-                <img
-                  key={activeImageIndex}
-                  src={vehicle.images[activeImageIndex] || vehicle.images[0]}
-                  alt={vehicle.title}
-                  className="w-full h-full object-cover animate-fade-in"
-                />
-                <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+                <AnimatePresence initial={false}>
+                  <motion.img
+                    key={activeImageIndex}
+                    src={vehicle.images[activeImageIndex] || vehicle.images[0]}
+                    alt={vehicle.title}
+                    initial={{ opacity: 0, zIndex: 1 }}
+                    animate={{ opacity: 1, zIndex: 1 }}
+                    exit={{ opacity: 0, zIndex: 0, transition: { opacity: { delay: 0.25, duration: 0 } } }}
+                    transition={{ duration: 0.25, ease: EASE_OUT }}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                </AnimatePresence>
+                <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
                   <Stamp label="Saved" show={saved} className="bg-white/85" />
                   <Stamp label="Compare" show={inCompare} className="bg-white/85" />
                 </div>
                 {vehicle.images.length > 1 && (
-                  <div className="absolute bottom-0 right-0 flex bg-white border-l border-t border-[#141517]">
+                  <div className="absolute bottom-0 right-0 z-10 flex bg-white border-l border-t border-[#141517]">
                     <button
                       onClick={() => setActiveImageIndex((prev) => (prev === 0 ? vehicle.images.length - 1 : prev - 1))}
                       className="p-3 text-[#141517] hover:bg-[#EEF1F2] cursor-pointer"

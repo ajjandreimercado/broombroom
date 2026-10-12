@@ -1,3 +1,4 @@
+import { PORTAL } from '../portals.ts';
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import {
   Vehicle,
@@ -211,10 +212,14 @@ const defaultFilters: FilterState = {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Buyer links like /?vehicle=v-123 open straight on that listing (used by Share and the portals).
+const linkedVehicleId = PORTAL === 'buyer' ? new URLSearchParams(window.location.search).get('vehicle') : null;
+const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedVehicleId ? 'vehicle_detail' : 'intro';
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Navigation
-  const [currentView, setCurrentView] = useState<CurrentView>('intro');
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<CurrentView>(startView);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(linkedVehicleId);
   const [selectedGuideSlug, setSelectedGuideSlug] = useState<string | null>(null);
   const [accountTab, setAccountTab] = useState<AccountTab>('profile');
   const [sellerTab, setSellerTab] = useState<SellerTab>('dashboard');
@@ -268,7 +273,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('gb_user');
-    return saved ? JSON.parse(saved) : INITIAL_USER;
+    const user: UserProfile | null = saved ? JSON.parse(saved) : PORTAL === 'buyer' ? INITIAL_USER : null;
+    // Each portal only ever acts in its own role; portals start signed out.
+    return user && PORTAL !== 'buyer' ? { ...user, role: PORTAL } : user;
   });
 
   const [applications, setApplications] = useState<VehicleApplication[]>(() => {
@@ -366,7 +373,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Auth functions
-  const login = (email: string, role: 'buyer' | 'seller' | 'admin' = 'buyer') => {
+  const login = (email: string, role: 'buyer' | 'seller' | 'admin' = PORTAL) => {
     const user: UserProfile = {
       ...INITIAL_USER,
       email,
@@ -389,7 +396,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       name,
       email,
       phone,
-      role: 'buyer',
+      role: PORTAL,
       address: {
         street: '',
         barangay: '',
@@ -413,7 +420,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const logout = () => {
     setCurrentUser(null);
-    setCurrentView('marketplace');
+    setCurrentView(PORTAL === 'buyer' ? 'marketplace' : PORTAL);
     showToast('Signed Out', 'You have been logged out securely.');
   };
 

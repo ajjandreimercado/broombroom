@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { motion } from 'motion/react';
+import { indicatorTransition } from '../motion.ts';
 import { Stamp } from '../components/Stamp.tsx';
 import { VehicleApplication } from '../types.ts';
 import {
@@ -158,7 +160,7 @@ export const ApplicationWizardView: React.FC = () => {
                 <span className={`hidden sm:block mt-1.5 text-[14px] ${current ? 'font-semibold text-[#141517]' : done ? 'text-[#141517]' : 'text-[#4E585E]'}`}>
                   {name}
                 </span>
-                {current && <span className="absolute left-0 right-0 -bottom-[2px] h-[3px] bg-[#1B7F35] animate-rule-in" aria-hidden="true" />}
+                {current && <motion.span layoutId="wizard-step" transition={indicatorTransition} className="absolute left-0 right-0 -bottom-[2px] h-[3px] bg-[#1B7F35]" aria-hidden="true" />}
                 <span className="absolute right-2 top-1/2 -translate-y-1/2">
                   <Stamp label="Done" show={done && !current} size="sm" />
                 </span>
@@ -378,7 +380,7 @@ export const ApplicationWizardView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setPurchaseMethod('cash')}
-                    className={`cursor-pointer p-4 rounded-[2px] border text-left transition-all ${
+                    className={`cursor-pointer p-4 rounded-[2px] border text-left transition-colors ${
                       purchaseMethod === 'cash'
                         ? 'border-[#141517] bg-[#F7F8F8] ring-2 ring-gray-950/10'
                         : 'border-[#C9D1D6] hover:border-[#141517] bg-white'
@@ -392,7 +394,7 @@ export const ApplicationWizardView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setPurchaseMethod('financing')}
-                    className={`cursor-pointer p-4 rounded-[2px] border text-left transition-all ${
+                    className={`cursor-pointer p-4 rounded-[2px] border text-left transition-colors ${
                       purchaseMethod === 'financing'
                         ? 'border-[#1D5FD1] bg-[#E8F0FC]/40 ring-2 ring-[#1D5FD1]/20'
                         : 'border-[#C9D1D6] hover:border-[#141517] bg-white'
@@ -414,7 +416,7 @@ export const ApplicationWizardView: React.FC = () => {
                             key={m}
                             type="button"
                             onClick={() => setFinancingTerm(m)}
-                            className={`py-2 rounded-[2px] text-xs font-bold transition-all cursor-pointer ${
+                            className={`py-2 rounded-[2px] text-xs font-bold transition-colors cursor-pointer ${
                               financingTerm === m
                                 ? 'bg-[#141517] text-white'
                                 : 'bg-white border border-[#C9D1D6] text-[#2A2E31] hover:border-[#141517]'

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { AnimatePresence, motion } from 'motion/react';
+import { backdropMotion, modalMotion } from '../motion.ts';
 import { X, AlertTriangle } from 'lucide-react';
 import { VehicleReport } from '../types.ts';
 
@@ -10,11 +12,10 @@ export const ReportModal: React.FC = () => {
   const [details, setDetails] = useState('');
   const [reporterEmail, setReporterEmail] = useState(currentUser?.email || '');
 
-  if (!reportModalVehicle) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!details.trim()) return;
+    if (!reportModalVehicle || !details.trim()) return;
 
     submitReport({
       vehicleId: reportModalVehicle.id,
@@ -30,11 +31,15 @@ export const ReportModal: React.FC = () => {
   const labelClass = 'block text-[12px] font-semibold text-[#4E585E] mb-1.5';
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-[#141517]/50 flex items-center justify-center p-4 animate-fade-in"
+    <AnimatePresence>
+    {reportModalVehicle && (
+    <motion.div
+      key="report"
+      {...backdropMotion}
+      className="fixed inset-0 z-50 bg-[#141517]/50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) setReportModalVehicle(null); }}
     >
-      <div className="w-full max-w-[480px] bg-[#F7F8F8] border border-[#141517] animate-modal-in overflow-hidden">
+      <motion.div {...modalMotion} className="w-full max-w-[480px] bg-[#F7F8F8] border border-[#141517] overflow-hidden">
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#DDE3E6] flex items-center justify-between">
@@ -124,7 +129,9 @@ export const ReportModal: React.FC = () => {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+    </AnimatePresence>
   );
 };

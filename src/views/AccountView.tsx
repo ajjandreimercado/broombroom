@@ -341,7 +341,7 @@ export const AccountView: React.FC = () => {
                     )}
                     <button
                       onClick={() => setCompareModalOpen(true)}
-                      className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-xs font-bold rounded-[2px] transition-all flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-xs font-bold rounded-[2px] transition-colors flex items-center gap-1.5 cursor-pointer"
                     >
                       <ArrowLeftRight className="w-3.5 h-3.5" />
                       <span>Open Side-by-Side Analysis</span>
@@ -392,7 +392,7 @@ export const AccountView: React.FC = () => {
                       </div>
                       <button
                         onClick={() => setCompareModalOpen(true)}
-                        className="px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] transition-all shrink-0 cursor-pointer flex items-center gap-2"
+                        className="px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] transition-colors shrink-0 cursor-pointer flex items-center gap-2"
                       >
                         <ArrowLeftRight className="w-4 h-4" />
                         <span>Launch Comparison Engine</span>
