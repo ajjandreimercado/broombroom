@@ -140,7 +140,11 @@ export const IntroView: React.FC = () => {
           {heroVehicle && (
             <button
               type="button"
-              onClick={() => navigateTo('vehicle_detail', { vehicleId: heroVehicle.id })}
+              onClick={(e) => {
+                const img = e.currentTarget.querySelector('img');
+                if (img) img.style.viewTransitionName = 'listing-photo';
+                navigateTo('vehicle_detail', { vehicleId: heroVehicle.id });
+              }}
               className="gb-plate group lg:col-span-5 text-left flex flex-col pb-10 lg:pb-0 cursor-pointer"
               aria-label={`View ${heroVehicle.title}`}
             >

@@ -80,7 +80,7 @@ export const Navbar: React.FC = () => {
 
   return (
     <header
-      className={`sticky top-0 z-40 transition-colors duration-200 ${bg}`}
+      className={`site-header sticky top-0 z-40 transition-colors duration-200 ${bg}`}
     >
       <div className="gb-container">
         <div className="flex items-center h-16 gap-2 sm:gap-6 min-w-0">
@@ -163,7 +163,7 @@ export const Navbar: React.FC = () => {
             )}
 
             {/* Notifications */}
-            <div className="relative" ref={notifDropRef}>
+            <div className={`relative ${!isBuyerSite && !isAuthenticated ? 'hidden' : ''}`} ref={notifDropRef}>
               <button
                 onClick={() => { setNotifDropdownOpen((v) => !v); setUserDropdownOpen(false); }}
                 className="relative p-2 rounded-[2px] transition-colors duration-150 cursor-pointer text-white hover:bg-white/10"

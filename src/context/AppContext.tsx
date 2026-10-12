@@ -1,4 +1,5 @@
 import { PORTAL } from '../portals.ts';
+import { flushSync } from 'react-dom';
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import {
   Vehicle,
@@ -363,13 +364,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Navigate handler with window scroll to top
   const navigateTo: AppContextType['navigateTo'] = (view, params) => {
-    setCurrentView(view);
-    if (params?.vehicleId) setSelectedVehicleId(params.vehicleId);
-    if (params?.guideSlug) setSelectedGuideSlug(params.guideSlug);
-    if (params?.accountTab) setAccountTab(params.accountTab);
-    if (params?.sellerTab) setSellerTab(params.sellerTab);
-    if (params?.adminTab) setAdminTab(params.adminTab);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const apply = (scroll: ScrollBehavior) => {
+      setCurrentView(view);
+      if (params?.vehicleId) setSelectedVehicleId(params.vehicleId);
+      if (params?.guideSlug) setSelectedGuideSlug(params.guideSlug);
+      if (params?.accountTab) setAccountTab(params.accountTab);
+      if (params?.sellerTab) setSellerTab(params.sellerTab);
+      if (params?.adminTab) setAdminTab(params.adminTab);
+      window.scrollTo({ top: 0, behavior: scroll });
+    };
+    // View Transitions crossfade the swap (styles in index.css); older browsers just swap.
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
+    if (doc.startViewTransition) doc.startViewTransition(() => flushSync(() => apply('instant')));
+    else apply('smooth');
   };
 
   // Auth functions

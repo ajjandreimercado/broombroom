@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
+import { motion } from 'motion/react';
+import { indicatorTransition } from '../motion.ts';
 import { AdminTab } from '../context/AppContext.tsx';
 import {
   ShieldAlert,
@@ -78,19 +80,21 @@ export const AdminDashboardView: React.FC = () => {
                   <button
                     key={tab.id}
                     onClick={() => navigateTo('admin', { adminTab: tab.id })}
-                    className={`shrink-0 lg:w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-[13.5px] font-medium cursor-pointer whitespace-nowrap ${
-                      isActive
-                        ? 'bg-[#141517] text-white'
-                        : 'text-[#2A2E31] hover:bg-[#F7F8F8] hover:text-[#141517]'
+                    className={`relative shrink-0 lg:w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-[13.5px] font-medium cursor-pointer whitespace-nowrap transition-colors duration-200 ${
+                      isActive ? 'text-white' : 'text-[#2A2E31] hover:bg-[#EEF1F2] hover:text-[#141517]'
                     }`}
+                    aria-current={isActive ? 'page' : undefined}
                   >
-                    <div className="flex items-center gap-2.5">
+                    {isActive && (
+                      <motion.span layoutId="admin-side-tab" transition={indicatorTransition} className="absolute inset-0 bg-[#141517]" aria-hidden="true" />
+                    )}
+                    <div className="relative flex items-center gap-2.5">
                       <Icon className="w-4 h-4 shrink-0" />
                       <span>{tab.label}</span>
                     </div>
                     {tab.count !== undefined && tab.count > 0 && (
                       <span
-                        className={`text-[10px] tabular-nums font-bold px-1.5 py-0.5 rounded-full ${
+                        className={`relative text-[10px] tabular-nums font-bold px-1.5 py-0.5 rounded-full transition-colors duration-200 ${
                           isActive
                             ? 'bg-white text-[#141517]'
                             : 'bg-[#EEF1F2] text-[#4E585E]'

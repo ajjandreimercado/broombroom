@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
+import { motion } from 'motion/react';
+import { indicatorTransition } from '../motion.ts';
 import { portalUrl } from '../portals.ts';
 import { SellerTab } from '../context/AppContext.tsx';
 import { Vehicle, VehicleCategory, VehicleCondition, TransmissionType, FuelType, VehicleStatus, ApplicationStatus } from '../types.ts';
@@ -207,19 +209,21 @@ export const SellerDashboardView: React.FC = () => {
                   <button
                     key={tab.id}
                     onClick={() => navigateTo('seller', { sellerTab: tab.id })}
-                    className={`shrink-0 lg:w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-[13.5px] font-medium cursor-pointer whitespace-nowrap ${
-                      isActive
-                        ? 'bg-[#141517] text-white'
-                        : 'text-[#2A2E31] hover:bg-[#EEF1F2] hover:text-[#141517]'
+                    className={`relative shrink-0 lg:w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-[13.5px] font-medium cursor-pointer whitespace-nowrap transition-colors duration-200 ${
+                      isActive ? 'text-white' : 'text-[#2A2E31] hover:bg-[#EEF1F2] hover:text-[#141517]'
                     }`}
+                    aria-current={isActive ? 'page' : undefined}
                   >
-                    <div className="flex items-center gap-2.5">
+                    {isActive && (
+                      <motion.span layoutId="seller-side-tab" transition={indicatorTransition} className="absolute inset-0 bg-[#141517]" aria-hidden="true" />
+                    )}
+                    <div className="relative flex items-center gap-2.5">
                       <Icon className="w-4 h-4 shrink-0" />
                       <span>{tab.label}</span>
                     </div>
                     {tab.count !== undefined && tab.count > 0 && (
                       <span
-                        className={`text-[10px] tabular-nums font-bold px-1.5 py-0.5 rounded-full ${
+                        className={`relative text-[10px] tabular-nums font-bold px-1.5 py-0.5 rounded-full transition-colors duration-200 ${
                           isActive
                             ? 'bg-white text-[#141517]'
                             : 'bg-[#EEF1F2] text-[#4E585E]'
@@ -444,7 +448,7 @@ export const SellerDashboardView: React.FC = () => {
             {sellerTab === 'add_vehicle' && (
               <div className="border-t-2 border-[#141517] pt-6 space-y-6">
                 <div>
-                  <h2 className="text-xl font-bold text-[#141517]">Post a Vehicle for Sale</h2>
+                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Post a Vehicle for Sale</h2>
                   <p className="text-xs text-[#4E585E] mt-1">
                     Your listing will be indexed across the Groom Broom automotive inventory.
                   </p>
@@ -777,7 +781,7 @@ export const SellerDashboardView: React.FC = () => {
             {sellerTab === 'profile_settings' && (
               <div className="border-t-2 border-[#141517] pt-6 space-y-6">
                 <div>
-                  <h2 className="text-xl font-bold text-[#141517]">Dealer Storefront Profile</h2>
+                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Dealer Storefront Profile</h2>
                   <p className="text-xs text-[#4E585E] mt-1">
                     This verified profile is displayed to buyers on your vehicle listings.
                   </p>
@@ -827,7 +831,7 @@ export const SellerDashboardView: React.FC = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto bg-[#141517]/50 flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white p-6 space-y-4 border border-[#141517] animate-modal-in">
             <div className="flex items-center justify-between pb-2 border-b border-[#DDE3E6]">
-              <h3 className="text-base font-bold text-[#141517]">Quick Edit Vehicle</h3>
+              <h3 className="font-display text-[18px] leading-tight text-[#141517]">Quick Edit Vehicle</h3>
               <button
                 onClick={() => setEditingVehicleId(null)}
                 className="p-1 rounded-[2px] text-[#6B767D] hover:text-[#2A2E31] cursor-pointer"
@@ -883,7 +887,7 @@ export const SellerDashboardView: React.FC = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto bg-[#141517]/50 flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white p-6 space-y-4 border border-[#141517] animate-modal-in">
             <div className="flex items-center justify-between pb-2 border-b border-[#DDE3E6]">
-              <h3 className="text-base font-bold text-[#141517]">Update Application Progress</h3>
+              <h3 className="font-display text-[18px] leading-tight text-[#141517]">Update Application Progress</h3>
               <button
                 onClick={() => setRespondingAppId(null)}
                 className="p-1 rounded-[2px] text-[#6B767D] hover:text-[#2A2E31] cursor-pointer"

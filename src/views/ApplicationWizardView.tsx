@@ -174,7 +174,7 @@ export const ApplicationWizardView: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Main Wizard Form (7 cols) */}
-          <div className="lg:col-span-7">
+          <div key={step} className="lg:col-span-7 animate-step-in">
             {error && (
               <div className="mb-4 p-4 bg-white border border-[#B42318] text-[#B42318] rounded-[2px] text-xs font-semibold">
                 {error}

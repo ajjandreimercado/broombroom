@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { HelpCircle, ChevronDown, ChevronUp, Mail, Phone, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
+import { HelpCircle, ChevronDown, Mail, Phone, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 
 export const HelpView: React.FC = () => {
   const { showToast, navigateTo } = useApp();
@@ -74,20 +74,18 @@ export const HelpView: React.FC = () => {
                 <div key={idx} className="py-4">
                   <button
                     onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                    className="w-full flex items-center justify-between text-left text-sm font-bold text-[#141517] hover:text-[#1D5FD1] transition-colors cursor-pointer gap-4"
+                    aria-expanded={isOpen}
+                    className="w-full flex items-center justify-between text-left text-[15px] font-semibold text-[#141517] hover:text-[#1D5FD1] transition-colors cursor-pointer gap-4"
                   >
                     <span>{faq.q}</span>
-                    {isOpen ? (
-                      <ChevronUp className="w-4 h-4 text-[#1D5FD1] shrink-0" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-[#6B767D] shrink-0" />
-                    )}
+                    <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#1D5FD1]' : 'text-[#6B767D]'}`} />
                   </button>
-                  {isOpen && (
-                    <p className="mt-3 text-xs sm:text-sm text-[#4E585E] leading-relaxed animate-fade-in pl-1">
-                      {faq.a}
-                    </p>
-                  )}
+                  {/* 0fr -> 1fr grid rows: an accordion with no height measuring */}
+                  <div className={`grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                    <div className="overflow-hidden">
+                      <p className="pt-3 text-[14px] text-[#4E585E] leading-relaxed max-w-[68ch]">{faq.a}</p>
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -97,7 +95,7 @@ export const HelpView: React.FC = () => {
         {/* Contact Support Form & Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-5 space-y-5">
-            <h2 className="font-display text-[22px] leading-tight text-[#141517] uppercase tracking-wider">
+            <h2 className="font-display text-[22px] leading-tight text-[#141517]">
               Direct Assistance
             </h2>
 

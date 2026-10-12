@@ -161,6 +161,7 @@ select:focus, textarea:focus {
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide-up { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes vt-fade { from { opacity: 0; } }
 @keyframes rule-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
 .animate-view-fade  { animation: view-fade 260ms var(--ease-out) both; }
@@ -173,6 +174,8 @@ select:focus, textarea:focus {
 /* Group entrance; delay set per item (50ms steps). Decorative, never blocks clicks. */
 .gb-rise            { animation: view-fade 300ms var(--ease-out) both; }
 .gb-rise > *        { flex: 1; min-width: 0; }
+@keyframes step-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+.animate-step-in    { animation: step-in 260ms var(--ease-out) both; }
 .delay-100 { animation-delay: 100ms; }
 .delay-150 { animation-delay: 150ms; }
 .delay-200 { animation-delay: 200ms; }
@@ -181,7 +184,21 @@ select:focus, textarea:focus {
 @media (min-width: 640px)  { .gb-container { padding-inline: 24px; } }
 @media (min-width: 1024px) { .gb-container { padding-inline: 40px; } }
 
+/* ---------- Page changes (View Transitions) ----------
+   The header stays put; the page crossfades and settles; a listing photo flows card -> detail. */
+.site-header { view-transition-name: site-header; }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(8px); } }
+::view-transition-old(root) { animation: 140ms var(--ease-out) both vt-out; }
+::view-transition-new(root) { animation: 300ms var(--ease-out) both vt-in; }
+::view-transition-group(listing-photo) { animation-duration: 420ms; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
+::view-transition-old(listing-photo), ::view-transition-new(listing-photo) { height: 100%; object-fit: cover; overflow: hidden; }
+/* The transition replaces the old per-page entrance where it is supported. */
+@supports (view-transition-name: none) { main.animate-view-fade { animation: none; } }
+
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(root) { animation: 150ms ease both vt-fade; }
+  ::view-transition-group(listing-photo) { animation-duration: 0s; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   html { scroll-behavior: auto; }
 }

@@ -207,6 +207,7 @@ export const VehicleDetailView: React.FC = () => {
                     animate={{ opacity: 1, zIndex: 1 }}
                     exit={{ opacity: 0, zIndex: 0, transition: { opacity: { delay: 0.25, duration: 0 } } }}
                     transition={{ duration: 0.25, ease: EASE_OUT }}
+                    style={{ viewTransitionName: 'listing-photo' }}
                     className="absolute inset-0 w-full h-full object-cover"
                   />
                 </AnimatePresence>

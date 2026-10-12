@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Vehicle } from '../types.ts';
 import { useApp } from '../context/AppContext.tsx';
 import { Stamp } from './Stamp.tsx';
@@ -34,7 +34,10 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
   const saved = isVehicleSaved(vehicle.id);
   const inCompare = isInCompare(vehicle.id);
 
+  const imgRef = useRef<HTMLImageElement>(null);
+
   const handleCardClick = () => {
+    if (imgRef.current) imgRef.current.style.viewTransitionName = 'listing-photo';
     addRecentlyViewed(vehicle.id);
     navigateTo('vehicle_detail', { vehicleId: vehicle.id });
   };
@@ -90,6 +93,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
       {/* Photo plate */}
       <div className="relative aspect-[4/3] overflow-hidden shrink-0 bg-[#EEF1F2] mt-3">
         <img
+          ref={imgRef}
           src={vehicle.images[0]}
           alt={vehicle.title}
           className="w-full h-full object-cover"

@@ -1166,7 +1166,7 @@ export const SellerSalesReport: React.FC = () => {
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#141517]">
+                  <h3 className="font-display text-[18px] leading-tight text-[#141517]">
                     Certificate of Sale & Official Receipt
                   </h3>
                   <p className="text-xs text-[#4E585E] tabular-nums">
