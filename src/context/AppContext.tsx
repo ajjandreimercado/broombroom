@@ -18,6 +18,7 @@ import {
   Commission,
   ListingRequest,
   ApplicationDocument,
+  Expense,
 } from '../types.ts';
 import {
   INITIAL_VEHICLES,
@@ -29,6 +30,8 @@ import {
   INITIAL_REPORTS,
   INITIAL_COMMISSIONS,
   INITIAL_LISTING_REQUESTS,
+  INITIAL_EXPENSES,
+  INITIAL_CREDITS,
   COMMISSION_RATE,
   DEMO_AGENT,
   generateVehicleSvg,
@@ -77,7 +80,12 @@ export type AdminTab =
   | 'add_vehicle'
   | 'reports'
   | 'agent_reports'
-  | 'conversations';
+  | 'conversations'
+  | 'accounting'
+  | 'acc_expenses'
+  | 'acc_credit'
+  | 'acc_savings'
+  | 'acc_reports';
 
 export interface FilterState {
   searchQuery: string;
@@ -143,6 +151,9 @@ interface AppContextType {
   approveCommission: (id: string) => void;
   payCommission: (id: string, proofFileName: string) => void;
   listingRequests: ListingRequest[];
+  expenses: Expense[];
+  addExpense: (e: Omit<Expense, 'id' | 'voucherNo' | 'createdAt'>) => Expense;
+  credits: Expense[];
   submitListingRequest: (req: Pick<ListingRequest, 'type' | 'vehicleId' | 'vehicleTitle' | 'changes' | 'note'>) => void;
   decideListingRequest: (id: string, approve: boolean, reason?: string) => void;
   reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => void;
@@ -349,6 +360,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {}
   }, [listingRequests]);
 
+  const [expenses, setExpenses] = useState<Expense[]>(() => readJson<Expense[]>('gb_expenses', INITIAL_EXPENSES));
+  const [credits, setCredits] = useState<Expense[]>(() => readJson<Expense[]>('gb_credits', INITIAL_CREDITS));
+  useEffect(() => {
+    try {
+      localStorage.setItem('gb_expenses', JSON.stringify(expenses));
+    } catch {}
+  }, [expenses]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('gb_credits', JSON.stringify(credits));
+    } catch {}
+  }, [credits]);
+
+  // Saves an expense (payment voucher, PV) or a credit entry (credit voucher, CV).
+  const addExpense: AppContextType['addExpense'] = (e) => {
+    const isCredit = e.kind === 'credit';
+    const count = isCredit ? credits.length : expenses.length;
+    const voucherNo = `${isCredit ? 'CV' : 'PV'}-2026-${String(110 + count).padStart(4, '0')}`;
+    const record: Expense = { ...e, id: `${isCredit ? 'cr' : 'exp'}-${Date.now()}`, voucherNo, createdAt: new Date().toISOString() };
+    (isCredit ? setCredits : setExpenses)((prev) => [record, ...prev]);
+    showToast(isCredit ? 'Credit entry saved' : 'Expense saved', `${voucherNo} for ₱${e.total.toLocaleString()} · ${e.payee}.`);
+    return record;
+  };
+
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const saved = localStorage.getItem('gb_notifications');
     return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
@@ -425,6 +460,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       gb_notifications: (raw) => setNotifications(JSON.parse(raw)),
       gb_commissions: (raw) => setCommissions((JSON.parse(raw) as Commission[]).map(normalizeCommission)),
       gb_listing_requests: (raw) => setListingRequests(JSON.parse(raw)),
+      gb_expenses: (raw) => setExpenses(JSON.parse(raw)),
+      gb_credits: (raw) => setCredits(JSON.parse(raw)),
     };
     const onStorage = (e: StorageEvent) => {
       if (!e.key || !e.newValue || !sync[e.key]) return;
@@ -1170,6 +1207,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         approveCommission,
         payCommission,
         listingRequests,
+        expenses,
+        addExpense,
+        credits,
         submitListingRequest,
         decideListingRequest,
         reviewDocument,

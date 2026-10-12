@@ -230,3 +230,28 @@ export interface ListingRequest {
   createdAt: string;
   decidedAt?: string;
 }
+
+// Accounting: one voucher with one or more lines. An expense is paid from cash or a cash
+// equivalent; a credit entry is charged to a credit account and paid to the creditor later.
+export interface ExpenseLine {
+  category: string;
+  description: string;
+  amount: number;
+  party: string; // vendor for expenses, creditor for credit
+  attachment?: string;
+}
+
+export interface Expense {
+  id: string;
+  kind: 'expense' | 'credit';
+  voucherNo: string;
+  payee: string;
+  accountId: string;
+  paymentDate: string; // yyyy-mm-dd
+  method: 'bank' | 'cash';
+  refNo: string;
+  lines: ExpenseLine[];
+  remarks: string;
+  total: number;
+  createdAt: string;
+}

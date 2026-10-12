@@ -12,6 +12,9 @@ import { ListingsManager } from '../components/admin/ListingsManager.tsx';
 import { AgentReports } from '../components/admin/AgentReports.tsx';
 import { ConversationsMonitor } from '../components/admin/ConversationsMonitor.tsx';
 import { SafetyReports } from '../components/admin/SafetyReports.tsx';
+import { AccountingOverview } from '../components/accounting/AccountingOverview.tsx';
+import { VoucherPage } from '../components/accounting/VoucherPage.tsx';
+import { EmptyState, SectionHeader } from '../components/admin/ui.tsx';
 import {
   ShieldAlert,
   LayoutDashboard,
@@ -24,6 +27,11 @@ import {
   Flag,
   BarChart3,
   MessagesSquare,
+  LineChart as LineChartIcon,
+  Receipt,
+  CreditCard,
+  PiggyBank,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 type NavItem = { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number };
@@ -47,6 +55,16 @@ export const AdminDashboardView: React.FC = () => {
           count: applications.filter((a) => a.purchaseMethod === 'financing' && open.includes(a.status) && docSummary(a).tone !== 'good').length,
         },
         { id: 'commissions', label: 'Commissions', icon: Wallet, count: commissions.filter((c) => c.status !== 'paid').length },
+      ],
+    },
+    {
+      title: 'Accounting',
+      items: [
+        { id: 'accounting', label: 'Overview', icon: LineChartIcon },
+        { id: 'acc_expenses', label: 'Expenses', icon: Receipt },
+        { id: 'acc_credit', label: 'Credit', icon: CreditCard },
+        { id: 'acc_savings', label: 'Savings deposit', icon: PiggyBank },
+        { id: 'acc_reports', label: 'Reports', icon: FileSpreadsheet },
       ],
     },
     {
@@ -129,6 +147,15 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'reports' && <SafetyReports />}
             {adminTab === 'agent_reports' && <AgentReports />}
             {adminTab === 'conversations' && <ConversationsMonitor />}
+            {adminTab === 'accounting' && <AccountingOverview />}
+            {adminTab === 'acc_expenses' && <VoucherPage kind="expense" />}
+            {adminTab === 'acc_credit' && <VoucherPage kind="credit" />}
+            {(adminTab === 'acc_savings' || adminTab === 'acc_reports') && (
+              <section>
+                <SectionHeader title={adminTab === 'acc_savings' ? 'Savings deposit' : 'Accounting reports'} />
+                <EmptyState title="Not set up yet" body="This section's layout hasn't been finalised yet." />
+              </section>
+            )}
           </main>
         </div>
       </div>

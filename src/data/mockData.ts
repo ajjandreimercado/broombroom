@@ -1,4 +1,4 @@
-import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission, ListingRequest } from '../types.ts';
+import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission, ListingRequest, Expense } from '../types.ts';
 
 // Minimalist, high-end studio automotive SVG generator
 export const generateVehicleSvg = (
@@ -1077,3 +1077,108 @@ export const INITIAL_LISTING_REQUESTS: ListingRequest[] = [
   },
 ];
 
+
+// ---------- Accounting (demo figures) ----------
+
+// Cash and cash equivalents the admin pays from. Balance = opening balance - expenses paid from it.
+export const PAYMENT_ACCOUNTS = [
+  { id: 'cash-on-hand', name: 'Cash on hand', method: 'cash' as const, openingBalance: 850000 },
+  { id: 'bdo-checking', name: 'BDO checking account', method: 'bank' as const, openingBalance: 6500000 },
+  { id: 'bpi-savings', name: 'BPI savings account', method: 'bank' as const, openingBalance: 3200000 },
+];
+
+// Credit lines the company can charge to. Available = credit limit - credit entries charged to it.
+export const CREDIT_ACCOUNTS = [
+  { id: 'bdo-card', name: 'BDO corporate credit card', limit: 500000 },
+  { id: 'sb-floor', name: 'Security Bank inventory credit line', limit: 15000000 },
+  { id: 'supplier-toyota', name: 'Toyota Pampanga supplier credit', limit: 4000000 },
+];
+
+// Credit types; the final list is still to be agreed with the client.
+export const CREDIT_CATEGORIES = [
+  'Vehicle acquisition on credit',
+  'Supplier credit',
+  'Credit card purchase',
+  'Loan drawdown',
+  'Interest and bank charges',
+  'Other',
+];
+
+// Expense types; the final list is still to be agreed with the client.
+export const EXPENSE_CATEGORIES = [
+  'Vehicle acquisition',
+  'Agent commissions',
+  'Salaries and wages',
+  'Rent',
+  'Utilities',
+  'Marketing and advertising',
+  'Repairs and maintenance',
+  'LTO registration and fees',
+  'Office supplies',
+  'Transportation',
+  'Taxes and licenses',
+  'Other',
+];
+
+// Monthly totals before the expense ledger started (Jan to Aug 2026). Sales run through Oct.
+export const MONTHLY_HISTORY: { month: string; sales: number; expenses: number }[] = [
+  { month: '2026-01', sales: 9850000, expenses: 7920000 },
+  { month: '2026-02', sales: 8420000, expenses: 7110000 },
+  { month: '2026-03', sales: 11300000, expenses: 8650000 },
+  { month: '2026-04', sales: 10150000, expenses: 8240000 },
+  { month: '2026-05', sales: 12780000, expenses: 9310000 },
+  { month: '2026-06', sales: 11960000, expenses: 9020000 },
+  { month: '2026-07', sales: 13440000, expenses: 9870000 },
+  { month: '2026-08', sales: 14120000, expenses: 10350000 },
+  { month: '2026-09', sales: 12650000, expenses: 6180000 },
+  { month: '2026-10', sales: 9180000, expenses: 3420000 },
+];
+
+export const INITIAL_EXPENSES: Expense[] = [
+  {
+    id: 'exp-001', kind: 'expense', voucherNo: 'PV-2026-0091', payee: 'Ayala Land Offices', accountId: 'bdo-checking', paymentDate: '2026-09-01', method: 'bank', refNo: 'BDO-778120',
+    lines: [{ category: 'Rent', description: 'Showroom and office rent, September', amount: 185000, party: 'Ayala Land Offices' }],
+    remarks: '', total: 185000, createdAt: '2026-09-01T09:00:00.000Z',
+  },
+  {
+    id: 'exp-002', kind: 'expense', voucherNo: 'PV-2026-0092', payee: 'Broom Broom staff', accountId: 'bdo-checking', paymentDate: '2026-09-15', method: 'bank', refNo: 'BDO-781455',
+    lines: [{ category: 'Salaries and wages', description: 'Payroll, September 1 to 15', amount: 412000, party: 'Payroll' }],
+    remarks: '', total: 412000, createdAt: '2026-09-15T09:00:00.000Z',
+  },
+  {
+    id: 'exp-003', kind: 'expense', voucherNo: 'PV-2026-0093', payee: 'Toyota Pampanga', accountId: 'bdo-checking', paymentDate: '2026-09-18', method: 'bank', refNo: 'BDO-782010',
+    lines: [
+      { category: 'Vehicle acquisition', description: '2022 Toyota Innova 2.8 E, trade-in unit', amount: 905000, party: 'Toyota Pampanga' },
+      { category: 'LTO registration and fees', description: 'Transfer of ownership', amount: 6800, party: 'LTO San Fernando' },
+    ],
+    remarks: 'Unit for resale; papers complete.', total: 911800, createdAt: '2026-09-18T09:00:00.000Z',
+  },
+  {
+    id: 'exp-004', kind: 'expense', voucherNo: 'PV-2026-0094', payee: 'Meralco', accountId: 'cash-on-hand', paymentDate: '2026-09-22', method: 'cash', refNo: 'OR-55120',
+    lines: [{ category: 'Utilities', description: 'Electricity, showroom', amount: 38650, party: 'Meralco' }],
+    remarks: '', total: 38650, createdAt: '2026-09-22T09:00:00.000Z',
+  },
+  {
+    id: 'exp-005', kind: 'expense', voucherNo: 'PV-2026-0101', payee: 'Ayala Land Offices', accountId: 'bdo-checking', paymentDate: '2026-10-01', method: 'bank', refNo: 'BDO-790331',
+    lines: [{ category: 'Rent', description: 'Showroom and office rent, October', amount: 185000, party: 'Ayala Land Offices' }],
+    remarks: '', total: 185000, createdAt: '2026-10-01T09:00:00.000Z',
+  },
+  {
+    id: 'exp-006', kind: 'expense', voucherNo: 'PV-2026-0102', payee: 'Meta Platforms', accountId: 'bpi-savings', paymentDate: '2026-10-05', method: 'bank', refNo: 'BPI-120944',
+    lines: [{ category: 'Marketing and advertising', description: 'Facebook and Instagram ads, October', amount: 64500, party: 'Meta Platforms' }],
+    remarks: '', total: 64500, createdAt: '2026-10-05T09:00:00.000Z',
+  },
+];
+
+export const INITIAL_CREDITS: Expense[] = [
+  {
+    id: 'cr-001', kind: 'credit', voucherNo: 'CV-2026-0031', payee: 'Security Bank', accountId: 'sb-floor', paymentDate: '2026-09-10', method: 'bank', refNo: 'SB-FL-2209',
+    lines: [{ category: 'Vehicle acquisition on credit', description: '2023 Ford Everest Titanium, inventory unit', amount: 1720000, party: 'Security Bank' }],
+    remarks: 'Floor plan, 90 days.', total: 1720000, createdAt: '2026-09-10T09:00:00.000Z',
+  },
+  {
+    id: 'cr-002', kind: 'credit', voucherNo: 'CV-2026-0032', payee: 'Shell Fleet', accountId: 'bdo-card', paymentDate: '2026-10-03', method: 'bank', refNo: 'BDO-CC-88213',
+    lines: [{ category: 'Credit card purchase', description: 'Fuel for test drives and deliveries', amount: 18450, party: 'BDO' }],
+    remarks: '', total: 18450, createdAt: '2026-10-03T09:00:00.000Z',
+  },
+];
