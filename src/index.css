@@ -1,0 +1,184 @@
+@import 'tailwindcss';
+
+/* Groom Broom: the service booklet.
+   Bond paper, carbon ink, blue-grey ruling; logo blue for actions, logo green for stamps. */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --color-paper: #F7F8F8;
+  --color-sheet: #FFFFFF;
+  --color-ink: #141517;
+  --color-ink-2: #4E585E;
+  --color-ink-3: #6B767D;
+  --color-rule: #C9D1D6;
+  --color-rule-soft: #DDE3E6;
+  --color-rule-strong: #8C989F;
+  --color-stamp: #1B7F35;
+  --color-action: #1D5FD1;
+  --color-action-dark: #174CA8;
+  --color-action-wash: #E8F0FC;
+}
+
+:root {
+  --gb-blue: #1D5FD1;
+  --gb-blue-dark: #174CA8;
+  --gb-green: #1B7F35;
+  --gb-paper: #F7F8F8;
+  --gb-ink: #141517;
+  --gb-rule: #C9D1D6;
+  --gb-rule-strong: #8C989F;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; border-color: var(--gb-rule); }
+  html {
+    scroll-behavior: smooth;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-stretch: 100%;
+    background-color: var(--gb-paper);
+    color: var(--gb-ink);
+    line-height: 1.55;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'ss01';
+    caret-color: var(--gb-blue);
+  }
+  h1, h2, h3, h4 {
+    font-weight: 650;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    font-stretch: 112%;
+  }
+  h5, h6 { font-weight: 600; line-height: 1.25; }
+  p { text-wrap: pretty; }
+  button { font-family: inherit; cursor: pointer; }
+  img { display: block; }
+  input, select, textarea { font-family: inherit; font-size: max(16px, 1em); }
+  @media (min-width: 768px) { input, select, textarea { font-size: inherit; } }
+  input[type='range'], input[type='checkbox'], input[type='radio'] { accent-color: var(--gb-blue); }
+  ::selection { background-color: var(--gb-blue); color: #fff; }
+  ::placeholder { color: #6B767D; opacity: 1; }
+  a { text-underline-offset: 3px; text-decoration-thickness: 1px; }
+}
+
+/* Display voice: Archivo at full width. Used for headlines and the big numbers. */
+.font-display, .font-editorial {
+  font-stretch: 125%;
+  font-weight: 640;
+  letter-spacing: -0.025em;
+}
+.font-condensed { font-stretch: 75%; }
+.tabular-nums { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+/* Booklet label: the small printed captions on a form row. */
+.gb-label {
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 600;
+  font-stretch: 112%;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #4E585E;
+}
+
+/* Ruled paper: horizontal ruling at the booklet's line pitch. */
+.gb-ruled {
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--gb-rule) 31px 32px);
+}
+
+:focus-visible { outline: 2px solid var(--gb-blue); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gb-rule); border: 2px solid var(--gb-paper); }
+::-webkit-scrollbar-thumb:hover { background: var(--gb-rule-strong); }
+.scrollbar-none { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* Interaction: quick, ease-out, press feedback only on real buttons. */
+button, a, input, select, textarea, [role='button'], [role='tab'] {
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-timing-function: var(--ease-out);
+  transition-duration: 160ms;
+}
+button:not(:disabled):active, [role='button']:not([aria-disabled='true']):active {
+  transform: scale(0.97);
+  transition-duration: 90ms;
+}
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):focus,
+select:focus, textarea:focus {
+  border-color: var(--gb-ink) !important;
+  box-shadow: none !important;
+}
+
+/* Listing photo: a slow drift on hover, only where hover exists. */
+@media (hover: hover) and (pointer: fine) {
+  .gb-plate img { transition: transform 600ms var(--ease-out); }
+  .gb-plate:hover img { transform: scale(1.03); }
+}
+
+/* ---------- The stamp ---------- */
+@keyframes stamp-press {
+  0%   { opacity: 0; transform: scale(1.6) rotate(-14deg); }
+  60%  { opacity: 1; transform: scale(0.96) rotate(-7deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-8deg); }
+}
+.gb-stamp {
+  display: inline-grid;
+  place-items: center;
+  border: 2px solid var(--gb-green);
+  color: var(--gb-green);
+  font-stretch: 125%;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  transform: rotate(-8deg);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  /* Uneven ink: a fractal-noise alpha mask so the stamp reads as an impression, not a badge. */
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='50'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1.3 1.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='50'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1.3 1.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.gb-stamp--press { animation: stamp-press 260ms var(--ease-out) both; }
+
+/* ---------- Motion vocabulary used by views ---------- */
+@keyframes view-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes rule-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.animate-view-fade  { animation: view-fade 260ms var(--ease-out) both; }
+.animate-fade-up    { animation: pop-in 180ms var(--ease-out) both; transform-origin: top; }
+.animate-fade-in    { animation: fade-in 180ms var(--ease-out) both; }
+.animate-modal-in   { animation: modal-in 240ms var(--ease-out) both; }
+.animate-toast-in   { animation: toast-in 220ms var(--ease-out) both; }
+.animate-slide-up   { animation: slide-up 300ms var(--ease-out) both; }
+.animate-rule-in    { animation: rule-in 700ms var(--ease-out) both; transform-origin: left; }
+.delay-100 { animation-delay: 100ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-200 { animation-delay: 200ms; }
+
+.gb-container { max-width: 1320px; margin-inline: auto; padding-inline: 16px; }
+@media (min-width: 640px)  { .gb-container { padding-inline: 24px; } }
+@media (min-width: 1024px) { .gb-container { padding-inline: 40px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  html { scroll-behavior: auto; }
+}
