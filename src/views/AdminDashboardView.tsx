@@ -215,7 +215,7 @@ export const AdminDashboardView: React.FC = () => {
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[680px]">
                     <thead>
                       <tr className="border-b border-[#DDE3E6] text-[#6B767D] uppercase tabular-nums tracking-wider text-[10px]">
                         <th className="pb-2.5 font-bold">Vehicle</th>

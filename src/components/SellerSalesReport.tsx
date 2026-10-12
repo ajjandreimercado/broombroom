@@ -687,7 +687,7 @@ export const SellerSalesReport: React.FC = () => {
           <div className="absolute inset-x-0 top-6 bottom-10 flex flex-col justify-between pointer-events-none text-[11px] tabular-nums text-[#6B767D]">
             {[1, 0.75, 0.5, 0.25, 0].map((fraction, i) => (
               <div key={i} className="flex items-center w-full border-b border-gray-100/90 pb-0.5">
-                <span className="w-20 shrink-0 text-right pr-3 font-semibold text-[#6B767D]">
+                <span className="w-14 sm:w-20 shrink-0 text-right pr-2 sm:pr-3 font-semibold text-[#6B767D]">
                   {chartViewMode === 'revenue'
                     ? fraction === 0
                       ? '₱0'
@@ -702,7 +702,7 @@ export const SellerSalesReport: React.FC = () => {
           </div>
 
           {/* Bar Chart Columns */}
-          <div className="h-64 sm:h-72 ml-20 flex items-end justify-between gap-3 sm:gap-6 px-2 sm:px-6 relative z-10">
+          <div className="h-64 sm:h-72 ml-14 sm:ml-20 flex items-end justify-between gap-2 sm:gap-6 px-0 sm:px-6 relative z-10">
             {reportData.chartData.map((dp, idx) => {
               const currentVal = chartViewMode === 'revenue' ? dp.revenue : dp.units;
               const maxVal = chartViewMode === 'revenue' ? maxRevenue : maxUnits;
@@ -714,12 +714,12 @@ export const SellerSalesReport: React.FC = () => {
                   key={idx}
                   onMouseEnter={() => setHoveredPoint(dp)}
                   onMouseLeave={() => setHoveredPoint(null)}
-                  className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer relative"
+                  className="flex-1 min-w-0 flex flex-col items-center h-full justify-end group cursor-pointer relative"
                 >
                   {/* Top value chip - Visible and readable */}
-                  <div className="mb-2 text-center transition-colors duration-200">
+                  <div className="mb-2 text-center transition-colors duration-200 hidden sm:block">
                     <span
-                      className={`inline-block tabular-nums text-[11px] font-bold px-2 py-0.5 rounded-[2px] ${
+                      className={`inline-block whitespace-nowrap tabular-nums text-[11px] font-bold px-2 py-0.5 rounded-[2px] ${
                         dp.revenue > 0
                           ? 'bg-[#202426] text-white group-hover:bg-[#1D5FD1]'
                           : 'text-[#8C989F]'
@@ -750,11 +750,11 @@ export const SellerSalesReport: React.FC = () => {
                   </div>
 
                   {/* Bottom interval text */}
-                  <div className="mt-3 text-center">
-                    <span className="block text-xs tabular-nums font-bold text-[#2A2E31] truncate group-hover:text-[#141517]">
+                  <div className="mt-3 text-center w-full min-w-0">
+                    <span className="block max-w-full text-[11px] sm:text-xs tabular-nums font-bold text-[#2A2E31] truncate group-hover:text-[#141517]">
                       {dp.shortLabel}
                     </span>
-                    <span className="block text-[10px] text-[#6B767D] tabular-nums mt-0.5">
+                    <span className="hidden sm:block text-[10px] text-[#6B767D] tabular-nums mt-0.5">
                       {dp.units} {dp.units === 1 ? 'deal' : 'deals'}
                     </span>
                   </div>
@@ -1015,7 +1015,7 @@ export const SellerSalesReport: React.FC = () => {
         </div>
 
         {/* Clear, Spacious Table with High Scanability */}
-        <div className="overflow-x-auto -mx-6 sm:-mx-8 px-6 sm:px-8">
+        <div className="overflow-x-auto">
           <table className="w-full text-left text-xs min-w-[920px]">
             <thead>
               <tr className="border-b border-[#DDE3E6] text-[#6B767D] uppercase tabular-nums tracking-wider text-[10px]">

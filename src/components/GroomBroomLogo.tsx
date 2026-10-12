@@ -9,7 +9,7 @@ interface LogoProps {
 
 const sizeClasses = {
   sm: 'h-7',
-  md: 'h-8 sm:h-9',
+  md: 'h-6 sm:h-8 lg:h-9',
   lg: 'h-11 sm:h-12',
   xl: 'h-16 sm:h-20',
 };

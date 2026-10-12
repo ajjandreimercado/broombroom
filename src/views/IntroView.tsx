@@ -147,17 +147,17 @@ export const IntroView: React.FC = () => {
               <div className="relative flex-1 min-h-[280px] sm:min-h-[360px] overflow-hidden bg-[#EEF1F2]">
                 <img src={heroVehicle.images[0]} alt="" className="absolute inset-0 w-full h-full object-cover" />
               </div>
-              <div className="grid grid-cols-2 border-t border-[#141517] divide-x divide-[#C9D1D6] bg-white">
-                <div className="p-4 col-span-2 border-b border-[#C9D1D6]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 border-t border-[#141517] bg-white">
+                <div className="p-4 sm:col-span-2 border-b border-[#C9D1D6]">
                   <p className="text-[17px] font-semibold text-[#141517] group-hover:underline decoration-[#1D5FD1] decoration-2 underline-offset-4">
                     {heroVehicle.title}
                   </p>
                 </div>
                 <div className="p-4">
                   <span className="gb-label">Price</span>
-                  <p className="mt-1.5 font-display text-[18px] sm:text-[22px] leading-none tabular-nums text-[#141517]">{peso(heroVehicle.price)}</p>
+                  <p className="mt-1.5 font-display text-[20px] lg:text-[clamp(17px,1.55vw,22px)] leading-none tabular-nums text-[#141517] whitespace-nowrap">{peso(heroVehicle.price)}</p>
                 </div>
-                <div className="p-4 min-w-0">
+                <div className="p-4 min-w-0 border-t sm:border-t-0 sm:border-l border-[#C9D1D6]">
                   <span className="gb-label">Location</span>
                   <p className="mt-1 text-[14px] text-[#141517] truncate flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
@@ -172,7 +172,7 @@ export const IntroView: React.FC = () => {
 
       {/* Category index */}
       <nav aria-label="Browse by category" className="border-b border-[#141517] bg-white">
-        <div className="gb-container grid grid-cols-3 md:grid-cols-6">
+        <div className="gb-container"><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-[#C9D1D6] border-x border-[#C9D1D6]">
           {categoryIndex.map((cat, i) => (
             <button
               key={cat.id}
@@ -180,9 +180,9 @@ export const IntroView: React.FC = () => {
                 updateFilter('category', cat.id);
                 navigateTo('marketplace');
               }}
-              className={`group relative text-left py-5 px-3 sm:px-4 cursor-pointer hover:bg-[#F7F8F8] border-[#C9D1D6] ${i % 3 !== 0 ? 'border-l' : ''} ${i === 3 ? 'md:border-l' : ''} ${i < 3 ? 'border-b md:border-b-0' : ''}`}
+              className="group relative text-left py-5 px-4 bg-white cursor-pointer hover:bg-[#F7F8F8] min-w-0"
             >
-              <span className="block font-display text-[15px] sm:text-[17px] text-[#141517]">{cat.label}</span>
+              <span className="block font-display text-[16px] sm:text-[17px] text-[#141517]">{cat.label}</span>
               <span className="block mt-1 text-[12px] tabular-nums text-[#4E585E]">{categoryCounts[cat.id]} listed</span>
               <span
                 className="absolute left-0 right-0 bottom-0 h-[3px] bg-[#1B7F35] scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-300"
@@ -190,7 +190,7 @@ export const IntroView: React.FC = () => {
               />
             </button>
           ))}
-        </div>
+        </div></div>
       </nav>
 
       {/* The purchase, as service intervals */}

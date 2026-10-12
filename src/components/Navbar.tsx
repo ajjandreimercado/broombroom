@@ -83,7 +83,7 @@ export const Navbar: React.FC = () => {
       className={`sticky top-0 z-40 transition-colors duration-200 ${bg}`}
     >
       <div className="gb-container">
-        <div className="flex items-center h-16 gap-3 sm:gap-6">
+        <div className="flex items-center h-16 gap-2 sm:gap-6 min-w-0">
 
           {/* ── LOGO ── */}
           <button
@@ -94,7 +94,7 @@ export const Navbar: React.FC = () => {
             <GroomBroomLogo size="md" />
           </button>
           {!isBuyerSite && (
-            <span className="hidden sm:block pl-4 border-l border-[#4E585E] text-[13.5px] font-semibold text-white whitespace-nowrap">
+            <span className="hidden md:block pl-4 border-l border-[#4E585E] text-[13.5px] font-semibold text-white whitespace-nowrap">
               {PORTAL_LABEL[PORTAL]}
             </span>
           )}
@@ -132,7 +132,7 @@ export const Navbar: React.FC = () => {
           {!isBuyerSite && (
             <a
               href={portalUrl('buyer')}
-              className="hidden md:inline-flex items-center gap-1.5 text-[13px] font-medium text-[#C9D1D6] hover:text-white"
+              className="hidden lg:inline-flex items-center gap-1.5 text-[13px] font-medium text-[#C9D1D6] hover:text-white"
             >
               Open marketplace
               <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
@@ -149,7 +149,7 @@ export const Navbar: React.FC = () => {
                 if (!isAuthenticated) { setAuthModalOpen(true); return; }
                 navigateTo('account', { accountTab: 'saved' });
               }}
-              className="relative p-2 rounded-[2px] transition-colors duration-150 cursor-pointer text-white hover:bg-white/10"
+              className="relative p-2 hidden sm:block transition-colors duration-150 cursor-pointer text-white hover:bg-white/10"
               title="Saved Vehicles"
               aria-label="Saved Vehicles"
             >
@@ -182,7 +182,7 @@ export const Navbar: React.FC = () => {
                 <motion.div
                   {...popoverMotion}
                   style={{ transformOrigin: 'top right' }}
-                  className={`absolute right-0 mt-2 w-[300px] border z-50 overflow-hidden ${dropBg}`}
+                  className={`fixed inset-x-4 top-[72px] sm:absolute sm:inset-x-auto sm:top-auto sm:right-0 sm:mt-2 sm:w-[300px] border z-50 overflow-hidden ${dropBg}`}
                   role="menu"
                 >
                   <div className={`px-4 py-3 flex items-center justify-between border-b border-[#DDE3E6]`}>
@@ -253,10 +253,10 @@ export const Navbar: React.FC = () => {
                   <div className="w-7 h-7 rounded-full bg-white text-[#141517] flex items-center justify-center font-bold text-[11px] shrink-0">
                     {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
                   </div>
-                  <span className="hidden sm:inline text-[12px] font-semibold text-white max-w-[90px] truncate">
+                  <span className={`${isBuyerSite ? 'hidden sm:inline' : 'hidden lg:inline'} text-[12px] font-semibold text-white max-w-[90px] truncate`}>
                     {currentUser?.name?.split(' ')[0]}
                   </span>
-                  <ChevronDown className={`w-3 h-3 text-[#C9D1D6] transition-transform duration-150 ${userDropdownOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`hidden sm:block w-3 h-3 text-[#C9D1D6] transition-transform duration-150 ${userDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 <AnimatePresence>

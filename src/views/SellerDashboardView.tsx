@@ -147,7 +147,7 @@ export const SellerDashboardView: React.FC = () => {
     <div className="min-h-screen bg-[#F7F8F8] pb-24">
       {/* Seller Portal Header Banner */}
       <div className="bg-[#F7F8F8] text-[#141517] pt-10 pb-8 border-b-2 border-[#141517]">
-        <div className="gb-container flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="gb-container flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div className="flex items-center gap-3.5 sm:gap-4">
             <div className="w-12 h-12 border-2 border-[#141517] text-[#141517] flex items-center justify-center font-bold shrink-0">
               <Store className="w-6 h-6" />
@@ -254,7 +254,7 @@ export const SellerDashboardView: React.FC = () => {
                     ].map((m, i) => (
                       <div key={m.label} className={`py-5 pr-4 ${i % 2 === 1 ? 'pl-4 border-l' : ''} ${i === 2 ? 'md:pl-4 md:border-l' : ''} ${i === 3 ? 'pl-4' : ''} ${i < 2 ? 'border-b md:border-b-0' : ''} border-[#C9D1D6]`}>
                         <dt className="gb-label">{m.label}</dt>
-                        <dd className="mt-2 font-display text-[32px] leading-none tabular-nums text-[#141517]">{m.value}</dd>
+                        <dd className="mt-2 font-display text-[26px] sm:text-[32px] leading-none tabular-nums text-[#141517]">{m.value}</dd>
                         <dd className="mt-2 text-[12.5px] text-[#4E585E]">{m.note}</dd>
                       </div>
                     ))}
@@ -316,7 +316,7 @@ export const SellerDashboardView: React.FC = () => {
                   </div>
 
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
+                    <table className="w-full text-left text-xs min-w-[680px]">
                       <thead>
                         <tr className="border-b border-[#DDE3E6] text-[#6B767D] uppercase tabular-nums tracking-wider text-[10px]">
                           <th className="pb-2.5 font-bold">Reference</th>
@@ -363,7 +363,7 @@ export const SellerDashboardView: React.FC = () => {
             {/* 3. VEHICLES MANAGEMENT */}
             {sellerTab === 'vehicles' && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between pb-3 border-b border-[#C9D1D6]">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#C9D1D6]">
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">
                     Vehicle Inventory Management <span className="text-[#6B767D] font-normal">({sellerVehicles.length})</span>
                   </h2>
@@ -380,20 +380,20 @@ export const SellerDashboardView: React.FC = () => {
                   {sellerVehicles.map((vehicle) => (
                     <div
                       key={vehicle.id}
-                      className="border-t-2 border-[#141517] pt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                      className="border-t border-[#C9D1D6] pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                     >
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-4 min-w-0">
                         <img
                           src={vehicle.images[0]}
                           alt={vehicle.title}
                           className="w-20 h-14 rounded-[2px] object-cover bg-[#141517] shrink-0 border border-gray-800"
                         />
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                             <span className="font-bold text-[#141517] text-sm">{vehicle.title}</span>
                             <StatusMark status={vehicle.status} />
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-[#4E585E] mt-1 tabular-nums">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#4E585E] mt-1 tabular-nums">
                             <span className="text-[#141517] font-bold">
                               ₱{vehicle.price.toLocaleString()}
                             </span>

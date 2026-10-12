@@ -283,7 +283,7 @@ export const AccountView: React.FC = () => {
             {/* 2. SAVED VEHICLES TAB */}
             {accountTab === 'saved' && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between pb-3 border-b border-[#C9D1D6]">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#C9D1D6]">
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">
                     Saved Vehicles <span className="text-[#6B767D] font-normal">({savedVehicles.length})</span>
                   </h2>
@@ -616,7 +616,7 @@ export const AccountView: React.FC = () => {
             {/* 5. RECENTLY VIEWED */}
             {accountTab === 'recently_viewed' && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between pb-3 border-b border-[#C9D1D6]">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#C9D1D6]">
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">
                     Recently Viewed Vehicles <span className="text-[#6B767D] font-normal">({recentlyViewedVehicles.length})</span>
                   </h2>
