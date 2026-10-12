@@ -93,7 +93,7 @@ export const CompareModal: React.FC = () => {
       const yearScore = maxYear === minYear ? 90 : 70 + ((v.year - minYear) / (maxYear - minYear || 1)) * 30;
       
       const conditionScore =
-        v.condition === 'New' ? 100 : v.condition === 'Certified Pre-Owned' ? 92 : 78;
+        v.condition === 'New' ? 100 : 85;
       
       const ecoScore =
         v.fuel === 'Electric' ? 100 : v.fuel === 'Hybrid' ? 94 : v.fuel === 'Diesel' ? 80 : 75;
@@ -543,7 +543,7 @@ export const CompareModal: React.FC = () => {
                     {comparedVehicles.map((v) => (
                       <td key={v.id} className="p-3.5 font-semibold text-[#141517]">
                         <span className="inline-flex items-center gap-1.5">
-                          {v.condition === 'Certified Pre-Owned' || v.condition === 'New' ? (
+                          {v.condition === 'New' ? (
                             <CheckCircle2 className="w-4 h-4 text-[#141517] shrink-0" />
                           ) : null}
                           {v.condition}

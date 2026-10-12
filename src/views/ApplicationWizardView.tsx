@@ -557,11 +557,10 @@ export const ApplicationWizardView: React.FC = () => {
                   </ul>
                 </section>
 
-                {purchaseMethod === 'cash' && (
-                  <p className="text-[13px] text-[#2A2E31] border-l-0 bg-white border border-[#C9D1D6] px-4 py-3">
-                    Confirming a cash settlement reserves this vehicle for you, and it is marked <strong>Reserved</strong> on the marketplace.
-                  </p>
-                )}
+                <p className="text-[13px] text-[#2A2E31] bg-white border border-[#C9D1D6] px-4 py-3">
+                  Once the admin team approves your application, this vehicle is <strong>reserved</strong> for you automatically.
+                  {purchaseMethod === 'financing' && ' Financing documents are checked first.'}
+                </p>
 
                 {docError && (
                   <p role="alert" className="text-[13px] text-[#B42318] border border-[#B42318] bg-white px-4 py-3">{docError}</p>
@@ -627,12 +626,10 @@ export const ApplicationWizardView: React.FC = () => {
                     <span className="text-[#6B767D]">Status:</span>
                     <span className="font-bold uppercase text-[#141517]">SUBMITTED</span>
                   </div>
-                  {confirmedApp.purchaseMethod === 'cash' && (
-                    <div className="flex justify-between text-[#2A2E31]">
-                      <span className="text-[#6B767D]">Vehicle:</span>
-                      <span className="font-bold uppercase text-[#1B7F35]">Reserved for you</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between text-[#2A2E31]">
+                    <span className="text-[#6B767D]">Next step:</span>
+                    <span className="font-bold text-[#141517]">Admin review, then reservation</span>
+                  </div>
                   <div className="flex justify-between text-[#2A2E31]">
                     <span className="text-[#6B767D]">Documents:</span>
                     <span className="font-bold tabular-nums">{confirmedApp.documents?.length ?? 0} attached</span>

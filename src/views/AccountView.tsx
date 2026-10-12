@@ -41,7 +41,7 @@ export const AccountView: React.FC = () => {
     activeConversationId,
     setActiveConversationId,
     sendMessage,
-    notifications,
+    notifications: allNotifications,
     markNotificationRead,
     clearAllNotifications,
     showToast,
@@ -50,6 +50,8 @@ export const AccountView: React.FC = () => {
     toggleCompareVehicle,
     clearCompare,
   } = useApp();
+  // Clients only see notifications meant for them.
+  const notifications = allNotifications.filter((n) => (n.audience ?? 'client') === 'client');
 
   // Profile Edit State
   const [name, setName] = useState(currentUser?.name || '');
@@ -457,6 +459,9 @@ export const AccountView: React.FC = () => {
                               <p className="text-xs text-[#4E585E] mt-0.5">
                                 Agent: {app.sellerName} · Method: {app.purchaseMethod.toUpperCase()}
                               </p>
+                              {app.documents?.some((d) => d.status === 'rejected') && (
+                                <p className="text-xs text-[#B42318] mt-0.5">A document needs attention. Open the details to see why.</p>
+                              )}
                             </div>
                           </div>
 
@@ -840,9 +845,25 @@ export const AccountView: React.FC = () => {
                   {new Date(viewingApplication.submittedAt).toLocaleDateString()}
                 </span>
               </div>
+              {(viewingApplication.documents || []).length > 0 && (
+                <div className="pt-3">
+                  <p className="gb-label mb-2">Documents</p>
+                  <ul className="border-t border-[#C9D1D6]">
+                    {viewingApplication.documents!.map((d) => (
+                      <li key={d.label} className="py-2 border-b border-[#DDE3E6]">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[#141517]">{d.label}</span>
+                          <StatusMark status={d.status === 'approved' ? 'Approved' : d.status === 'rejected' ? 'Rejected' : 'In review'} />
+                        </div>
+                        {d.status === 'rejected' && d.reason && <p className="text-[#B42318] mt-1">Reason: {d.reason}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {viewingApplication.sellerNotes && (
-                <div className="p-4 bg-[#E8F0FC] border border-[#1D5FD1]/20 rounded-[2px] text-[#141517] mt-2">
-                  <p className="font-bold text-xs text-[#1D5FD1] mb-1">Agent Note</p>
+                <div className="p-4 bg-white border border-[#C9D1D6] text-[#141517] mt-2">
+                  <p className="font-bold text-xs mb-1">Note from the admin team</p>
                   <p className="text-xs leading-relaxed">{viewingApplication.sellerNotes}</p>
                 </div>
               )}

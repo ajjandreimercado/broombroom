@@ -1,7 +1,7 @@
 import React from 'react';
 
-const DONE = ['approved', 'completed', 'available', 'resolved', 'completed & transferred', 'payment cleared', 'verified', 'paid'];
-const VOID = ['declined', 'withdrawn', 'unpublished', 'rejected', 'suspended'];
+const DONE = ['approved', 'completed', 'available', 'resolved', 'completed & transferred', 'payment cleared', 'verified', 'paid', 'released'];
+const VOID = ['declined', 'withdrawn', 'unpublished', 'rejected', 'suspended', 'disapproved'];
 
 // Record status in the booklet's language: finished states are stamped in green ink,
 // voided ones in red, open ones in plain carbon ink.

@@ -36,7 +36,23 @@ export const Navbar: React.FC = () => {
   const userDropRef = useRef<HTMLDivElement>(null);
   const notifDropRef = useRef<HTMLDivElement>(null);
 
-  const unreadNotifs = notifications.filter((n) => !n.read).length;
+  // Each portal only sees notifications meant for it (records without an audience are clients').
+  const audience = PORTAL === 'seller' ? 'agent' : PORTAL === 'admin' ? 'admin' : 'client';
+  const myNotifs = notifications.filter(
+    (n) => (n.audience ?? 'client') === audience && (audience !== 'agent' || !n.recipient || n.recipient === currentUser?.name)
+  );
+  const unreadNotifs = myNotifs.filter((n) => !n.read).length;
+  const openNotification = (target?: string) => {
+    if (PORTAL === 'seller') {
+      navigateTo('seller', { sellerTab: target === 'commissions' ? 'commissions' : target === 'vehicles' ? 'vehicles' : 'messages' });
+    } else if (PORTAL === 'admin') {
+      const tab = (['approvals', 'applications', 'financing', 'commissions', 'reports'] as const).find((t) => t === target);
+      navigateTo('admin', { adminTab: tab || 'dashboard' });
+    } else if (target === 'messages') navigateTo('account', { accountTab: 'messages' });
+    else if (target === 'applications') navigateTo('account', { accountTab: 'applications' });
+    else if (target === 'deals') navigateTo('deals');
+    else navigateTo('account', { accountTab: 'notifications' });
+  };
   const savedCount = currentUser?.savedVehicleIds.length || 0;
 
   // Close dropdowns on outside click
@@ -188,28 +204,28 @@ export const Navbar: React.FC = () => {
                     <span className={`gb-label`}>
                       Notifications
                     </span>
-                    <button
-                      onClick={() => { navigateTo('account', { accountTab: 'notifications' }); setNotifDropdownOpen(false); }}
-                      className="text-[11px] text-[#1D5FD1] hover:text-[#174CA8] font-semibold cursor-pointer"
-                    >
-                      View all
-                    </button>
+                    {isBuyerSite && (
+                      <button
+                        onClick={() => { navigateTo('account', { accountTab: 'notifications' }); setNotifDropdownOpen(false); }}
+                        className="text-[11px] text-[#1D5FD1] hover:text-[#174CA8] font-semibold cursor-pointer"
+                      >
+                        View all
+                      </button>
+                    )}
                   </div>
-                  <div className={`max-h-[280px] overflow-y-auto divide-y divide-[#DDE3E6]`}>
-                    {notifications.length === 0 ? (
+                  <div className={`max-h-[340px] overflow-y-auto divide-y divide-[#DDE3E6]`}>
+                    {myNotifs.length === 0 ? (
                       <div className={`py-8 text-center text-[12px] text-[#6B767D]`}>
                         No notifications
                       </div>
                     ) : (
-                      notifications.slice(0, 4).map((notif) => (
+                      myNotifs.slice(0, 6).map((notif) => (
                         <button
                           key={notif.id}
                           onClick={() => {
                             markNotificationRead(notif.id);
                             setNotifDropdownOpen(false);
-                            if (notif.linkTarget === 'messages') navigateTo('account', { accountTab: 'messages' });
-                            else if (notif.linkTarget === 'applications') navigateTo('account', { accountTab: 'applications' });
-                            else if (notif.linkTarget === 'deals') navigateTo('deals');
+                            openNotification(notif.linkTarget);
                           }}
                           className={`w-full text-left px-4 py-3 transition-colors duration-150 cursor-pointer ${
                             !notif.read

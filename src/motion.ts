@@ -38,3 +38,11 @@ export const sheetMotion = {
 
 // A moving underline between tabs: on-screen movement, so ease-in-out.
 export const indicatorTransition = { duration: 0.25, ease: EASE_IN_OUT };
+
+// Side panels slide in from the right edge they live on and leave the same way.
+export const drawerMotion = {
+  initial: { transform: 'translateX(100%)' },
+  animate: { transform: 'translateX(0%)' },
+  exit: { transform: 'translateX(100%)' },
+  transition: { duration: 0.4, ease: EASE_DRAWER },
+};

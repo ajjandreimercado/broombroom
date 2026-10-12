@@ -1,124 +1,184 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { StatusMark } from './StatusMark.tsx';
 import { COMMISSION_RATE } from '../data/mockData.ts';
-import { FileCheck2 } from 'lucide-react';
+import { Commission } from '../types.ts';
+import { openCommissionReceipt } from './receipt.ts';
+import { FilterTabs, SectionHeader, EmptyState, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
+import { FileCheck2, Download, Check } from 'lucide-react';
 
-const MAX_PROOF_BYTES = 10 * 1024 * 1024;
-const peso = (n: number) => `₱${n.toLocaleString()}`;
+type Stage = Commission['status'];
 
-// Agent commissions. Agents read them; the admin pays each one and attaches the proof of payment.
+const STAGES: { value: Stage; label: string; explain: string }[] = [
+  { value: 'receivable', label: 'Receivable', explain: 'Earned when the client’s application was approved. Approval needs the sale to be completed.' },
+  { value: 'payable', label: 'Payable', explain: 'Approved by the admin. Waiting for the cash transfer.' },
+  { value: 'paid', label: 'Paid', explain: 'Cash transferred with proof of payment. The PDF receipt is ready.' },
+];
+
+// The three steps a commission moves through, drawn as a ruled track.
+const StageTrack: React.FC<{ status: Stage; transactionCompleted: boolean }> = ({ status, transactionCompleted }) => {
+  const reached = STAGES.findIndex((s) => s.value === status);
+  return (
+    <ol className="flex items-center gap-1.5" aria-label={`Stage: ${status}`}>
+      {STAGES.map((s, i) => (
+        <li key={s.value} className="flex items-center gap-1.5">
+          <span
+            className={`w-2 h-2 rounded-full transition-colors duration-300 ${
+              i < reached || status === 'paid' ? 'bg-[#1B7F35]' : i === reached ? 'bg-[#1D5FD1]' : 'bg-[#C9D1D6]'
+            }`}
+          />
+          <span className={`text-[11.5px] ${i === reached ? 'text-[#141517] font-semibold' : 'text-[#6B767D]'}`}>{s.label}</span>
+          {i < STAGES.length - 1 && <span className="w-3 h-px bg-[#C9D1D6]" />}
+        </li>
+      ))}
+      {status === 'receivable' && !transactionCompleted && (
+        <li className="ml-1 text-[11.5px] text-[#B42318]">· sale not completed</li>
+      )}
+    </ol>
+  );
+};
+
+// Agent commissions. Agents read theirs; the admin approves, pays (with proof) and issues the receipt.
 export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean }> = ({ mode, compact = false }) => {
-  const { commissions, payCommission, navigateTo } = useApp();
+  const { commissions, approveCommission, payCommission, navigateTo, currentUser, showToast } = useApp();
+  const mine = mode === 'agent' ? commissions.filter((c) => c.agentName === currentUser?.name) : commissions;
+  const [stage, setStage] = useState<Stage | 'all'>(mode === 'admin' ? 'receivable' : 'all');
   const [error, setError] = useState('');
 
-  const rows = compact ? commissions.slice(0, 4) : commissions;
-  const paidTotal = commissions.filter((c) => c.status === 'paid').reduce((sum, c) => sum + c.amount, 0);
-  const pendingTotal = commissions.filter((c) => c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
+  const total = (s: Stage) => mine.filter((c) => c.status === s).reduce((sum, c) => sum + c.amount, 0);
+  const count = (s: Stage) => mine.filter((c) => c.status === s).length;
+  const rows = (stage === 'all' ? mine : mine.filter((c) => c.status === stage)).slice(0, compact ? 4 : undefined);
 
-  const attachProof = (id: string, file: File | undefined) => {
+  const attachProof = (id: string, file?: File) => {
     if (!file) return;
-    if (!/^(image\/|application\/pdf$)/.test(file.type)) {
-      setError(`${file.name} is not a photo or PDF. Attach an image or a PDF of the payment.`);
-      return;
-    }
-    if (file.size > MAX_PROOF_BYTES) {
-      setError(`${file.name} is over 10 MB. Attach a smaller file.`);
-      return;
-    }
+    const problem = checkUpload(file);
+    if (problem) return setError(problem);
     setError('');
     payCommission(id, file.name);
   };
 
+  const receipt = (c: Commission) => {
+    if (!openCommissionReceipt(c)) showToast('Allow pop-ups', 'Your browser blocked the receipt window. Allow pop-ups for this site and try again.', 'error');
+  };
+
   return (
-    <section aria-labelledby={`commissions-${mode}`}>
-      <div className="flex flex-wrap items-end justify-between gap-3 pb-3 border-b-2 border-[#141517]">
-        <h2 id={`commissions-${mode}`} className="font-display text-[22px] leading-none text-[#141517]">
-          {mode === 'admin' ? 'Agent commissions' : 'Commissions'}
-        </h2>
-        {compact ? (
+    <section className="space-y-5">
+      <SectionHeader
+        title={mode === 'admin' ? 'Agent commissions' : 'Commissions'}
+        hint={compact ? undefined : `Commission is ${COMMISSION_RATE * 100}% of the sale price (demo rate). Each one moves Receivable → Payable → Paid.`}
+      >
+        {compact && (
           <button
             onClick={() => navigateTo('seller', { sellerTab: 'commissions' })}
             className="text-[13px] font-semibold text-[#141517] underline decoration-[#8C989F] hover:decoration-[#141517] underline-offset-4 cursor-pointer"
           >
             All commissions
           </button>
-        ) : (
-          <p className="text-[13px] text-[#4E585E] tabular-nums">
-            Paid <strong className="text-[#141517]">{peso(paidTotal)}</strong> · Awaiting{' '}
-            <strong className="text-[#141517]">{peso(pendingTotal)}</strong> · Demo rate {COMMISSION_RATE * 100}% of the sale price
-          </p>
         )}
-      </div>
+      </SectionHeader>
 
-      {error && (
-        <p role="alert" className="mt-4 text-[13px] text-[#B42318] border border-[#B42318] bg-white px-4 py-3">{error}</p>
+      {/* Stage totals: what is owed at each step */}
+      <dl className="grid grid-cols-3 border-b border-[#C9D1D6]">
+        {STAGES.map((s, i) => (
+          <button
+            key={s.value}
+            onClick={() => setStage(s.value)}
+            className={`text-left py-4 pr-3 cursor-pointer group ${i > 0 ? 'pl-4 border-l border-[#C9D1D6]' : ''}`}
+          >
+            <dt className="gb-label group-hover:text-[#141517]">{s.label}</dt>
+            <dd className="mt-1.5 font-display text-[clamp(18px,2.4vw,24px)] leading-none tabular-nums text-[#141517]">{peso(total(s.value))}</dd>
+            <dd className="mt-1 text-[12px] text-[#4E585E]">{count(s.value)} {count(s.value) === 1 ? 'commission' : 'commissions'}</dd>
+          </button>
+        ))}
+      </dl>
+
+      {!compact && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <FilterTabs
+            id={`stage-${mode}`}
+            value={stage}
+            onChange={setStage}
+            options={[
+              { value: 'all', label: 'All', count: mine.length },
+              ...STAGES.map((s) => ({ value: s.value, label: s.label, count: count(s.value) })),
+            ]}
+          />
+          {stage !== 'all' && <p className="text-[13px] text-[#4E585E] max-w-[52ch]">{STAGES.find((s) => s.value === stage)?.explain}</p>}
+        </div>
       )}
 
+      {error && <p role="alert" className="text-[13px] text-[#B42318] border border-[#B42318] bg-white px-4 py-3">{error}</p>}
+
       {rows.length === 0 ? (
-        <p className="py-10 text-[14px] text-[#4E585E]">
-          No commissions yet. A commission appears here when an admin marks one of your sales as completed.
-        </p>
+        <EmptyState
+          title="Nothing here"
+          body={mode === 'agent' ? 'A commission appears when the admin approves one of your clients’ applications.' : 'No commissions at this stage.'}
+        />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-[13px] min-w-[720px]">
-            <thead>
-              <tr>
-                <th className="gb-label py-3 font-semibold">Sale</th>
-                <th className="gb-label py-3 font-semibold text-right">Sale price</th>
-                <th className="gb-label py-3 font-semibold text-right">Commission</th>
-                <th className="gb-label py-3 font-semibold pl-6">Status</th>
-                <th className="gb-label py-3 font-semibold">Proof of payment</th>
-              </tr>
-            </thead>
-            <tbody className="tabular-nums">
-              {rows.map((c) => (
-                <tr key={c.id} className="border-t border-[#C9D1D6] align-top">
-                  <td className="py-4 pr-4">
-                    <p className="font-semibold text-[#141517]">{c.vehicleTitle}</p>
-                    <p className="text-[12px] text-[#4E585E] mt-0.5">
-                      {c.applicationRef} · Client: {c.clientName}
-                    </p>
-                  </td>
-                  <td className="py-4 text-right text-[#2A2E31] whitespace-nowrap">{peso(c.salePrice)}</td>
-                  <td className="py-4 text-right font-semibold text-[#141517] whitespace-nowrap">{peso(c.amount)}</td>
-                  <td className="py-4 pl-6">
-                    <StatusMark status={c.status === 'paid' ? 'Paid' : 'Pending'} />
-                  </td>
-                  <td className="py-4">
-                    {c.status === 'paid' ? (
-                      <span className="flex items-start gap-1.5 text-[#141517]">
-                        <FileCheck2 className="w-4 h-4 shrink-0 text-[#1B7F35]" aria-hidden="true" />
-                        <span>
-                          {c.proofFileName}
-                          {c.paidAt && (
-                            <span className="block text-[12px] text-[#4E585E]">Paid {new Date(c.paidAt).toLocaleDateString()}</span>
-                          )}
-                        </span>
-                      </span>
-                    ) : mode === 'admin' ? (
-                      <label className="inline-block px-3.5 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[13px] font-semibold cursor-pointer transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#1D5FD1]">
-                        Pay &amp; attach proof
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          className="sr-only"
-                          aria-label={`Attach proof of payment for ${c.applicationRef}`}
-                          onChange={(e) => {
-                            attachProof(c.id, e.target.files?.[0]);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                    ) : (
-                      <span className="text-[#4E585E]">Awaiting payout from admin</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul key={stage} className="animate-view-fade">
+          {rows.map((c) => (
+            <li key={c.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-x-6 gap-y-3 py-4 border-b border-[#C9D1D6]">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p className="font-semibold text-[15px] text-[#141517]">{c.vehicleTitle}</p>
+                  <p className="font-display text-[20px] leading-none tabular-nums text-[#141517]">{peso(c.amount)}</p>
+                </div>
+                <p className="mt-1 text-[12.5px] text-[#4E585E] tabular-nums">
+                  {c.applicationRef} · Client {c.clientName}
+                  {mode === 'admin' && <> · Agent <strong className="text-[#141517] font-semibold">{c.agentName}</strong></>} · Sale {peso(c.salePrice)}
+                </p>
+                <div className="mt-2.5">
+                  <StageTrack status={c.status} transactionCompleted={c.transactionCompleted} />
+                </div>
+                {c.status === 'paid' && (
+                  <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-[#141517]">
+                    <FileCheck2 className="w-4 h-4 text-[#1B7F35]" aria-hidden="true" />
+                    Proof: {c.proofFileName} · Paid {shortDate(c.paidAt)} · {c.receiptNo}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 md:justify-end self-center">
+                {c.status === 'paid' && (
+                  <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => receipt(c)}>
+                    <Download className="w-4 h-4" aria-hidden="true" />
+                    PDF receipt
+                  </button>
+                )}
+                {mode === 'admin' && c.status === 'receivable' && (
+                  <button
+                    className={`${btn.ink} flex items-center gap-1.5`}
+                    onClick={() => approveCommission(c.id)}
+                    disabled={!c.transactionCompleted}
+                    title={c.transactionCompleted ? 'Approve for payout' : 'Complete the sale in Applications first'}
+                  >
+                    <Check className="w-4 h-4" aria-hidden="true" />
+                    Approve payout
+                  </button>
+                )}
+                {mode === 'admin' && c.status === 'payable' && (
+                  <label className={`${btn.primary} focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#1D5FD1]`}>
+                    Pay &amp; attach proof
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="sr-only"
+                      aria-label={`Attach proof of payment for ${c.applicationRef}`}
+                      onChange={(e) => {
+                        attachProof(c.id, e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+                {mode === 'agent' && c.status !== 'paid' && (
+                  <span className="text-[12.5px] text-[#4E585E]">
+                    {c.status === 'receivable' ? (c.transactionCompleted ? 'Waiting for admin approval' : 'Waiting for the sale to complete') : 'Approved, cash transfer pending'}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

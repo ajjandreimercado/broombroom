@@ -12,8 +12,9 @@ const PREFIX: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'agent.', adm
 const detect = (hostname: string): Portal =>
   hostname.startsWith(PREFIX.seller) ? 'seller' : hostname.startsWith(PREFIX.admin) ? 'admin' : 'buyer';
 
-// GitHub Pages (the demo host) can't serve subdomains, so there the portal comes from ?portal=agent|admin.
-const QUERY_MODE = window.location.hostname.endsWith('github.io');
+// On GitHub Pages and locally the portals share one address and pick the portal with ?portal=agent|admin,
+// so all three read the same browser storage (the demo has no backend). Real domains use subdomains.
+const QUERY_MODE = /(^|\.)github\.io$|^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
 const QUERY_KEY: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'agent', admin: 'admin' };
 const fromQuery = (): Portal => {
   const q = new URLSearchParams(window.location.search).get('portal');

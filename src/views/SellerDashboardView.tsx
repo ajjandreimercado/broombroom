@@ -7,6 +7,7 @@ import { portalUrl } from '../portals.ts';
 import { SellerTab } from '../context/AppContext.tsx';
 import { SellerSalesReport } from '../components/SellerSalesReport.tsx';
 import { Commissions } from '../components/Commissions.tsx';
+import { AgentListings } from '../components/agent/AgentListings.tsx';
 import {
   LayoutDashboard,
   BarChart3,
@@ -24,16 +25,19 @@ export const SellerDashboardView: React.FC = () => {
     sellerTab,
     navigateTo,
     vehicles,
-    commissions,
-    conversations,
+    commissions: allCommissions,
+    conversations: allConversations,
     activeConversationId,
     setActiveConversationId,
     sendMessage,
   } = useApp();
 
-  // Agents see every listing (read-only) and their own commissions
-  const sellerVehicles = vehicles;
-  const pendingCommissions = commissions.filter((c) => c.status === 'pending');
+  // An agent works only with their own listings, client chats and commissions.
+  const me = currentUser?.name;
+  const sellerVehicles = vehicles.filter((v) => v.sellerName === me);
+  const conversations = allConversations.filter((c) => c.sellerName === me);
+  const commissions = allCommissions.filter((c) => c.agentName === me);
+  const pendingCommissions = commissions.filter((c) => c.status !== 'paid');
   const paidTotal = commissions.filter((c) => c.status === 'paid').reduce((sum, c) => sum + c.amount, 0);
   const pendingTotal = pendingCommissions.reduce((sum, c) => sum + c.amount, 0);
 
@@ -152,8 +156,8 @@ export const SellerDashboardView: React.FC = () => {
                   </div>
                   <dl className="grid grid-cols-2 md:grid-cols-4 border-b border-[#C9D1D6]">
                     {[
-                      { label: 'Live listings', value: sellerVehicles.filter((v) => v.status === 'available').length.toLocaleString(), note: 'On the marketplace' },
-                      { label: 'Commission earned', value: `₱${paidTotal.toLocaleString()}`, note: `₱${pendingTotal.toLocaleString()} awaiting payout` },
+                      { label: 'My listings', value: sellerVehicles.length.toLocaleString(), note: `${sellerVehicles.filter((v) => v.status === 'available').length} approved, ${sellerVehicles.filter((v) => v.status === 'reserved').length} reserved` },
+                      { label: 'Commission paid', value: `₱${paidTotal.toLocaleString()}`, note: `₱${pendingTotal.toLocaleString()} receivable or payable` },
                       { label: 'Client chats', value: conversations.length.toLocaleString(), note: 'Active conversations' },
                       { label: 'Listing views', value: '12,480', note: 'This month' },
                     ].map((m, i) => (
@@ -214,59 +218,7 @@ export const SellerDashboardView: React.FC = () => {
             {sellerTab === 'sales_report' && <SellerSalesReport />}
 
             {/* 3. VEHICLES MANAGEMENT */}
-            {sellerTab === 'vehicles' && (
-              <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#C9D1D6]">
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">
-                    Listings <span className="text-[#6B767D] font-normal">({sellerVehicles.length})</span>
-                  </h2>
-                  <p className="text-[13px] text-[#4E585E]">Inventory is managed by the admin team.</p>
-                </div>
-
-                <div className="space-y-3.5">
-                  {sellerVehicles.map((vehicle) => (
-                    <div
-                      key={vehicle.id}
-                      className="border-t border-[#C9D1D6] pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                    >
-                      <div className="flex items-center gap-4 min-w-0">
-                        <img
-                          src={vehicle.images[0]}
-                          alt={vehicle.title}
-                          className="w-20 h-14 rounded-[2px] object-cover bg-[#141517] shrink-0 border border-gray-800"
-                        />
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <span className="font-bold text-[#141517] text-sm">{vehicle.title}</span>
-                            <StatusMark status={vehicle.status} />
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#4E585E] mt-1 tabular-nums">
-                            <span className="text-[#141517] font-bold">
-                              ₱{vehicle.price.toLocaleString()}
-                            </span>
-                            <span>·</span>
-                            <span>{vehicle.mileage.toLocaleString()} km</span>
-                            <span>·</span>
-                            <span className="font-sans capitalize">{vehicle.category}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-end sm:self-center">
-                        <button
-                          onClick={() => window.open(portalUrl('buyer', `?vehicle=${vehicle.id}`), '_blank', 'noopener')}
-                          className="px-3 py-1.5 bg-[#EEF1F2] hover:bg-gray-200 text-[#141517] text-xs font-semibold rounded-[2px] flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View</span>
-                        </button>
-
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {sellerTab === 'vehicles' && <AgentListings vehicles={sellerVehicles} />}
 
             {/* 6. MESSAGES TAB */}
             {sellerTab === 'messages' && (

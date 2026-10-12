@@ -473,7 +473,7 @@ export const SellerSalesReport: React.FC = () => {
 
     showToast(
       'Sales Report Exported',
-      `Official Groom Broom Certified Motors statement for ${timeframe.toUpperCase()} exported to CSV.`,
+      `Official Carlo Santos statement for ${timeframe.toUpperCase()} exported to CSV.`,
       'success'
     );
   };
@@ -507,7 +507,7 @@ export const SellerSalesReport: React.FC = () => {
               {reportData.title}
             </h2>
             <p className="text-xs sm:text-sm text-[#4E585E] mt-1">
-              Live executive financial metrics for <strong className="text-[#141517] font-semibold">Groom Broom Certified Motors</strong>.
+              Live executive financial metrics for <strong className="text-[#141517] font-semibold">Carlo Santos</strong>.
             </p>
           </div>
 
@@ -1170,7 +1170,7 @@ export const SellerSalesReport: React.FC = () => {
                     Certificate of Sale & Official Receipt
                   </h3>
                   <p className="text-xs text-[#4E585E] tabular-nums">
-                    Groom Broom Certified Motors · Taguig City, Philippines
+                    Carlo Santos · Taguig City, Philippines
                   </p>
                 </div>
               </div>
@@ -1198,7 +1198,7 @@ export const SellerSalesReport: React.FC = () => {
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="p-3.5 border-t border-[#8C989F]">
                 <span className="text-[10px] tabular-nums font-bold uppercase text-[#6B767D] block">Agent Entity</span>
-                <p className="font-bold text-[#141517] mt-1">Groom Broom Certified Motors</p>
+                <p className="font-bold text-[#141517] mt-1">Carlo Santos</p>
                 <p className="text-[11px] text-[#4E585E]">TIN: 009-842-192-000</p>
                 <p className="text-[11px] text-[#4E585E]">BGC Taguig, Metro Manila</p>
               </div>

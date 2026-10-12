@@ -74,14 +74,14 @@ export const MarketplaceView: React.FC = () => {
       {/* Condition */}
       <div>
         <label className={labelClass}>Condition</label>
-        <div className="grid grid-cols-2">
-          {['all', 'New', 'Certified Pre-Owned', 'Used'].map((c) => (
+        <div className="grid grid-cols-3">
+          {['all', 'New', 'Surplus / 2nd hand'].map((c) => (
             <button
               key={c}
               onClick={() => updateFilter('condition', c)}
               className={filterBtnClass(filters.condition === c)}
             >
-              {c === 'all' ? 'Any' : c === 'Certified Pre-Owned' ? 'Certified' : c}
+              {c === 'all' ? 'Any' : c === 'New' ? 'New' : 'Surplus'}
             </button>
           ))}
         </div>

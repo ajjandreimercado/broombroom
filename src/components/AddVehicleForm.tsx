@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { VehicleCategory, VehicleCondition, TransmissionType, FuelType } from '../types.ts';
+import { VehicleCategory, VehicleCondition, TransmissionType, FuelType, Vehicle } from '../types.ts';
+import { AGENTS } from '../data/mockData.ts';
 
 
-// Admin-only: posting new inventory to the marketplace.
-export const AddVehicleForm: React.FC = () => {
-  const { createVehicleListing, navigateTo, showToast } = useApp();
+// Admins post listings straight to the marketplace; agents use the same form to request one.
+export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () => void }> = ({ mode = 'admin', onDone }) => {
+  const { createVehicleListing, submitListingRequest, navigateTo, showToast } = useApp();
+  const isRequest = mode === 'request';
+  const [agent, setAgent] = useState(AGENTS[0]);
+  const [note, setNote] = useState('');
 
   // Add Vehicle Form state
   const [title, setTitle] = useState('');
@@ -20,7 +24,7 @@ export const AddVehicleForm: React.FC = () => {
   const [fuel, setFuel] = useState<FuelType>('Gasoline');
   const [bodyType, setBodyType] = useState('Sedan');
   const [color, setColor] = useState('Obsidian Black');
-  const [location, setLocation] = useState('Bonifacio Global City, Taguig');
+  const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [financingAvailable, setFinancingAvailable] = useState(true);
 
@@ -32,7 +36,7 @@ export const AddVehicleForm: React.FC = () => {
       return;
     }
 
-    createVehicleListing({
+    const data: Partial<Vehicle> = {
       title: title.trim(),
       brand: brand.trim(),
       model: model.trim() || title.trim(),
@@ -45,25 +49,35 @@ export const AddVehicleForm: React.FC = () => {
       fuel,
       bodyType,
       color,
-      location,
-      description: description.trim() || 'Comprehensive service records, pristine condition, ready for LTO transfer.',
+      location: location.trim() || undefined,
+      description: description.trim(),
       financingAvailable,
       status: isDraft ? 'unpublished' : 'available',
-    });
+    };
+
+    if (isRequest) {
+      submitListingRequest({ type: 'add', vehicleTitle: data.title!, changes: data, note: note.trim() });
+      onDone?.();
+      return;
+    }
+    createVehicleListing(data, agent);
 
     // Reset and route to vehicles list
     setTitle('');
     setModel('');
     setDescription('');
+    setLocation('');
     navigateTo('admin', { adminTab: 'vehicles' });
   };
 
   return (
               <div className="border-t-2 border-[#141517] pt-6 space-y-6">
                 <div>
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Post a Vehicle for Sale</h2>
-                  <p className="text-xs text-[#4E585E] mt-1">
-                    Your listing will be indexed across the Groom Broom automotive inventory.
+                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">{isRequest ? 'Request a new listing' : 'Add a listing'}</h2>
+                  <p className="text-[13px] text-[#4E585E] mt-1">
+                    {isRequest
+                      ? 'The admin team reviews your request before anything is posted.'
+                      : 'Publishes to the marketplace and assigns the listing to an agent.'}
                   </p>
                 </div>
 
@@ -168,8 +182,7 @@ export const AddVehicleForm: React.FC = () => {
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
                       >
                         <option value="New">New</option>
-                        <option value="Certified Pre-Owned">Certified Pre-Owned</option>
-                        <option value="Used">Used</option>
+                        <option value="Surplus / 2nd hand">Surplus / 2nd hand</option>
                       </select>
                     </div>
                   </div>
@@ -205,10 +218,11 @@ export const AddVehicleForm: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="gb-label block mb-2">Location</label>
+                      <label className="gb-label block mb-2">Location <span className="normal-case tracking-normal font-normal">(optional)</span></label>
                       <input
                         type="text"
                         value={location}
+                        placeholder="e.g. Taguig City"
                         onChange={(e) => setLocation(e.target.value)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                       />
@@ -217,7 +231,7 @@ export const AddVehicleForm: React.FC = () => {
 
                   <div>
                     <label className="gb-label block mb-2">
-                      Full Description & Vehicle Condition Notes
+                      Description <span className="normal-case tracking-normal font-normal">(optional)</span>
                     </label>
                     <textarea
                       rows={3}
@@ -227,6 +241,31 @@ export const AddVehicleForm: React.FC = () => {
                       className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                     />
                   </div>
+
+                  {isRequest ? (
+                    <div>
+                      <label className="gb-label block mb-2">Note to the admin team</label>
+                      <textarea
+                        rows={2}
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Where the unit is from, papers, anything the admin should know"
+                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
+                      />
+                    </div>
+                  ) : (
+                    <div className="max-w-sm">
+                      <label className="gb-label block mb-2">Assigned agent</label>
+                      <select
+                        value={agent}
+                        onChange={(e) => setAgent(e.target.value)}
+                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
+                      >
+                        {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
+                      </select>
+                      <p className="mt-1.5 text-[12px] text-[#4E585E]">This agent handles clients for the listing and earns its commission.</p>
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-2 pt-2">
                     <input
@@ -242,18 +281,20 @@ export const AddVehicleForm: React.FC = () => {
                   </div>
 
                   <div className="flex gap-3 pt-3">
-                    <button
-                      type="button"
-                      onClick={(e) => handleCreateVehicle(e, true)}
-                      className="py-3 px-5 border border-[#C9D1D6] hover:bg-[#F7F8F8] text-[#2A2E31] font-semibold text-xs rounded-[2px] cursor-pointer transition-colors"
-                    >
-                      Save as Draft
-                    </button>
+                    {!isRequest && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleCreateVehicle(e, true)}
+                        className="py-3 px-5 border border-[#141517] hover:bg-[#EEF1F2] text-[#141517] font-semibold text-[13px] cursor-pointer transition-colors"
+                      >
+                        Save hidden (disapproved)
+                      </button>
+                    )}
                     <button
                       type="submit"
-                      className="py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] transition-colors cursor-pointer"
+                      className="py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[13px] transition-colors cursor-pointer"
                     >
-                      Publish Listing Now
+                      {isRequest ? 'Send request' : 'Publish listing'}
                     </button>
                   </div>
                 </form>

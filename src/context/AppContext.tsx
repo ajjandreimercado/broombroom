@@ -16,6 +16,8 @@ import {
   VehicleReport,
   AppNotification,
   Commission,
+  ListingRequest,
+  ApplicationDocument,
 } from '../types.ts';
 import {
   INITIAL_VEHICLES,
@@ -26,7 +28,9 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_REPORTS,
   INITIAL_COMMISSIONS,
+  INITIAL_LISTING_REQUESTS,
   COMMISSION_RATE,
+  DEMO_AGENT,
   generateVehicleSvg,
 } from '../data/mockData.ts';
 
@@ -65,13 +69,15 @@ export type SellerTab =
 
 export type AdminTab =
   | 'dashboard'
+  | 'approvals'
+  | 'applications'
+  | 'financing'
+  | 'commissions'
   | 'vehicles'
   | 'add_vehicle'
-  | 'sellers'
-  | 'applications'
-  | 'commissions'
   | 'reports'
-  | 'categories';
+  | 'agent_reports'
+  | 'conversations';
 
 export interface FilterState {
   searchQuery: string;
@@ -134,7 +140,13 @@ interface AppContextType {
   setActiveConversationId: (id: string | null) => void;
   reports: VehicleReport[];
   commissions: Commission[];
+  approveCommission: (id: string) => void;
   payCommission: (id: string, proofFileName: string) => void;
+  listingRequests: ListingRequest[];
+  submitListingRequest: (req: Pick<ListingRequest, 'type' | 'vehicleId' | 'vehicleTitle' | 'changes' | 'note'>) => void;
+  decideListingRequest: (id: string, approve: boolean, reason?: string) => void;
+  reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => void;
+  setVehicleStatus: (id: string, status: VehicleStatus) => void;
   notifications: AppNotification[];
 
   // User & Auth
@@ -190,7 +202,7 @@ interface AppContextType {
   clearAllNotifications: () => void;
 
   // Seller Actions
-  createVehicleListing: (vehicleData: Partial<Vehicle>) => Vehicle;
+  createVehicleListing: (vehicleData: Partial<Vehicle>, agentName?: string) => Vehicle;
   updateVehicleListing: (id: string, updates: Partial<Vehicle>) => void;
   deleteVehicleListing: (id: string) => void;
 
@@ -217,6 +229,24 @@ const defaultFilters: FilterState = {
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+// Older saved data used other condition names and a two-state commission.
+const normalizeVehicle = (v: Vehicle): Vehicle =>
+  v.condition === 'New' || v.condition === 'Surplus / 2nd hand' ? v : { ...v, condition: 'Surplus / 2nd hand' };
+const normalizeCommission = (c: Commission): Commission => {
+  if ((c as unknown as { status: string }).status === 'pending') return { ...c, status: 'receivable', agentName: c.agentName || DEMO_AGENT, transactionCompleted: true };
+  return { ...c, agentName: c.agentName || DEMO_AGENT, transactionCompleted: c.transactionCompleted ?? true };
+};
+const readJson = <T,>(key: string, fallback: T): T => {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? (JSON.parse(saved) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+// Each portal keeps its own signed-in user; everything else is shared.
+const USER_KEY = `gb_user_${PORTAL}`;
 
 // Buyer links like /?vehicle=v-123 open straight on that listing (used by Share and the portals).
 const linkedVehicleId = PORTAL === 'buyer' ? new URLSearchParams(window.location.search).get('vehicle') : null;
@@ -268,7 +298,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (init && (pv.images?.[0]?.startsWith('data:image/svg') || !pv.images?.length)) {
           return { ...pv, images: init.images };
         }
-        return pv;
+        return normalizeVehicle(pv);
       });
     } catch {
       return INITIAL_VEHICLES;
@@ -278,8 +308,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [guides] = useState<Guide[]>(INITIAL_GUIDES);
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('gb_user');
-    const user: UserProfile | null = saved ? JSON.parse(saved) : PORTAL === 'buyer' ? INITIAL_USER : null;
+    const user: UserProfile | null = readJson<UserProfile | null>(USER_KEY, PORTAL === 'buyer' ? INITIAL_USER : null);
     // Each portal only ever acts in its own role; portals start signed out.
     return user && PORTAL !== 'buyer' ? { ...user, role: PORTAL } : user;
   });
@@ -301,20 +330,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return saved ? JSON.parse(saved) : INITIAL_REPORTS;
   });
 
-  const [commissions, setCommissions] = useState<Commission[]>(() => {
-    try {
-      const saved = localStorage.getItem('gb_commissions');
-      return saved ? JSON.parse(saved) : INITIAL_COMMISSIONS;
-    } catch {
-      return INITIAL_COMMISSIONS;
-    }
-  });
+  const [commissions, setCommissions] = useState<Commission[]>(() =>
+    readJson<Commission[]>('gb_commissions', INITIAL_COMMISSIONS).map(normalizeCommission)
+  );
+  const [listingRequests, setListingRequests] = useState<ListingRequest[]>(() =>
+    readJson<ListingRequest[]>('gb_listing_requests', INITIAL_LISTING_REQUESTS)
+  );
 
   useEffect(() => {
     try {
       localStorage.setItem('gb_commissions', JSON.stringify(commissions));
     } catch {}
   }, [commissions]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gb_listing_requests', JSON.stringify(listingRequests));
+    } catch {}
+  }, [listingRequests]);
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const saved = localStorage.getItem('gb_notifications');
@@ -345,9 +378,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     try {
       if (currentUser) {
-        localStorage.setItem('gb_user', JSON.stringify(currentUser));
+        localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
       } else {
-        localStorage.removeItem('gb_user');
+        localStorage.removeItem(USER_KEY);
       }
     } catch {}
   }, [currentUser]);
@@ -382,6 +415,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {}
   }, [comparedVehicleIds]);
 
+  // Another tab (another portal) changed shared data: pick it up live.
+  useEffect(() => {
+    const sync: Record<string, (raw: string) => void> = {
+      gb_vehicles: (raw) => setVehicles((JSON.parse(raw) as Vehicle[]).map(normalizeVehicle)),
+      gb_applications: (raw) => setApplications(JSON.parse(raw)),
+      gb_conversations: (raw) => setConversations(JSON.parse(raw)),
+      gb_reports: (raw) => setReports(JSON.parse(raw)),
+      gb_notifications: (raw) => setNotifications(JSON.parse(raw)),
+      gb_commissions: (raw) => setCommissions((JSON.parse(raw) as Commission[]).map(normalizeCommission)),
+      gb_listing_requests: (raw) => setListingRequests(JSON.parse(raw)),
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || !e.newValue || !sync[e.key]) return;
+      try {
+        sync[e.key](e.newValue);
+      } catch {}
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const notify = (audience: 'client' | 'agent' | 'admin', title: string, message: string, linkTarget?: string, recipient?: string) => {
+    setNotifications((prev) => [
+      {
+        id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        audience,
+        recipient,
+        title,
+        message,
+        type: 'system',
+        linkTarget,
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+  };
+
   // Navigate handler with window scroll to top
   const navigateTo: AppContextType['navigateTo'] = (view, params) => {
     const apply = (scroll: ScrollBehavior) => {
@@ -405,7 +476,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...INITIAL_USER,
       email,
       role,
-      name: email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Valued User',
+      name: role === 'seller' ? DEMO_AGENT : email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Valued User',
     };
     setCurrentUser(user);
     setAuthModalOpen(false);
@@ -507,7 +578,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (currentView === 'deals' && !v.isDeal) return false;
 
         // Status check: regular users only see available/reserved
-        if (currentUser?.role !== 'admin' && v.status === 'unpublished') return false;
+        if (currentUser?.role !== 'admin' && (v.status === 'unpublished' || v.status === 'sold')) return false;
 
         // Search Query
         if (filters.searchQuery.trim()) {
@@ -660,67 +731,158 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     setApplications((prev) => [newApp, ...prev]);
 
-    // Cash settlement holds the unit for this client.
-    if (newApp.purchaseMethod === 'cash') {
-      setVehicles((prev) => prev.map((v) => (v.id === newApp.vehicleId ? { ...v, status: 'reserved' } : v)));
-    }
-
-    // Send notification to user
-    const newNotif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      title: 'Application Received',
-      message: `Your application ${newApp.referenceNo} for ${newApp.vehicleTitle} has been submitted to ${newApp.sellerName}.`,
-      type: 'application',
-      linkTarget: 'applications',
-      read: false,
-      createdAt: new Date().toISOString(),
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
+    notify('client', 'Application received', `Your application ${newApp.referenceNo} for ${newApp.vehicleTitle} is with the admin team for review.`, 'applications');
+    notify('agent', 'New application on your listing', `${newApp.applicantName} applied for the ${newApp.vehicleTitle} (${newApp.purchaseMethod}).`, 'messages', newApp.sellerName);
+    notify('admin', 'Application to review', `${newApp.referenceNo}: ${newApp.applicantName} applied for the ${newApp.vehicleTitle}.`, 'applications');
 
     showToast('Application Submitted', `Reference No: ${newApp.referenceNo}`);
     return newApp;
   };
 
   const updateApplicationStatus = (id: string, status: ApplicationStatus, sellerNotes?: string) => {
-    setApplications((prev) =>
-      prev.map((app) => {
-        if (app.id === id) {
-          return {
-            ...app,
-            status,
-            sellerNotes: sellerNotes !== undefined ? sellerNotes : app.sellerNotes,
-          };
-        }
-        return app;
-      })
-    );
-    showToast('Application Updated', `Status changed to ${status.replace('_', ' ').toUpperCase()}`);
-
-    // A completed sale earns the agent a commission, once per application.
     const app = applications.find((a) => a.id === id);
-    if (status === 'completed' && app && !commissions.some((c) => c.applicationRef === app.referenceNo)) {
-      setCommissions((prev) => [
-        {
-          id: `com-${Date.now()}`,
-          applicationRef: app.referenceNo,
-          vehicleTitle: app.vehicleTitle,
-          clientName: app.applicantName,
-          salePrice: app.vehiclePrice,
-          rate: COMMISSION_RATE,
-          amount: Math.round(app.vehiclePrice * COMMISSION_RATE),
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
+    if (!app) return;
+
+    // Financing can only be approved once every document has been approved.
+    if (status === 'approved' && app.purchaseMethod === 'financing') {
+      const docs = app.documents || [];
+      if (!docs.length || docs.some((d) => d.status !== 'approved')) {
+        showToast('Documents not approved yet', 'Approve every financing document before approving this application.', 'error');
+        return;
+      }
+    }
+
+    setApplications((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, status, sellerNotes: sellerNotes !== undefined ? sellerNotes : a.sellerNotes } : a))
+    );
+
+    const setStatusOf = (vehicleStatus: VehicleStatus) =>
+      setVehicles((prev) => prev.map((v) => (v.id === app.vehicleId ? { ...v, status: vehicleStatus } : v)));
+
+    if (status === 'approved') {
+      // Rule: an approved application reserves the vehicle automatically.
+      setStatusOf('reserved');
+      if (!commissions.some((c) => c.applicationRef === app.referenceNo)) {
+        const amount = Math.round(app.vehiclePrice * COMMISSION_RATE);
+        setCommissions((prev) => [
+          {
+            id: `com-${Date.now()}`,
+            agentName: app.sellerName,
+            applicationRef: app.referenceNo,
+            vehicleTitle: app.vehicleTitle,
+            clientName: app.applicantName,
+            salePrice: app.vehiclePrice,
+            rate: COMMISSION_RATE,
+            amount,
+            status: 'receivable',
+            transactionCompleted: false,
+            createdAt: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
+        notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It becomes payable once the transaction is complete.`, 'commissions', app.sellerName);
+      }
+      notify('client', 'Application approved', `${app.referenceNo} was approved. The ${app.vehicleTitle} is now reserved for you.`, 'applications');
+    } else if (status === 'completed') {
+      setStatusOf('sold');
+      setCommissions((prev) => prev.map((c) => (c.applicationRef === app.referenceNo ? { ...c, transactionCompleted: true } : c)));
+      notify('agent', 'Sale completed', `The ${app.vehicleTitle} sale to ${app.applicantName} is complete. Your commission can now be approved for payout.`, 'commissions', app.sellerName);
+      notify('client', 'Purchase completed', `The ${app.vehicleTitle} has been released to you. Thank you for choosing Broom Broom.`, 'applications');
+    } else if (status === 'declined' || status === 'withdrawn') {
+      if (app.status === 'approved') setStatusOf('available');
+      setCommissions((prev) => prev.filter((c) => !(c.applicationRef === app.referenceNo && c.status === 'receivable')));
+      if (status === 'declined') {
+        notify('client', 'Application declined', `${app.referenceNo} was declined.${sellerNotes ? ` Reason: ${sellerNotes}` : ''}`, 'applications');
+      }
+    } else {
+      notify('client', 'Application update', `${app.referenceNo} is now ${status.replace('_', ' ')}.`, 'applications');
+    }
+    showToast('Application updated', `${app.referenceNo} is now ${status.replace('_', ' ')}.`);
+  };
+
+  // Financing documents: approve each one, or reject it with the reason the client will read.
+  const reviewDocument = (appId: string, docIndex: number, approve: boolean, reason?: string) => {
+    const app = applications.find((a) => a.id === appId);
+    if (!app?.documents?.[docIndex]) return;
+    if (!approve && !reason?.trim()) {
+      showToast('Add a reason', 'Tell the client why this document was rejected.', 'error');
+      return;
+    }
+    const doc: ApplicationDocument = approve
+      ? { ...app.documents[docIndex], status: 'approved', reason: undefined }
+      : { ...app.documents[docIndex], status: 'rejected', reason: reason!.trim() };
+    const documents = app.documents.map((d, i) => (i === docIndex ? doc : d));
+    setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, documents } : a)));
+    if (!approve) {
+      notify('client', 'Document needs attention', `${doc.label} for ${app.referenceNo} was not accepted: ${doc.reason}`, 'applications');
+    } else if (documents.every((d) => d.status === 'approved')) {
+      notify('client', 'Documents approved', `All financing documents for ${app.referenceNo} were approved.`, 'applications');
     }
   };
 
+  // Commission stages: receivable -> payable (admin approval, sale must be complete) -> paid (cash + proof).
+  const approveCommission = (id: string) => {
+    const c = commissions.find((x) => x.id === id);
+    if (!c || c.status !== 'receivable') return;
+    if (!c.transactionCompleted) {
+      showToast('Transaction not complete', 'A commission can only be approved after the sale is completed.', 'error');
+      return;
+    }
+    setCommissions((prev) => prev.map((x) => (x.id === id ? { ...x, status: 'payable', approvedAt: new Date().toISOString() } : x)));
+    notify('agent', 'Commission payable', `₱${c.amount.toLocaleString()} for the ${c.vehicleTitle} was approved and is awaiting cash transfer.`, 'commissions', c.agentName);
+    showToast('Commission approved', 'It is now payable.');
+  };
+
   const payCommission = (id: string, proofFileName: string) => {
+    const c = commissions.find((x) => x.id === id);
+    if (!c || c.status !== 'payable') return;
+    const receiptNo = `BB-OR-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
     setCommissions((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status: 'paid', proofFileName, paidAt: new Date().toISOString() } : c))
+      prev.map((x) => (x.id === id ? { ...x, status: 'paid', proofFileName, receiptNo, paidAt: new Date().toISOString() } : x))
     );
-    showToast('Commission Paid', 'Proof of payment is now visible to the agent.');
+    notify('agent', 'Cash transferred', `₱${c.amount.toLocaleString()} for the ${c.vehicleTitle} was sent. Your receipt ${receiptNo} is ready.`, 'commissions', c.agentName);
+    showToast('Commission paid', 'The agent has been notified and can download the receipt.');
+  };
+
+  // Listing requests: agents ask, the admin decides.
+  const submitListingRequest: AppContextType['submitListingRequest'] = (req) => {
+    setListingRequests((prev) => [
+      { ...req, id: `req-${Date.now()}`, agentName: currentUser?.name || DEMO_AGENT, status: 'pending', createdAt: new Date().toISOString() },
+      ...prev,
+    ]);
+    notify('admin', 'Listing request', `${currentUser?.name || DEMO_AGENT} asked to ${req.type} "${req.vehicleTitle}".`, 'approvals');
+    showToast('Request sent', 'The admin team will review it.');
+  };
+
+  const decideListingRequest = (id: string, approve: boolean, reason?: string) => {
+    const req = listingRequests.find((r) => r.id === id);
+    if (!req || req.status !== 'pending') return;
+    if (!approve && !reason?.trim()) {
+      showToast('Add a reason', 'Tell the agent why the request was rejected.', 'error');
+      return;
+    }
+    if (approve) {
+      if (req.type === 'add') createVehicleListing(req.changes || {}, req.agentName);
+      if (req.type === 'edit' && req.vehicleId) updateVehicleListing(req.vehicleId, req.changes || {});
+      if (req.type === 'remove' && req.vehicleId) deleteVehicleListing(req.vehicleId);
+    }
+    setListingRequests((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: approve ? 'approved' : 'rejected', reason: reason?.trim(), decidedAt: new Date().toISOString() } : r))
+    );
+    notify(
+      'agent',
+      approve ? 'Listing request approved' : 'Listing request rejected',
+      approve ? `Your ${req.type} request for "${req.vehicleTitle}" was applied.` : `Your ${req.type} request for "${req.vehicleTitle}" was rejected: ${reason!.trim()}`,
+      'vehicles',
+      req.agentName
+    );
+  };
+
+  // Only the admin console calls this (the agent portal has no status controls).
+  const setVehicleStatus = (id: string, status: VehicleStatus) => {
+    setVehicles((prev) => prev.map((v) => (v.id === id ? { ...v, status } : v)));
+    const label = { available: 'approved', reserved: 'reserved', sold: 'released', unpublished: 'disapproved' }[status];
+    showToast('Listing status updated', `The listing is now ${label}.`);
   };
 
   const withdrawApplication = (id: string) => {
@@ -832,7 +994,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Seller Listing Management
-  const createVehicleListing = (vehicleData: Partial<Vehicle>): Vehicle => {
+  const createVehicleListing = (vehicleData: Partial<Vehicle>, agentName = DEMO_AGENT): Vehicle => {
     const id = `veh-${Date.now()}`;
     const category = vehicleData.category || 'cars';
     const newVehicle: Vehicle = {
@@ -844,25 +1006,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       category,
       price: vehicleData.price || 500000,
       mileage: vehicleData.mileage || 0,
-      condition: vehicleData.condition || 'Used',
+      condition: vehicleData.condition || 'Surplus / 2nd hand',
       transmission: vehicleData.transmission || 'Automatic',
       fuel: vehicleData.fuel || 'Gasoline',
       bodyType: vehicleData.bodyType || 'Sedan',
       color: vehicleData.color || 'Jet Black',
       drivetrain: vehicleData.drivetrain || 'Front-Wheel Drive',
-      location: vehicleData.location || 'Metro Manila',
+      location: vehicleData.location || 'Philippines',
       province: vehicleData.province || 'Metro Manila',
       region: vehicleData.region || 'NCR',
       sellerId: currentUser?.id || 'sel-01',
-      sellerName:
-        currentUser?.role === 'seller'
-          ? 'Groom Broom Certified Motors'
-          : currentUser?.name || 'Groom Broom Certified Motors',
+      sellerName: agentName,
       sellerLocation: 'Metro Manila, Philippines',
       sellerRating: 5.0,
       sellerReviewCount: 1,
       sellerVerified: true,
-      description: vehicleData.description || 'Complete documents, clean title, ready for transfer.',
+      description: vehicleData.description || '',
       images:
         vehicleData.images && vehicleData.images.length > 0
           ? vehicleData.images
@@ -1008,7 +1167,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         adminDeleteVehicle,
         adminResolveReport,
         commissions,
+        approveCommission,
         payCommission,
+        listingRequests,
+        submitListingRequest,
+        decideListingRequest,
+        reviewDocument,
+        setVehicleStatus,
       }}
     >
       {children}

@@ -10,8 +10,8 @@ The same build serves three sites. Which one you get depends on the hostname (se
 | Site | Production (placeholder) | Local |
 |---|---|---|
 | Marketplace (clients) | `broombroom.ph` | http://localhost:3000 |
-| Agent portal | `agent.broombroom.ph` | http://agent.localhost:3000 |
-| Admin console | `admin.broombroom.ph` | http://admin.localhost:3000 |
+| Agent portal | `agent.broombroom.ph` | http://localhost:3000/?portal=agent |
+| Admin console | `admin.broombroom.ph` | http://localhost:3000/?portal=admin |
 
 The portals have no links from the public site except "Sell on Broom Broom" (footer). The admin console is reachable only by its own address.
 
@@ -22,7 +22,7 @@ npm install
 npm run dev
 ```
 
-Then open the three local addresses above. Chrome, Edge and Firefox resolve `*.localhost` to your machine without any setup.
+Then open the three local addresses above. Locally (and on GitHub Pages) the portals share one address so they share the demo data and update live across tabs; real domains use the subdomains.
 
 ## Deploy
 

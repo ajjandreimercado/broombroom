@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { PORTAL } from '../portals.ts';
 import { AnimatePresence, motion } from 'motion/react';
 import { backdropMotion, modalMotion } from '../motion.ts';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
@@ -229,12 +230,16 @@ export const AuthModal: React.FC = () => {
                 </button>
               </div>
 
-              <p className="mt-5 text-center text-[13px] text-[#6B767D]">
-                No account?{' '}
-                <button onClick={() => switchMode('register')} className="font-semibold text-[#1D5FD1] hover:text-[#174CA8] cursor-pointer transition-colors">
-                  Create one
-                </button>
-              </p>
+              {PORTAL === 'buyer' ? (
+                <p className="mt-5 text-center text-[13px] text-[#6B767D]">
+                  No account?{' '}
+                  <button onClick={() => switchMode('register')} className="font-semibold text-[#1D5FD1] hover:text-[#174CA8] cursor-pointer transition-colors">
+                    Create one
+                  </button>
+                </p>
+              ) : (
+                <p className="mt-5 text-center text-[13px] text-[#6B767D]">Agent and admin accounts are created by the admin team.</p>
+              )}
             </div>
           )}
 

@@ -1,6 +1,6 @@
 export type VehicleCategory = 'all' | 'cars' | 'motorcycles' | 'trucks' | 'ebikes' | 'scooters' | 'atvs';
 
-export type VehicleCondition = 'New' | 'Certified Pre-Owned' | 'Used';
+export type VehicleCondition = 'New' | 'Surplus / 2nd hand';
 
 export type TransmissionType = 'Automatic' | 'Manual' | 'CVT' | 'Dual-Clutch' | 'Direct Drive';
 
@@ -94,7 +94,7 @@ export interface VehicleApplication {
   submittedAt: string;
   notes?: string;
   sellerNotes?: string;
-  documents?: { label: string; fileName: string }[];
+  documents?: ApplicationDocument[];
 }
 
 export interface ChatMessage {
@@ -173,8 +173,20 @@ export interface VehicleReport {
   createdAt: string;
 }
 
+export interface ApplicationDocument {
+  label: string;
+  fileName: string;
+  // Admin review (financing section); a rejection always carries a reason.
+  status?: 'pending' | 'approved' | 'rejected';
+  reason?: string;
+}
+
 export interface AppNotification {
   id: string;
+  // Who sees it; older records without one belong to clients.
+  audience?: 'client' | 'agent' | 'admin';
+  // For agent notifications: the one agent it is about.
+  recipient?: string;
   title: string;
   message: string;
   type: 'message' | 'application' | 'deal' | 'system';
@@ -183,17 +195,38 @@ export interface AppNotification {
   createdAt: string;
 }
 
-// An agent's commission on a closed sale; admin pays it and attaches the proof of payment.
+// An agent's commission. Receivable once the client's application is approved (car reserved);
+// payable after the admin approves it, which needs the transaction to be complete; paid once
+// the admin transfers the cash and attaches the proof.
 export interface Commission {
   id: string;
+  agentName: string;
   applicationRef: string;
   vehicleTitle: string;
   clientName: string;
   salePrice: number;
   rate: number;
   amount: number;
-  status: 'pending' | 'paid';
+  status: 'receivable' | 'payable' | 'paid';
+  transactionCompleted: boolean;
+  approvedAt?: string;
   proofFileName?: string;
+  receiptNo?: string;
   paidAt?: string;
   createdAt: string;
+}
+
+// An agent's request to add, edit or remove a listing; only the admin can apply it.
+export interface ListingRequest {
+  id: string;
+  type: 'add' | 'edit' | 'remove';
+  agentName: string;
+  vehicleId?: string;
+  vehicleTitle: string;
+  changes?: Partial<Vehicle>;
+  note: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reason?: string;
+  createdAt: string;
+  decidedAt?: string;
 }

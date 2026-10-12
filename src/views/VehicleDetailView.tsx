@@ -286,9 +286,11 @@ export const VehicleDetailView: React.FC = () => {
               <h2 id="overview-heading" className="font-display text-[24px] text-[#141517] pb-4 border-b-2 border-[#141517]">
                 Overview
               </h2>
-              <p className="mt-5 text-[16px] text-[#2A2E31] leading-relaxed whitespace-pre-line max-w-[68ch]">
-                {vehicle.description}
-              </p>
+              {vehicle.description && (
+                <p className="mt-5 text-[16px] text-[#2A2E31] leading-relaxed whitespace-pre-line max-w-[68ch]">
+                  {vehicle.description}
+                </p>
+              )}
               <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[14px] text-[#141517]">
                 {['Clean LTO title', 'Viewing ready', 'Verified odometer'].map((item) => (
                   <li key={item} className="flex items-center gap-2">

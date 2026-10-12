@@ -33,7 +33,10 @@ export const IntroView: React.FC = () => {
     return filtered.length > 0 ? filtered.slice(0, 6) : available.slice(0, 6);
   }, [vehicles, activeCategoryTab]);
 
-  const heroVehicle = useMemo(() => vehicles.find((v) => v.price > 2000000) || vehicles[0], [vehicles]);
+  const heroVehicle = useMemo(() => {
+    const live = vehicles.filter((v) => v.status === 'available');
+    return live.find((v) => v.price > 2000000) || live[0];
+  }, [vehicles]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {

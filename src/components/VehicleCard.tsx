@@ -81,7 +81,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
   }).format(vehicle.price);
 
   const conditionLabel =
-    vehicle.condition === 'Certified Pre-Owned' ? 'Certified' : vehicle.condition;
+    vehicle.condition === 'New' ? 'New' : 'Surplus';
 
   return (
     <article
