@@ -12,7 +12,15 @@ const PREFIX: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'sell.', admi
 const detect = (hostname: string): Portal =>
   hostname.startsWith(PREFIX.seller) ? 'seller' : hostname.startsWith(PREFIX.admin) ? 'admin' : 'buyer';
 
-export const PORTAL: Portal = detect(window.location.hostname);
+// GitHub Pages (the demo host) can't serve subdomains, so there the portal comes from ?portal=sell|admin.
+const QUERY_MODE = window.location.hostname.endsWith('github.io');
+const QUERY_KEY: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'sell', admin: 'admin' };
+const fromQuery = (): Portal => {
+  const q = new URLSearchParams(window.location.search).get('portal');
+  return q === QUERY_KEY.seller ? 'seller' : q === QUERY_KEY.admin ? 'admin' : 'buyer';
+};
+
+export const PORTAL: Portal = QUERY_MODE ? fromQuery() : detect(window.location.hostname);
 
 const ENV_URL: Record<Portal, string | undefined> = {
   buyer: import.meta.env.VITE_BUYER_URL,
@@ -27,6 +35,10 @@ const baseHost = () => {
 };
 
 export const portalUrl = (portal: Portal, query = ''): string => {
+  if (QUERY_MODE) {
+    const page = window.location.origin + window.location.pathname;
+    return portal === 'buyer' ? page + query : `${page}?portal=${QUERY_KEY[portal]}`;
+  }
   const env = ENV_URL[portal];
   const { protocol, port } = window.location;
   const origin = env

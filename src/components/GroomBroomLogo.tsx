@@ -18,7 +18,7 @@ const sizeClasses = {
 export const GroomBroomLogo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => (
   <div className={`inline-flex items-center select-none ${className}`}>
     <img
-      src="/broom-broom-logo.png"
+      src={`${import.meta.env.BASE_URL}broom-broom-logo.png`}
       alt="Broom Broom"
       width={1368}
       height={274}
