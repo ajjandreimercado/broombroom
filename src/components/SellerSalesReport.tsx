@@ -550,7 +550,7 @@ export const SellerSalesReport: React.FC = () => {
         </div>
 
         {/* Primary Metric KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 pt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 pt-6">
           {/* Gross Revenue */}
           <div className="p-5 border-t border-[#8C989F] transition-colors">
             <div className="flex items-center justify-between">
@@ -558,7 +558,7 @@ export const SellerSalesReport: React.FC = () => {
                 Gross Sales Volume
               </span>
             </div>
-            <div className="font-display text-[30px] leading-none text-[#141517] tabular-nums mt-2">
+            <div className="font-display text-[clamp(24px,4vw,30px)] leading-none text-[#141517] tabular-nums mt-2 whitespace-nowrap">
               {formatPHP(reportData.grossRevenue)}
             </div>
             <div className="flex items-center gap-2 mt-2 text-xs">
@@ -579,7 +579,7 @@ export const SellerSalesReport: React.FC = () => {
                 Units Settled
               </span>
             </div>
-            <div className="font-display text-[30px] leading-none text-[#141517] tabular-nums mt-2">
+            <div className="font-display text-[clamp(24px,4vw,30px)] leading-none text-[#141517] tabular-nums mt-2 whitespace-nowrap">
               {reportData.unitsSold} <span className="text-sm font-sans font-semibold text-[#4E585E]">Vehicles</span>
             </div>
             <div className="text-xs text-[#4E585E] mt-2 flex items-center justify-between">
@@ -595,7 +595,7 @@ export const SellerSalesReport: React.FC = () => {
                 Average Deal Size (ASP)
               </span>
             </div>
-            <div className="font-display text-[30px] leading-none text-[#141517] tabular-nums mt-2">
+            <div className="font-display text-[clamp(24px,4vw,30px)] leading-none text-[#141517] tabular-nums mt-2 whitespace-nowrap">
               {formatPHP(reportData.averageOrderValue)}
             </div>
             <div className="text-xs text-[#4E585E] mt-2 flex items-center justify-between">

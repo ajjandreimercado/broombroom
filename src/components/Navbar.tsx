@@ -11,7 +11,6 @@ import {
   Menu,
   X,
   ArrowUpRight,
-  Store,
   LogOut,
   ChevronDown,
   FileText,
@@ -293,18 +292,7 @@ export const Navbar: React.FC = () => {
                       </button>
                     ))}
 
-                    <div className="my-1 border-t border-[#DDE3E6]" />
-
-                    {isBuyerSite ? (
-                      <a
-                        href={portalUrl('seller')}
-                        className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-[13px] text-[#4E585E] transition-colors duration-150 ${dropItemHover}`}
-                        role="menuitem"
-                      >
-                        <Store className="w-3.5 h-3.5 shrink-0" />
-                        Sell on Broom Broom
-                      </a>
-                    ) : (
+                    {!isBuyerSite && (
                       <a
                         href={portalUrl('buyer')}
                         className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 text-[13px] text-[#4E585E] transition-colors duration-150 ${dropItemHover}`}
@@ -380,14 +368,15 @@ export const Navbar: React.FC = () => {
               );
             })}
 
-            {/* Other site */}
-            <a
-              href={portalUrl(isBuyerSite ? 'seller' : 'buyer')}
-              className="w-full px-1 py-3 flex items-center justify-between font-display text-[18px] text-[#4E585E] hover:text-[#141517]"
-            >
-              {isBuyerSite ? 'Sell on Broom Broom' : 'Open marketplace'}
-              <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
-            </a>
+            {!isBuyerSite && (
+              <a
+                href={portalUrl('buyer')}
+                className="w-full px-1 py-3 flex items-center justify-between font-display text-[18px] text-[#4E585E] hover:text-[#141517]"
+              >
+                Open marketplace
+                <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+              </a>
+            )}
           </div>
         </motion.div>
       )}
