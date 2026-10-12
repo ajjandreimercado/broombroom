@@ -100,6 +100,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
           loading="lazy"
         />
         <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
+          <Stamp label="Reserved" show={vehicle.status === 'reserved'} className="bg-white/85" />
           <Stamp label="Saved" show={saved} className="bg-white/85" />
           <Stamp label="Compare" show={inCompare} className="bg-white/85" />
         </div>
@@ -137,7 +138,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
           {vehicle.sellerVerified && (
             <span className="ml-auto pl-2 flex items-center gap-1 shrink-0 text-[#141517]">
               <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-              Verified seller
+              Verified agent
             </span>
           )}
         </p>
@@ -178,8 +179,8 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
             <button
               onClick={handleMessageClick}
               className="p-2.5 cursor-pointer text-[#4E585E] hover:text-[#141517] hover:bg-[#EEF1F2]"
-              title="Message seller"
-              aria-label="Message seller"
+              title="Message agent"
+              aria-label="Message agent"
             >
               <MessageSquare className="w-4 h-4" />
             </button>

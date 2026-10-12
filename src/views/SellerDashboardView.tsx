@@ -253,7 +253,7 @@ export const SellerDashboardView: React.FC = () => {
                     {[
                       { label: 'Live listings', value: sellerVehicles.filter((v) => v.status === 'available').length.toLocaleString(), note: 'On the marketplace' },
                       { label: 'Open applications', value: sellerApplications.length.toLocaleString(), note: 'Awaiting your review' },
-                      { label: 'Buyer chats', value: conversations.length.toLocaleString(), note: 'Active conversations' },
+                      { label: 'Client chats', value: conversations.length.toLocaleString(), note: 'Active conversations' },
                       { label: 'Listing views', value: '12,480', note: 'This month' },
                     ].map((m, i) => (
                       <div key={m.label} className={`py-5 pr-4 ${i % 2 === 1 ? 'pl-4 border-l' : ''} ${i === 2 ? 'md:pl-4 md:border-l' : ''} ${i === 3 ? 'pl-4' : ''} ${i < 2 ? 'border-b md:border-b-0' : ''} border-[#C9D1D6]`}>
@@ -309,7 +309,7 @@ export const SellerDashboardView: React.FC = () => {
                 <div className="border-t-2 border-[#141517] pt-6 space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-[#DDE3E6]">
                     <h2 className="font-display text-[22px] leading-tight text-[#141517]">
-                      Recent Buyer Purchase Inquiries
+                      Recent Client Purchase Inquiries
                     </h2>
                     <button
                       onClick={() => navigateTo('seller', { sellerTab: 'applications' })}
@@ -652,7 +652,7 @@ export const SellerDashboardView: React.FC = () => {
               <div className="space-y-6">
                 <div className="pb-3 border-b border-[#C9D1D6]">
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">
-                    Buyer Applications <span className="text-[#6B767D] font-normal">({sellerApplications.length})</span>
+                    Client Applications <span className="text-[#6B767D] font-normal">({sellerApplications.length})</span>
                   </h2>
                 </div>
                 <div className="space-y-4">
@@ -679,7 +679,7 @@ export const SellerDashboardView: React.FC = () => {
                         </p>
                         {app.notes && (
                           <p className="text-xs bg-[#F7F8F8] border border-[#C9D1D6] p-3 rounded-[2px] text-[#2A2E31] mt-2">
-                            <strong>Buyer Note:</strong> "{app.notes}"
+                            <strong>Client Note:</strong> "{app.notes}"
                           </p>
                         )}
                       </div>
@@ -707,7 +707,7 @@ export const SellerDashboardView: React.FC = () => {
               <div className="bg-white rounded-[2px] border border-[#C9D1D6] overflow-hidden h-[560px] flex flex-col md:flex-row">
                 <div className="w-full md:w-80 border-r border-[#C9D1D6] flex flex-col bg-[#F7F8F8]/50 max-h-48 md:max-h-none shrink-0">
                   <div className="p-4 border-b border-[#C9D1D6] text-xs font-bold uppercase tracking-wider text-[#2A2E31] tabular-nums">
-                    Buyer Inquiries ({conversations.length})
+                    Client Inquiries ({conversations.length})
                   </div>
                   <div className="flex-1 overflow-y-auto divide-y divide-[#DDE3E6]">
                     {conversations.map((conv) => (
@@ -757,7 +757,7 @@ export const SellerDashboardView: React.FC = () => {
                       <form onSubmit={handleSendSellerReply} className="p-3.5 border-t border-[#C9D1D6] flex gap-2.5 bg-[#F7F8F8]/30">
                         <input
                           type="text"
-                          placeholder="Reply to buyer..."
+                          placeholder="Reply to client..."
                           value={sellerChatText}
                           onChange={(e) => setSellerChatText(e.target.value)}
                           className="flex-1 px-3.5 py-2.5 text-xs bg-white border border-[#C9D1D6] rounded-[2px] focus:border-[#1D5FD1]"
@@ -783,7 +783,7 @@ export const SellerDashboardView: React.FC = () => {
                 <div>
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">Dealer Storefront Profile</h2>
                   <p className="text-xs text-[#4E585E] mt-1">
-                    This verified profile is displayed to buyers on your vehicle listings.
+                    This verified profile is displayed to clients on your vehicle listings.
                   </p>
                 </div>
 
@@ -904,7 +904,7 @@ export const SellerDashboardView: React.FC = () => {
                 className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
               >
                 <option value="under_review">Under Review</option>
-                <option value="contacted">Contacted Buyer</option>
+                <option value="contacted">Contacted Client</option>
                 <option value="approved">Approved for Viewing/Sale</option>
                 <option value="declined">Declined</option>
                 <option value="completed">Completed Transaction</option>
@@ -913,7 +913,7 @@ export const SellerDashboardView: React.FC = () => {
 
             <div>
               <label className="gb-label block mb-2">
-                Seller Response Message / Schedule Details
+                Agent Response Message / Schedule Details
               </label>
               <textarea
                 rows={3}

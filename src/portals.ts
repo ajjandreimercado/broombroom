@@ -1,20 +1,20 @@
 // Broom Broom runs as three sites from one build, told apart by hostname:
-//   broombroom.ph        buyers (public marketplace)
-//   sell.broombroom.ph   salesperson portal
+//   broombroom.ph        clients (public marketplace)
+//   agent.broombroom.ph  agent portal
 //   admin.broombroom.ph  admin console
-// Locally the same split works on localhost, sell.localhost and admin.localhost.
-// Set VITE_BUYER_URL / VITE_SELLER_URL / VITE_ADMIN_URL to override the derived URLs.
+// Locally the same split works on localhost, agent.localhost and admin.localhost.
+// Set VITE_BUYER_URL / VITE_AGENT_URL / VITE_ADMIN_URL to override the derived URLs.
 
 export type Portal = 'buyer' | 'seller' | 'admin';
 
-const PREFIX: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'sell.', admin: 'admin.' };
+const PREFIX: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'agent.', admin: 'admin.' };
 
 const detect = (hostname: string): Portal =>
   hostname.startsWith(PREFIX.seller) ? 'seller' : hostname.startsWith(PREFIX.admin) ? 'admin' : 'buyer';
 
-// GitHub Pages (the demo host) can't serve subdomains, so there the portal comes from ?portal=sell|admin.
+// GitHub Pages (the demo host) can't serve subdomains, so there the portal comes from ?portal=agent|admin.
 const QUERY_MODE = window.location.hostname.endsWith('github.io');
-const QUERY_KEY: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'sell', admin: 'admin' };
+const QUERY_KEY: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'agent', admin: 'admin' };
 const fromQuery = (): Portal => {
   const q = new URLSearchParams(window.location.search).get('portal');
   return q === QUERY_KEY.seller ? 'seller' : q === QUERY_KEY.admin ? 'admin' : 'buyer';
@@ -24,7 +24,7 @@ export const PORTAL: Portal = QUERY_MODE ? fromQuery() : detect(window.location.
 
 const ENV_URL: Record<Portal, string | undefined> = {
   buyer: import.meta.env.VITE_BUYER_URL,
-  seller: import.meta.env.VITE_SELLER_URL,
+  seller: import.meta.env.VITE_AGENT_URL,
   admin: import.meta.env.VITE_ADMIN_URL,
 };
 
@@ -49,6 +49,6 @@ export const portalUrl = (portal: Portal, query = ''): string => {
 
 export const PORTAL_LABEL: Record<Portal, string> = {
   buyer: 'Marketplace',
-  seller: 'Salesperson portal',
+  seller: 'Agent portal',
   admin: 'Admin console',
 };

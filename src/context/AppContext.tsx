@@ -460,7 +460,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const convId = startOrOpenConversation(vehicleId);
       setActiveConversationId(convId);
       navigateTo('account', { accountTab: 'messages' });
-      showToast('Conversation Opened', 'You can now chat directly with the seller.');
+      showToast('Conversation Opened', 'You can now chat directly with the agent.');
     }
   };
 
@@ -639,6 +639,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setApplications((prev) => [newApp, ...prev]);
+
+    // Cash settlement holds the unit for this client.
+    if (newApp.purchaseMethod === 'cash') {
+      setVehicles((prev) => prev.map((v) => (v.id === newApp.vehicleId ? { ...v, status: 'reserved' } : v)));
+    }
 
     // Send notification to user
     const newNotif: AppNotification = {
@@ -850,7 +855,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Admin Management
   const adminApproveVehicle = (id: string) => {
     updateVehicleListing(id, { status: 'available' });
-    showToast('Listing Approved', 'Vehicle is approved and visible to buyers.');
+    showToast('Listing Approved', 'Vehicle is approved and visible to clients.');
   };
 
   const adminUnpublishVehicle = (id: string) => {

@@ -40,7 +40,7 @@ export const DealsView: React.FC = () => {
         {dealVehicles.length === 0 ? (
           <div className="border-t-2 border-[#141517] py-16 max-w-xl">
             <h2 className="font-display text-[24px] text-[#141517]">No offers running right now.</h2>
-            <p className="mt-2 text-[15px] text-[#4E585E]">Sellers post new deals often. Meanwhile, the full inventory is open.</p>
+            <p className="mt-2 text-[15px] text-[#4E585E]">Agents post new deals often. Meanwhile, the full inventory is open.</p>
             <button
               onClick={() => navigateTo('marketplace')}
               className="mt-6 px-5 py-3 bg-[#141517] hover:bg-[#2A2E31] text-white text-[14px] font-semibold cursor-pointer"

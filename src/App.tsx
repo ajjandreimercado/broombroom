@@ -27,8 +27,8 @@ const PortalSignIn: React.FC = () => {
   const { setAuthModalOpen } = useApp();
   const copy =
     PORTAL === 'seller'
-      ? 'Sign in to manage your listings, review purchase applications and answer buyers.'
-      : 'Sign in to moderate listings, verify sellers and review reports.';
+      ? 'Sign in to manage your listings, review purchase applications and answer clients.'
+      : 'Sign in to moderate listings, verify agents and review reports.';
   return (
     <section className="gb-container py-20 sm:py-28">
       <div className="max-w-xl border-t-2 border-[#141517] pt-8">

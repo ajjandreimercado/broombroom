@@ -69,7 +69,7 @@ export const LegalView: React.FC<LegalViewProps> = ({ initialType = 'terms' }) =
                     1. Marketplace Platform Structure & Pre-Applications
                   </h2>
                   <p>
-                    Groom Broom operates as a specialized automotive marketplace connecting prospective buyers and verified automotive dealerships or private vehicle owners. Initiating an inquiry or clicking "Apply for this Vehicle" does <strong>not</strong> constitute an automated electronic charge, card deduction, or transfer of vehicle title. Applications represent formal expressions of interest to enable certified sellers to review customer eligibility, schedule physical vehicle viewings and road tests, and structure tailored cash settlements or partner bank auto-loans.
+                    Groom Broom operates as a specialized automotive marketplace connecting prospective clients and verified automotive dealerships or private vehicle owners. Initiating an inquiry or clicking "Apply for this Vehicle" does <strong>not</strong> constitute an automated electronic charge, card deduction, or transfer of vehicle title. Applications represent formal expressions of interest to enable certified agents to review customer eligibility, schedule physical vehicle viewings and road tests, and structure tailored cash settlements or partner bank auto-loans.
                   </p>
                 </div>
 
@@ -87,7 +87,7 @@ export const LegalView: React.FC<LegalViewProps> = ({ initialType = 'terms' }) =
                     3. On-Site Inspection & Safe Handoff
                   </h2>
                   <p>
-                    Buyers are strongly encouraged to carry out an in-person physical inspection and mechanical evaluation before releasing payment. Groom Broom encourages adherence to our published vehicle inspection guides and LTO ownership transfer protocols.
+                    Clients are strongly encouraged to carry out an in-person physical inspection and mechanical evaluation before releasing payment. Groom Broom encourages adherence to our published vehicle inspection guides and LTO ownership transfer protocols.
                   </p>
                 </div>
               </div>
@@ -111,7 +111,7 @@ export const LegalView: React.FC<LegalViewProps> = ({ initialType = 'terms' }) =
                     1. Personal Information Collection
                   </h2>
                   <p>
-                    When submitting vehicle purchase applications or creating an account, Groom Broom collects your full name, email address, phone number, and residential delivery address. This information is strictly shared with the specific seller of the vehicle you applied for to facilitate inspection appointments and sales contracts.
+                    When submitting vehicle purchase applications or creating an account, Groom Broom collects your full name, email address, phone number, and residential delivery address. This information is strictly shared with the specific agent of the vehicle you applied for to facilitate inspection appointments and sales contracts.
                   </p>
                 </div>
 
@@ -120,7 +120,7 @@ export const LegalView: React.FC<LegalViewProps> = ({ initialType = 'terms' }) =
                     2. Security of Communications
                   </h2>
                   <p>
-                    Direct messaging between buyers and sellers is encrypted in transit. We do not sell or monetize personal contact information to third-party telemarketers.
+                    Direct messaging between clients and agents is encrypted in transit. We do not sell or monetize personal contact information to third-party telemarketers.
                   </p>
                 </div>
 

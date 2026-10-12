@@ -17,7 +17,7 @@ export const HelpView: React.FC = () => {
   const faqs = [
     {
       q: 'Does clicking "Apply Now" charge my credit card?',
-      a: 'No. Applying on Groom Broom signifies your purchase interest. There are zero automatic card charges or platform fees. After submitting an application, the seller will contact you to verify paperwork, schedule an on-site viewing or test drive, and arrange cash payment or bank financing terms directly with you.',
+      a: 'No. Applying on Groom Broom signifies your purchase interest. There are zero automatic card charges or platform fees. After submitting an application, the agent will contact you to verify paperwork, schedule an on-site viewing or test drive, and arrange cash payment or bank financing terms directly with you.',
     },
     {
       q: 'How are vehicles verified on Groom Broom?',
@@ -29,11 +29,11 @@ export const HelpView: React.FC = () => {
     },
     {
       q: 'What is the role of Groom Broom during vehicle handoff?',
-      a: 'Groom Broom acts as the discovery, messaging, and pre-application portal connecting verified buyers and sellers. Final transfer of ownership (Deed of Absolute Sale, PNP-HPG clearance, and LTO registration) is completed directly between buyer and seller with guidance from our automotive guides.',
+      a: 'Groom Broom acts as the discovery, messaging, and pre-application portal connecting verified clients and agents. Final transfer of ownership (Deed of Absolute Sale, PNP-HPG clearance, and LTO registration) is completed directly between client and agent with guidance from our automotive guides.',
     },
     {
-      q: 'How can I become a verified seller on Groom Broom?',
-      a: 'Switch to the "Seller" role in the top navigation bar to access the Seller Dashboard. You can immediately post vehicle listings with full specifications, manage buyer inquiries, and update application statuses.',
+      q: 'How can I become a verified agent on Groom Broom?',
+      a: 'Sign in to the Broom Broom agent portal to reach the agent dashboard. You can immediately post vehicle listings with full specifications, manage client inquiries, and update application statuses.',
     },
   ];
 
@@ -125,7 +125,7 @@ export const HelpView: React.FC = () => {
                   <MessageSquare className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="font-bold text-[#141517] text-sm">Live Seller Inquiries</p>
+                  <p className="font-bold text-[#141517] text-sm">Live Agent Inquiries</p>
                   <p className="text-[#4E585E] mt-0.5">Direct chat on every vehicle listing</p>
                 </div>
               </div>
@@ -185,7 +185,7 @@ export const HelpView: React.FC = () => {
                       className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
                     >
                       <option value="Buying & Applications">Buying & Applications</option>
-                      <option value="Seller Listing Support">Seller Listing Support</option>
+                      <option value="Agent Listing Support">Agent Listing Support</option>
                       <option value="Financing Inquiries">Financing Inquiries</option>
                       <option value="LTO Transfer Assistance">LTO Transfer Assistance</option>
                       <option value="Account & Security">Account & Security</option>

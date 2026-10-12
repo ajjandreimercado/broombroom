@@ -19,6 +19,28 @@ import {
   MapPin,
 } from 'lucide-react';
 
+const MAX_DOC_BYTES = 10 * 1024 * 1024;
+
+// What each settlement method needs from the client.
+const DOCS = {
+  cash: [{ key: 'id-signature', label: 'Valid ID with signature', hint: '' }],
+  financing: [
+    { key: 'id-1', label: 'Valid ID (1 of 2)', hint: '' },
+    { key: 'id-2', label: 'Valid ID (2 of 2)', hint: '' },
+    { key: 'billing', label: 'Proof of billing', hint: 'Water, electric or internet bill' },
+  ],
+  employed: [
+    { key: 'payslip', label: 'Payslip', hint: '' },
+    { key: 'coe', label: 'Certificate of Employment (COE)', hint: '' },
+  ],
+  business: [
+    { key: 'dti', label: 'DTI registration', hint: '' },
+    { key: 'permit', label: 'Business permit', hint: '' },
+    { key: 'sales', label: 'Daily sales record', hint: '' },
+    { key: 'business-photo', label: 'Photo of the business', hint: '' },
+  ],
+};
+
 export const ApplicationWizardView: React.FC = () => {
   const {
     vehicles,
@@ -52,6 +74,28 @@ export const ApplicationWizardView: React.FC = () => {
   const [financingTerm, setFinancingTerm] = useState(36);
   const [downPayment, setDownPayment] = useState(Math.round(vehicle ? vehicle.price * 0.25 : 500000));
   const [notes, setNotes] = useState('Interested in viewing this weekend. Documents ready.');
+
+  // Required documents: file names keyed by requirement (no upload backend yet).
+  const [incomeType, setIncomeType] = useState<'employed' | 'business'>('employed');
+  const [docs, setDocs] = useState<Record<string, string>>({});
+  const [docError, setDocError] = useState('');
+  const requiredDocs =
+    purchaseMethod === 'cash' ? DOCS.cash : [...DOCS.financing, ...(incomeType === 'employed' ? DOCS.employed : DOCS.business)];
+  const missingDocs = requiredDocs.filter((d) => !docs[d.key]);
+
+  const attachDoc = (key: string, file: File | undefined) => {
+    if (!file) return;
+    if (!/^(image\/|application\/pdf$)/.test(file.type)) {
+      setDocError(`${file.name} is not a photo or PDF. Upload an image or a PDF.`);
+      return;
+    }
+    if (file.size > MAX_DOC_BYTES) {
+      setDocError(`${file.name} is over 10 MB. Upload a smaller file.`);
+      return;
+    }
+    setDocError('');
+    setDocs((prev) => ({ ...prev, [key]: file.name }));
+  };
 
   const [error, setError] = useState('');
 
@@ -89,6 +133,10 @@ export const ApplicationWizardView: React.FC = () => {
   };
 
   const handleSubmitApplication = () => {
+    if (missingDocs.length) {
+      setDocError(`Upload the remaining document${missingDocs.length > 1 ? 's' : ''}: ${missingDocs.map((d) => d.label).join(', ')}.`);
+      return;
+    }
     const created = createApplication({
       vehicleId: vehicle.id,
       vehicleTitle: vehicle.title,
@@ -114,6 +162,7 @@ export const ApplicationWizardView: React.FC = () => {
       financingTermMonths: purchaseMethod === 'financing' ? financingTerm : undefined,
       downPayment: purchaseMethod === 'financing' ? downPayment : undefined,
       notes: notes.trim(),
+      documents: requiredDocs.map((d) => ({ label: d.label, fileName: docs[d.key] })),
     });
 
     setConfirmedApp(created);
@@ -187,7 +236,7 @@ export const ApplicationWizardView: React.FC = () => {
                 <div>
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">Contact & Address</h2>
                   <p className="text-xs text-[#4E585E] mt-1">
-                    The verified seller will use these credentials to coordinate vehicle viewing and test-drive scheduling.
+                    The verified agent will use these credentials to coordinate vehicle viewing and test-drive scheduling.
                   </p>
                 </div>
 
@@ -401,7 +450,7 @@ export const ApplicationWizardView: React.FC = () => {
                     }`}
                   >
                     <Sparkles className={`w-5 h-5 mb-2 ${purchaseMethod === 'financing' ? 'text-[#1D5FD1]' : 'text-[#6B767D]'}`} />
-                    <p className="text-sm font-bold text-[#141517]">Auto Financing</p>
+                    <p className="text-sm font-bold text-[#141517]">Financing</p>
                     <p className="text-[11px] text-[#4E585E] mt-1">Partner bank installment terms</p>
                   </button>
                 </div>
@@ -444,6 +493,78 @@ export const ApplicationWizardView: React.FC = () => {
                       />
                     </div>
                   </div>
+                )}
+
+                {/* Required documents for the chosen method */}
+                <section aria-labelledby="docs-heading">
+                  <div className="flex flex-wrap items-end justify-between gap-2 pb-3 border-b-2 border-[#141517]">
+                    <h3 id="docs-heading" className="font-display text-[18px] leading-tight text-[#141517]">Required documents</h3>
+                    <span className="text-[12px] text-[#4E585E] tabular-nums">
+                      {requiredDocs.length - missingDocs.length} of {requiredDocs.length} attached
+                    </span>
+                  </div>
+
+                  {purchaseMethod === 'financing' && (
+                    <div className="py-4 border-b border-[#C9D1D6]">
+                      <span className="gb-label block mb-2">Proof of income</span>
+                      <div className="grid grid-cols-2 border border-[#8C989F] divide-x divide-[#8C989F] max-w-sm" role="radiogroup" aria-label="Source of income">
+                        {(['employed', 'business'] as const).map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            role="radio"
+                            aria-checked={incomeType === t}
+                            onClick={() => setIncomeType(t)}
+                            className={`py-2.5 text-[13px] cursor-pointer transition-colors duration-150 ${
+                              incomeType === t ? 'bg-[#141517] text-white font-semibold' : 'text-[#141517] hover:bg-[#EEF1F2]'
+                            }`}
+                          >
+                            {t === 'employed' ? 'Employed' : 'Business owner'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <ul>
+                    {requiredDocs.map((d) => {
+                      const fileName = docs[d.key];
+                      return (
+                        <li key={d.key} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 border-b border-[#C9D1D6]">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[14px] font-medium text-[#141517]">{d.label}</p>
+                            <p className="text-[12px] text-[#4E585E] truncate">{fileName || d.hint || 'Photo or PDF, up to 10 MB'}</p>
+                          </div>
+                          <div className="w-[88px] h-8 grid place-items-center">
+                            <Stamp label="Attached" show={!!fileName} size="sm" />
+                          </div>
+                          <label className="shrink-0 px-3.5 py-2 border border-[#141517] text-[13px] font-semibold text-[#141517] hover:bg-[#EEF1F2] cursor-pointer transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1]">
+                            {fileName ? 'Replace' : 'Upload'}
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              className="sr-only"
+                              aria-label={`Upload ${d.label}`}
+                              onChange={(e) => {
+                                attachDoc(d.key, e.target.files?.[0]);
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+
+                {purchaseMethod === 'cash' && (
+                  <p className="text-[13px] text-[#2A2E31] border-l-0 bg-white border border-[#C9D1D6] px-4 py-3">
+                    Confirming a cash settlement reserves this vehicle for you, and it is marked <strong>Reserved</strong> on the marketplace.
+                  </p>
+                )}
+
+                {docError && (
+                  <p role="alert" className="text-[13px] text-[#B42318] border border-[#B42318] bg-white px-4 py-3">{docError}</p>
                 )}
 
                 <div>
@@ -506,6 +627,16 @@ export const ApplicationWizardView: React.FC = () => {
                     <span className="text-[#6B767D]">Status:</span>
                     <span className="font-bold uppercase text-[#141517]">SUBMITTED</span>
                   </div>
+                  {confirmedApp.purchaseMethod === 'cash' && (
+                    <div className="flex justify-between text-[#2A2E31]">
+                      <span className="text-[#6B767D]">Vehicle:</span>
+                      <span className="font-bold uppercase text-[#1B7F35]">Reserved for you</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-[#2A2E31]">
+                    <span className="text-[#6B767D]">Documents:</span>
+                    <span className="font-bold tabular-nums">{confirmedApp.documents?.length ?? 0} attached</span>
+                  </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto pt-2">
@@ -546,7 +677,7 @@ export const ApplicationWizardView: React.FC = () => {
 
               <div className="pt-3 border-t border-[#DDE3E6] space-y-2 text-[#4E585E]">
                 <div className="flex justify-between">
-                  <span className="text-[#6B767D]">Seller:</span>
+                  <span className="text-[#6B767D]">Agent:</span>
                   <span className="font-semibold text-[#141517]">{vehicle.sellerName}</span>
                 </div>
                 <div className="flex justify-between">

@@ -645,7 +645,7 @@ export const INITIAL_GUIDES: Guide[] = [
   {
     id: 'guide-01',
     slug: 'first-time-car-buyer-guide-philippines',
-    title: 'First-Time Vehicle Buyer’s Complete Guide in the Philippines',
+    title: 'First-Time Vehicle Client’s Complete Guide in the Philippines',
     subtitle: 'From budget allocation and test drives to LTO transfer and insurance essentials.',
     category: 'Buying Advice',
     readTime: '6 min read',
@@ -698,7 +698,7 @@ export const INITIAL_GUIDES: Guide[] = [
       {
         heading: '3. The Groom Broom Financing Advantage',
         content:
-          'Through verified Groom Broom seller partnerships, buyers can apply directly with pre-screened documentation, comparing bank-backed auto loan rates alongside in-house deferred payment schemes tailored to freelancers, OFWs, and SME owners.',
+          'Through verified Groom Broom agent partnerships, clients can apply directly with pre-screened documentation, comparing bank-backed auto loan rates alongside in-house deferred payment schemes tailored to freelancers, OFWs, and SME owners.',
       },
     ],
   },
@@ -743,7 +743,7 @@ export const INITIAL_GUIDES: Guide[] = [
       {
         heading: 'Step 1: Notarized Deed of Absolute Sale',
         content:
-          'Both buyer and seller must execute a Deed of Absolute Sale with 2 valid government-issued IDs with 3 sample specimen signatures each. Ensure full vehicle details (VIN, plate, engine number) are typed without typographical errors.',
+          'Both client and agent must execute a Deed of Absolute Sale with 2 valid government-issued IDs with 3 sample specimen signatures each. Ensure full vehicle details (VIN, plate, engine number) are typed without typographical errors.',
       },
       {
         heading: 'Step 2: PNP-HPG Macro-Etching Clearance',
@@ -913,7 +913,7 @@ export const INITIAL_CONVERSATIONS: Conversation[] = [
 export const INITIAL_NOTIFICATIONS: AppNotification[] = [
   {
     id: 'notif-01',
-    title: 'Seller Responded',
+    title: 'Agent Responded',
     message: 'Groom Broom Certified Motors replied regarding the 2024 Porsche 911 Carrera S Coupe.',
     type: 'message',
     linkTarget: 'messages',

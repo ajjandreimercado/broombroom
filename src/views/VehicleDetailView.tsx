@@ -304,13 +304,19 @@ export const VehicleDetailView: React.FC = () => {
           <aside className="lg:col-span-5" aria-label="Buy this vehicle">
             <div className="lg:sticky lg:top-32 border-y-2 border-[#141517]">
               <div className="py-6 space-y-3">
-                <button
-                  onClick={handleApply}
-                  className="w-full py-4 px-5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  Apply for this vehicle
-                  <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
-                </button>
+                {vehicle.status === 'reserved' ? (
+                  <p className="w-full py-4 px-5 border-2 border-[#1B7F35] text-[#1B7F35] font-semibold text-[15px] text-center">
+                    Reserved: a cash settlement is in progress
+                  </p>
+                ) : (
+                  <button
+                    onClick={handleApply}
+                    className="w-full py-4 px-5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    Apply for this vehicle
+                    <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                )}
                 <div className="grid grid-cols-3 border border-[#8C989F] divide-x divide-[#8C989F]">
                   <button
                     onClick={handleMessage}
@@ -386,7 +392,7 @@ export const VehicleDetailView: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                  <p className="text-[12px] text-[#4E585E]">Estimate only. The seller confirms final terms.</p>
+                  <p className="text-[12px] text-[#4E585E]">Estimate only. The agent confirms final terms.</p>
                 </div>
               )}
 
@@ -421,7 +427,7 @@ export const VehicleDetailView: React.FC = () => {
           <button
             onClick={handleMessage}
             className="p-3 border border-[#8C989F] text-[#141517] cursor-pointer"
-            aria-label="Message seller"
+            aria-label="Message agent"
           >
             <MessageSquare className="w-4 h-4" />
           </button>
@@ -435,9 +441,10 @@ export const VehicleDetailView: React.FC = () => {
           </button>
           <button
             onClick={handleApply}
-            className="px-5 py-3 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[14px] cursor-pointer"
+            disabled={vehicle.status === 'reserved'}
+            className="px-5 py-3 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:bg-[#8C989F] disabled:cursor-not-allowed text-white font-semibold text-[14px] cursor-pointer"
           >
-            Apply
+            {vehicle.status === 'reserved' ? 'Reserved' : 'Apply'}
           </button>
         </div>
       </div>

@@ -449,7 +449,7 @@ export const SellerSalesReport: React.FC = () => {
 
   // CSV Export Action
   const handleExportCSV = () => {
-    const headers = ['Transaction Reference', 'Vehicle', 'Category', 'Buyer', 'Date', 'Time', 'Amount (PHP)', 'Payment Method', 'Status'];
+    const headers = ['Transaction Reference', 'Vehicle', 'Category', 'Client', 'Date', 'Time', 'Amount (PHP)', 'Payment Method', 'Status'];
     const rows = reportData.transactions.map((tx) => [
       tx.referenceNo,
       `"${tx.vehicleTitle}"`,
@@ -945,7 +945,7 @@ export const SellerSalesReport: React.FC = () => {
               <Search className="w-4 h-4 text-[#6B767D] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search deals by buyer, vehicle, ref..."
+                placeholder="Search deals by client, vehicle, ref..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3.5 py-2 text-xs bg-[#F7F8F8] border border-[#C9D1D6] rounded-[2px] text-[#141517] focus:bg-white focus:border-[#1D5FD1] transition-colors"
@@ -1021,7 +1021,7 @@ export const SellerSalesReport: React.FC = () => {
               <tr className="border-b border-[#DDE3E6] text-[#6B767D] uppercase tabular-nums tracking-wider text-[10px]">
                 <th className="pb-3 pl-2 font-bold w-[170px]">Date & Reference</th>
                 <th className="pb-3 font-bold w-[280px]">Vehicle</th>
-                <th className="pb-3 font-bold w-[160px]">Buyer</th>
+                <th className="pb-3 font-bold w-[160px]">Client</th>
                 <th className="pb-3 font-bold w-[150px]">Payment Method</th>
                 <th className="pb-3 font-bold w-[160px]">Status</th>
                 <th className="pb-3 font-bold text-right w-[140px]">Settled Price</th>
@@ -1197,7 +1197,7 @@ export const SellerSalesReport: React.FC = () => {
             {/* Parties */}
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="p-3.5 border-t border-[#8C989F]">
-                <span className="text-[10px] tabular-nums font-bold uppercase text-[#6B767D] block">Seller Entity</span>
+                <span className="text-[10px] tabular-nums font-bold uppercase text-[#6B767D] block">Agent Entity</span>
                 <p className="font-bold text-[#141517] mt-1">Groom Broom Certified Motors</p>
                 <p className="text-[11px] text-[#4E585E]">TIN: 009-842-192-000</p>
                 <p className="text-[11px] text-[#4E585E]">BGC Taguig, Metro Manila</p>

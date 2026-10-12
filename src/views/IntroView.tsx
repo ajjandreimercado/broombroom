@@ -85,7 +85,7 @@ export const IntroView: React.FC = () => {
               Find the ride. Apply on the spot.
             </h1>
             <p className="mt-6 text-[16px] sm:text-[17px] leading-relaxed text-[#4E585E] max-w-[52ch]">
-              Cars, motorcycles, trucks, e-bikes, scooters and ATVs from sellers across the Philippines.
+              Cars, motorcycles, trucks, e-bikes, scooters and ATVs from agents across the Philippines.
               Compare up to four side by side, then apply with cash or financing without leaving the listing.
             </p>
 
@@ -251,8 +251,8 @@ export const IntroView: React.FC = () => {
    the landing page's one authored motion moment. */
 const intervals: LogEntry[] = [
   { label: 'Step 1', title: 'Search and compare', body: 'Filter by type, budget, region and condition. Put up to four vehicles side by side.', stamp: 'Found' },
-  { label: 'Step 2', title: 'Message the seller', body: 'Ask about the unit, its papers or a viewing in the built-in chat.', stamp: 'Asked' },
-  { label: 'Step 3', title: 'Apply on the listing', body: 'Choose cash or financing, set your term and down payment, and send it to the seller.', stamp: 'Applied' },
+  { label: 'Step 2', title: 'Message the agent', body: 'Ask about the unit, its papers or a viewing in the built-in chat.', stamp: 'Asked' },
+  { label: 'Step 3', title: 'Apply on the listing', body: 'Choose cash or financing, set your term and down payment, and send it to the agent.', stamp: 'Applied' },
   { label: 'Step 4', title: 'Track it to the keys', body: 'Follow the application from submitted to approved in your account.', stamp: 'Approved' },
 ];
 

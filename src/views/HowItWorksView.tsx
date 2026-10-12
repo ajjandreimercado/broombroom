@@ -25,7 +25,7 @@ export const HowItWorksView: React.FC = () => {
     },
     {
       num: '02',
-      title: 'Inquire Directly with Sellers',
+      title: 'Inquire Directly with Agents',
       desc: 'Connect in real time with certified dealerships and verified private owners. Request service logs, live walk-around videos, and reserve status.',
       icon: MessageSquare,
     },
@@ -50,7 +50,7 @@ export const HowItWorksView: React.FC = () => {
     {
       num: '06',
       title: 'Take Delivery with Confidence',
-      desc: 'Receive the original OR/CR and keys directly from the seller.',
+      desc: 'Receive the original OR/CR and keys directly from the agent.',
       icon: KeyRound,
     },
   ];
@@ -72,7 +72,7 @@ export const HowItWorksView: React.FC = () => {
             How Groom Broom works
           </h1>
           <p className="lg:col-span-5 text-[16px] sm:text-[17px] leading-relaxed text-[#4E585E] max-w-[48ch]">
-            Search, message the seller, apply and follow your application to the keys, all from one listing.
+            Search, message the agent, apply and follow your application to the keys, all from one listing.
           </p>
         </div>
       </section>
@@ -80,7 +80,7 @@ export const HowItWorksView: React.FC = () => {
       <section className="gb-container py-16 sm:py-20 grid grid-cols-1 lg:grid-cols-12 gap-10" aria-labelledby="journey-heading">
         <div className="lg:col-span-4">
           <h2 id="journey-heading" className="font-display text-[clamp(1.6rem,2.8vw,2.2rem)] leading-none text-[#141517] lg:sticky lg:top-28">
-            The buyer journey, in six stamps.
+            The client journey, in six stamps.
           </h2>
         </div>
         <div className="lg:col-span-8">
@@ -93,10 +93,10 @@ export const HowItWorksView: React.FC = () => {
         <div className="gb-container py-16 sm:py-20 grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
           <div className="lg:col-span-7">
             <h2 className="font-display text-[clamp(1.8rem,3.6vw,3rem)] leading-[1] text-white max-w-[18ch]">
-              Ready to showcase your vehicles to qualified buyers?
+              Ready to showcase your vehicles to qualified clients?
             </h2>
             <p className="mt-4 text-[16px] text-[#C9D1D6] leading-relaxed max-w-[48ch]">
-              Publish inventory in minutes, track buyer inquiries, and access comprehensive sales reports.
+              Publish inventory in minutes, track client inquiries, and access comprehensive sales reports.
             </p>
           </div>
           <div className="lg:col-span-5 flex flex-wrap gap-3 lg:justify-end">

@@ -9,11 +9,11 @@ The same build serves three sites. Which one you get depends on the hostname (se
 
 | Site | Production (placeholder) | Local |
 |---|---|---|
-| Marketplace (buyers) | `broombroom.ph` | http://localhost:3000 |
-| Salesperson portal | `sell.broombroom.ph` | http://sell.localhost:3000 |
+| Marketplace (clients) | `broombroom.ph` | http://localhost:3000 |
+| Agent portal | `agent.broombroom.ph` | http://agent.localhost:3000 |
 | Admin console | `admin.broombroom.ph` | http://admin.localhost:3000 |
 
-The portals have no links from the public site except "Sell on Broom Broom". The admin console is reachable only by its own address.
+The portals have no links from the public site except "Sell on Broom Broom" (footer). The admin console is reachable only by its own address.
 
 ## Run locally
 
@@ -27,10 +27,10 @@ Then open the three local addresses above. Chrome, Edge and Firefox resolve `*.l
 ## Deploy
 
 1. Build once with `npm run build`, which writes `dist/`.
-2. Serve `dist/` on all three hostnames. Point `broombroom.ph`, `sell.broombroom.ph` and `admin.broombroom.ph` at the same static host (for example Cloudflare Pages or Netlify, adding each hostname as a custom domain).
+2. Serve `dist/` on all three hostnames. Point `broombroom.ph`, `agent.broombroom.ph` and `admin.broombroom.ph` at the same static host (for example Cloudflare Pages or Netlify, adding each hostname as a custom domain).
 3. Only if the portals sit on unrelated domains, set the `VITE_*_URL` values from `.env.example` before building.
 
 ## Before this is truly production-ready
 
-- **Backend and real auth.** Sign-in is mocked, and data lives in each site's own browser storage. Because each subdomain is a separate origin, the three sites do not share data yet: an application sent on the marketplace will not appear in the salesperson portal until a shared API and database exist.
+- **Backend and real auth.** Sign-in is mocked, and data lives in each site's own browser storage. Because each subdomain is a separate origin, the three sites do not share data yet: an application sent on the marketplace will not appear in the agent portal until a shared API and database exist.
 - **Server-side access control.** The admin console is hidden only by its address. Real admin access must be enforced by the backend, for example by role checks on every API call and by restricting the admin hostname (Cloudflare Access or similar).

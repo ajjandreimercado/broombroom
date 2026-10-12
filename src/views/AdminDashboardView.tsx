@@ -40,7 +40,7 @@ export const AdminDashboardView: React.FC = () => {
     { id: 'vehicles', label: 'Vehicle Moderation', icon: Car, count: vehicles.length },
     { id: 'reports', label: 'Safety Reports', icon: Flag, count: reports.filter((r) => r.status === 'pending').length },
     { id: 'applications', label: 'All Applications', icon: FileText, count: applications.length },
-    { id: 'sellers', label: 'Seller Verification', icon: Users },
+    { id: 'sellers', label: 'Agent Verification', icon: Users },
     { id: 'categories', label: 'Vehicle Taxonomy', icon: Layers },
   ];
 
@@ -55,7 +55,7 @@ export const AdminDashboardView: React.FC = () => {
             </div>
             <div>
               <h1 className="font-display text-[clamp(1.6rem,3vw,2.4rem)] leading-none">Administration console</h1>
-              <p className="text-[13px] text-[#4E585E] mt-2">Content moderation, seller verification, platform governance</p>
+              <p className="text-[13px] text-[#4E585E] mt-2">Content moderation, agent verification, platform governance</p>
             </div>
           </div>
 
@@ -223,7 +223,7 @@ export const AdminDashboardView: React.FC = () => {
                     <thead>
                       <tr className="border-b border-[#DDE3E6] text-[#6B767D] uppercase tabular-nums tracking-wider text-[10px]">
                         <th className="pb-2.5 font-bold">Vehicle</th>
-                        <th className="pb-2.5 font-bold">Seller</th>
+                        <th className="pb-2.5 font-bold">Agent</th>
                         <th className="pb-2.5 font-bold">Price</th>
                         <th className="pb-2.5 font-bold">Status</th>
                         <th className="pb-2.5 font-bold text-right">Moderation Actions</th>
@@ -336,7 +336,7 @@ export const AdminDashboardView: React.FC = () => {
                           <span className="font-bold text-[#141517]">{app.applicantName}</span>
                         </div>
                         <p className="text-[#4E585E] mt-1">
-                          {app.vehicleTitle} · Seller: {app.sellerName}
+                          {app.vehicleTitle} · Agent: {app.sellerName}
                         </p>
                       </div>
                       <StatusMark status={app.status} />
@@ -350,7 +350,7 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'sellers' && (
               <div className="border-t-2 border-[#141517] pt-6 space-y-5">
                 <div className="pb-3 border-b border-[#DDE3E6]">
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Verified Sellers & Dealerships</h2>
+                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Verified Agents & Dealerships</h2>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[

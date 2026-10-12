@@ -415,7 +415,7 @@ export const AccountView: React.FC = () => {
                     My Purchase Applications <span className="text-[#6B767D] font-normal">({userApplications.length})</span>
                   </h2>
                   <p className="text-xs text-[#4E585E] mt-1">
-                    Track seller review statuses, viewing appointments, and application progress.
+                    Track agent review statuses, viewing appointments, and application progress.
                   </p>
                 </div>
 
@@ -455,7 +455,7 @@ export const AccountView: React.FC = () => {
                                 {app.vehicleTitle}
                               </h3>
                               <p className="text-xs text-[#4E585E] mt-0.5">
-                                Seller: {app.sellerName} · Method: {app.purchaseMethod.toUpperCase()}
+                                Agent: {app.sellerName} · Method: {app.purchaseMethod.toUpperCase()}
                               </p>
                             </div>
                           </div>
@@ -495,7 +495,7 @@ export const AccountView: React.FC = () => {
                   <div className="flex-1 overflow-y-auto divide-y divide-[#DDE3E6]">
                     {conversations.length === 0 ? (
                       <div className="p-6 text-center text-xs text-[#4E585E]">
-                        No conversations yet. Inquire directly on any vehicle page to connect with sellers.
+                        No conversations yet. Inquire directly on any vehicle page to connect with agents.
                       </div>
                     ) : (
                       conversations.map((conv) => (
@@ -711,7 +711,7 @@ export const AccountView: React.FC = () => {
                   <div className="space-y-3">
                     <label className="flex items-center justify-between p-4 bg-[#F7F8F8] border border-[#C9D1D6] rounded-[2px] cursor-pointer">
                       <span className="text-xs font-semibold text-[#202426]">
-                        Email alerts for seller replies and application status changes
+                        Email alerts for agent replies and application status changes
                       </span>
                       <input
                         type="checkbox"
@@ -806,7 +806,7 @@ export const AccountView: React.FC = () => {
               />
               <div className="text-xs">
                 <p className="font-bold text-[#141517]">{viewingApplication.vehicleTitle}</p>
-                <p className="text-[#4E585E] mt-0.5">Seller: {viewingApplication.sellerName}</p>
+                <p className="text-[#4E585E] mt-0.5">Agent: {viewingApplication.sellerName}</p>
                 <p className="tabular-nums font-bold text-[#1D5FD1] mt-0.5">
                   ₱{viewingApplication.vehiclePrice.toLocaleString()}
                 </p>
@@ -842,7 +842,7 @@ export const AccountView: React.FC = () => {
               </div>
               {viewingApplication.sellerNotes && (
                 <div className="p-4 bg-[#E8F0FC] border border-[#1D5FD1]/20 rounded-[2px] text-[#141517] mt-2">
-                  <p className="font-bold text-xs text-[#1D5FD1] mb-1">Seller Note</p>
+                  <p className="font-bold text-xs text-[#1D5FD1] mb-1">Agent Note</p>
                   <p className="text-xs leading-relaxed">{viewingApplication.sellerNotes}</p>
                 </div>
               )}

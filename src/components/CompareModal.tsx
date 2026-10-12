@@ -171,7 +171,7 @@ export const CompareModal: React.FC = () => {
         verdictDescription = `Engineered with high-efficiency ${winner.fuel} powertrain, ensuring reduced fuel expenses and modern emissions.`;
       } else if (activeTag === 'trust') {
         verdictTitle = `Top Reliability & Trust: ${winner.title}`;
-        verdictDescription = `Listed by verified seller ${winner.sellerName} (rated ${winner.sellerRating} of 5) with ${winner.condition} certification.`;
+        verdictDescription = `Listed by verified agent ${winner.sellerName} (rated ${winner.sellerRating} of 5) with ${winner.condition} certification.`;
       } else {
         verdictTitle = `Best Overall Value: ${winner.title} (${scores[winner.id]}/100 Score)`;
         verdictDescription = `Combines the most favorable balance of purchase price, low mileage (${winner.mileage.toLocaleString()} km), ${winner.year} model year, and ${winner.condition} condition.`;
@@ -657,7 +657,7 @@ export const CompareModal: React.FC = () => {
                   {/* Seller Trust & Rating */}
                   <tr className="divide-x divide-[#C9D1D6]">
                     <td className="p-3.5 font-bold text-[#5A646A] text-[11px] tabular-nums uppercase bg-[#F7F8F8]">
-                      Seller Rating
+                      Agent Rating
                     </td>
                     {comparedVehicles.map((v) => (
                       <td key={v.id} className="p-3.5 font-medium text-[#141517]">

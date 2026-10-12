@@ -94,6 +94,7 @@ export interface VehicleApplication {
   submittedAt: string;
   notes?: string;
   sellerNotes?: string;
+  documents?: { label: string; fileName: string }[];
 }
 
 export interface ChatMessage {
