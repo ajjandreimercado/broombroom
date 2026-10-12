@@ -15,6 +15,7 @@ import {
   Guide,
   VehicleReport,
   AppNotification,
+  Commission,
 } from '../types.ts';
 import {
   INITIAL_VEHICLES,
@@ -24,6 +25,8 @@ import {
   INITIAL_CONVERSATIONS,
   INITIAL_NOTIFICATIONS,
   INITIAL_REPORTS,
+  INITIAL_COMMISSIONS,
+  COMMISSION_RATE,
   generateVehicleSvg,
 } from '../data/mockData.ts';
 
@@ -57,16 +60,16 @@ export type SellerTab =
   | 'dashboard'
   | 'sales_report'
   | 'vehicles'
-  | 'add_vehicle'
-  | 'applications'
   | 'messages'
-  | 'profile_settings';
+  | 'commissions';
 
 export type AdminTab =
   | 'dashboard'
   | 'vehicles'
+  | 'add_vehicle'
   | 'sellers'
   | 'applications'
+  | 'commissions'
   | 'reports'
   | 'categories';
 
@@ -130,6 +133,8 @@ interface AppContextType {
   activeConversationId: string | null;
   setActiveConversationId: (id: string | null) => void;
   reports: VehicleReport[];
+  commissions: Commission[];
+  payCommission: (id: string, proofFileName: string) => void;
   notifications: AppNotification[];
 
   // User & Auth
@@ -295,6 +300,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const saved = localStorage.getItem('gb_reports');
     return saved ? JSON.parse(saved) : INITIAL_REPORTS;
   });
+
+  const [commissions, setCommissions] = useState<Commission[]>(() => {
+    try {
+      const saved = localStorage.getItem('gb_commissions');
+      return saved ? JSON.parse(saved) : INITIAL_COMMISSIONS;
+    } catch {
+      return INITIAL_COMMISSIONS;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gb_commissions', JSON.stringify(commissions));
+    } catch {}
+  }, [commissions]);
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const saved = localStorage.getItem('gb_notifications');
@@ -675,6 +695,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       })
     );
     showToast('Application Updated', `Status changed to ${status.replace('_', ' ').toUpperCase()}`);
+
+    // A completed sale earns the agent a commission, once per application.
+    const app = applications.find((a) => a.id === id);
+    if (status === 'completed' && app && !commissions.some((c) => c.applicationRef === app.referenceNo)) {
+      setCommissions((prev) => [
+        {
+          id: `com-${Date.now()}`,
+          applicationRef: app.referenceNo,
+          vehicleTitle: app.vehicleTitle,
+          clientName: app.applicantName,
+          salePrice: app.vehiclePrice,
+          rate: COMMISSION_RATE,
+          amount: Math.round(app.vehiclePrice * COMMISSION_RATE),
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+    }
+  };
+
+  const payCommission = (id: string, proofFileName: string) => {
+    setCommissions((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, status: 'paid', proofFileName, paidAt: new Date().toISOString() } : c))
+    );
+    showToast('Commission Paid', 'Proof of payment is now visible to the agent.');
   };
 
   const withdrawApplication = (id: string) => {
@@ -961,6 +1007,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         adminUnpublishVehicle,
         adminDeleteVehicle,
         adminResolveReport,
+        commissions,
+        payCommission,
       }}
     >
       {children}

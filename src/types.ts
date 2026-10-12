@@ -182,3 +182,18 @@ export interface AppNotification {
   read: boolean;
   createdAt: string;
 }
+
+// An agent's commission on a closed sale; admin pays it and attaches the proof of payment.
+export interface Commission {
+  id: string;
+  applicationRef: string;
+  vehicleTitle: string;
+  clientName: string;
+  salePrice: number;
+  rate: number;
+  amount: number;
+  status: 'pending' | 'paid';
+  proofFileName?: string;
+  paidAt?: string;
+  createdAt: string;
+}

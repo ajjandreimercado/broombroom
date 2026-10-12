@@ -1,4 +1,4 @@
-import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification } from '../types.ts';
+import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission } from '../types.ts';
 
 // Minimalist, high-end studio automotive SVG generator
 export const generateVehicleSvg = (
@@ -951,5 +951,35 @@ export const INITIAL_REPORTS: VehicleReport[] = [
     details: 'Verify if the odometer reading reflects current PMS records.',
     status: 'pending',
     createdAt: '2026-09-27T10:00:00Z',
+  },
+];
+
+// Demo commission rate and records (no real payouts exist).
+export const COMMISSION_RATE = 0.03;
+
+export const INITIAL_COMMISSIONS: Commission[] = [
+  {
+    id: 'com-001',
+    applicationRef: 'GB-2026-6120',
+    vehicleTitle: '2024 Toyota Hilux GR Sport 4x4 Double Cab',
+    clientName: 'Marites Dela Cruz',
+    salePrice: 2185000,
+    rate: COMMISSION_RATE,
+    amount: Math.round(2185000 * COMMISSION_RATE),
+    status: 'paid',
+    proofFileName: 'bdo-transfer-receipt-0923.pdf',
+    paidAt: '2026-09-25T10:15:00.000Z',
+    createdAt: '2026-09-18T08:00:00.000Z',
+  },
+  {
+    id: 'com-002',
+    applicationRef: 'GB-2026-6874',
+    vehicleTitle: '2025 Yamaha TMAX 560 Tech MAX',
+    clientName: 'Paolo Reyes',
+    salePrice: 825000,
+    rate: COMMISSION_RATE,
+    amount: Math.round(825000 * COMMISSION_RATE),
+    status: 'pending',
+    createdAt: '2026-10-03T09:30:00.000Z',
   },
 ];

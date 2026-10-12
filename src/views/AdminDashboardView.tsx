@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
+import { AddVehicleForm } from '../components/AddVehicleForm.tsx';
+import { ApplicationsManager } from '../components/ApplicationsManager.tsx';
+import { Commissions } from '../components/Commissions.tsx';
 import { motion } from 'motion/react';
 import { indicatorTransition } from '../motion.ts';
 import { AdminTab } from '../context/AppContext.tsx';
@@ -19,6 +22,8 @@ import {
   Flag,
   ArrowRight,
   TrendingUp,
+  PlusCircle,
+  Wallet,
 } from 'lucide-react';
 
 export const AdminDashboardView: React.FC = () => {
@@ -28,6 +33,7 @@ export const AdminDashboardView: React.FC = () => {
     vehicles,
     reports,
     applications,
+    commissions,
     adminApproveVehicle,
     adminUnpublishVehicle,
     adminDeleteVehicle,
@@ -38,8 +44,10 @@ export const AdminDashboardView: React.FC = () => {
   const adminTabs: { id: AdminTab; label: string; icon: any; count?: number }[] = [
     { id: 'dashboard', label: 'Platform Pulse', icon: Layers },
     { id: 'vehicles', label: 'Vehicle Moderation', icon: Car, count: vehicles.length },
+    { id: 'add_vehicle', label: 'Add Vehicle', icon: PlusCircle },
     { id: 'reports', label: 'Safety Reports', icon: Flag, count: reports.filter((r) => r.status === 'pending').length },
-    { id: 'applications', label: 'All Applications', icon: FileText, count: applications.length },
+    { id: 'applications', label: 'Applications', icon: FileText, count: applications.length },
+    { id: 'commissions', label: 'Agent Commissions', icon: Wallet, count: commissions.filter((c) => c.status === 'pending').length },
     { id: 'sellers', label: 'Agent Verification', icon: Users },
     { id: 'categories', label: 'Vehicle Taxonomy', icon: Layers },
   ];
@@ -316,35 +324,12 @@ export const AdminDashboardView: React.FC = () => {
               </div>
             )}
 
-            {/* 4. APPLICATIONS OVERVIEW */}
-            {adminTab === 'applications' && (
-              <div className="border-t-2 border-[#141517] pt-6 space-y-5">
-                <div className="pb-3 border-b border-[#DDE3E6]">
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">
-                    Global Vehicle Applications <span className="text-[#6B767D] font-normal">({applications.length})</span>
-                  </h2>
-                </div>
-                <div className="space-y-3.5">
-                  {applications.map((app) => (
-                    <div
-                      key={app.id}
-                      className="p-5 border border-[#C9D1D6] rounded-[2px] flex items-center justify-between text-xs hover:bg-[#F7F8F8]/60 transition-colors"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="tabular-nums font-bold text-[#6B767D]">{app.referenceNo}</span>
-                          <span className="font-bold text-[#141517]">{app.applicantName}</span>
-                        </div>
-                        <p className="text-[#4E585E] mt-1">
-                          {app.vehicleTitle} · Agent: {app.sellerName}
-                        </p>
-                      </div>
-                      <StatusMark status={app.status} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* 4. APPLICATIONS (status handling moved here from the agent portal) */}
+            {adminTab === 'applications' && <ApplicationsManager />}
+
+            {adminTab === 'add_vehicle' && <AddVehicleForm />}
+
+            {adminTab === 'commissions' && <Commissions mode="admin" />}
 
             {/* 5. SELLERS */}
             {adminTab === 'sellers' && (

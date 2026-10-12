@@ -5,26 +5,17 @@ import { motion } from 'motion/react';
 import { indicatorTransition } from '../motion.ts';
 import { portalUrl } from '../portals.ts';
 import { SellerTab } from '../context/AppContext.tsx';
-import { Vehicle, VehicleCategory, VehicleCondition, TransmissionType, FuelType, VehicleStatus, ApplicationStatus } from '../types.ts';
 import { SellerSalesReport } from '../components/SellerSalesReport.tsx';
+import { Commissions } from '../components/Commissions.tsx';
 import {
   LayoutDashboard,
   BarChart3,
   Car,
-  PlusCircle,
-  FileCheck2,
   MessageSquare,
-  Store,
-  TrendingUp,
+  Wallet,
   Eye,
-  CheckCircle,
-  Clock,
-  Trash2,
-  Edit,
   ArrowUpRight,
-  ShieldCheck,
   Send,
-  X,
 } from 'lucide-react';
 
 export const SellerDashboardView: React.FC = () => {
@@ -33,100 +24,22 @@ export const SellerDashboardView: React.FC = () => {
     sellerTab,
     navigateTo,
     vehicles,
-    applications,
-    updateApplicationStatus,
+    commissions,
     conversations,
     activeConversationId,
     setActiveConversationId,
     sendMessage,
-    createVehicleListing,
-    updateVehicleListing,
-    deleteVehicleListing,
-    showToast,
   } = useApp();
 
-  // Seller listings and applications
+  // Agents see every listing (read-only) and their own commissions
   const sellerVehicles = vehicles;
-  const sellerApplications = applications;
-
-  // Add Vehicle Form state
-  const [title, setTitle] = useState('');
-  const [brand, setBrand] = useState('Honda');
-  const [model, setModel] = useState('');
-  const [year, setYear] = useState(2025);
-  const [category, setCategory] = useState<Exclude<VehicleCategory, 'all'>>('cars');
-  const [price, setPrice] = useState<number>(1200000);
-  const [mileage, setMileage] = useState<number>(5000);
-  const [condition, setCondition] = useState<VehicleCondition>('New');
-  const [transmission, setTransmission] = useState<TransmissionType>('Automatic');
-  const [fuel, setFuel] = useState<FuelType>('Gasoline');
-  const [bodyType, setBodyType] = useState('Sedan');
-  const [color, setColor] = useState('Obsidian Black');
-  const [location, setLocation] = useState('Bonifacio Global City, Taguig');
-  const [description, setDescription] = useState('');
-  const [financingAvailable, setFinancingAvailable] = useState(true);
-
-  // Status edit modal / popover
-  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
-  const [editPriceVal, setEditPriceVal] = useState<number>(0);
-  const [editStatusVal, setEditStatusVal] = useState<VehicleStatus>('available');
-
-  // Application response note modal
-  const [respondingAppId, setRespondingAppId] = useState<string | null>(null);
-  const [newStatus, setNewStatus] = useState<ApplicationStatus>('under_review');
-  const [sellerNoteInput, setSellerNoteInput] = useState('');
+  const pendingCommissions = commissions.filter((c) => c.status === 'pending');
+  const paidTotal = commissions.filter((c) => c.status === 'paid').reduce((sum, c) => sum + c.amount, 0);
+  const pendingTotal = pendingCommissions.reduce((sum, c) => sum + c.amount, 0);
 
   // Seller Chat
   const [sellerChatText, setSellerChatText] = useState('');
   const selectedConv = conversations.find((c) => c.id === activeConversationId) || conversations[0];
-
-  const handleCreateVehicle = (e: React.FormEvent, isDraft = false) => {
-    e.preventDefault();
-    if (!title.trim() || !brand.trim()) {
-      showToast('Validation Error', 'Vehicle title and brand are required.', 'error');
-      return;
-    }
-
-    createVehicleListing({
-      title: title.trim(),
-      brand: brand.trim(),
-      model: model.trim() || title.trim(),
-      year: Number(year),
-      category,
-      price: Number(price),
-      mileage: Number(mileage),
-      condition,
-      transmission,
-      fuel,
-      bodyType,
-      color,
-      location,
-      description: description.trim() || 'Comprehensive service records, pristine condition, ready for LTO transfer.',
-      financingAvailable,
-      status: isDraft ? 'unpublished' : 'available',
-    });
-
-    // Reset and route to vehicles list
-    setTitle('');
-    setModel('');
-    setDescription('');
-    navigateTo('seller', { sellerTab: 'vehicles' });
-  };
-
-  const handleSaveVehicleEdit = (vehicleId: string) => {
-    updateVehicleListing(vehicleId, {
-      price: editPriceVal,
-      status: editStatusVal,
-    });
-    setEditingVehicleId(null);
-  };
-
-  const handleUpdateApplication = () => {
-    if (!respondingAppId) return;
-    updateApplicationStatus(respondingAppId, newStatus, sellerNoteInput.trim());
-    setRespondingAppId(null);
-    setSellerNoteInput('');
-  };
 
   const handleSendSellerReply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,11 +51,9 @@ export const SellerDashboardView: React.FC = () => {
   const sellerTabs: { id: SellerTab; label: string; icon: any; count?: number }[] = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'sales_report', label: 'Sales Report', icon: BarChart3 },
-    { id: 'vehicles', label: 'My Vehicles', icon: Car, count: sellerVehicles.length },
-    { id: 'add_vehicle', label: 'Add Vehicle', icon: PlusCircle },
-    { id: 'applications', label: 'Applications', icon: FileCheck2, count: sellerApplications.length },
-    { id: 'messages', label: 'Inquiries', icon: MessageSquare, count: conversations.length },
-    { id: 'profile_settings', label: 'Dealership Store', icon: Store },
+    { id: 'messages', label: 'Client Chats', icon: MessageSquare, count: conversations.length },
+    { id: 'commissions', label: 'Commissions', icon: Wallet, count: pendingCommissions.length },
+    { id: 'vehicles', label: 'Listings', icon: Car, count: sellerVehicles.length },
   ];
 
   return (
@@ -151,25 +62,15 @@ export const SellerDashboardView: React.FC = () => {
       <div className="bg-[#F7F8F8] text-[#141517] pt-10 pb-8 border-b-2 border-[#141517]">
         <div className="gb-container flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div className="flex items-center gap-3.5 sm:gap-4">
-            <div className="w-12 h-12 border-2 border-[#141517] text-[#141517] flex items-center justify-center font-bold shrink-0">
-              <Store className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-full bg-[#141517] text-white grid place-items-center font-semibold text-[18px] shrink-0">
+              {(currentUser?.name || 'A').charAt(0).toUpperCase()}
             </div>
             <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="font-display text-[clamp(1.6rem,3vw,2.4rem)] leading-none text-[#141517]">
-                  Groom Broom Certified Motors
-                </h1>
-                <span className="text-[#141517] text-[11px] font-semibold px-2 py-1 border border-[#8C989F] uppercase tracking-[0.06em] flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Verified dealership
-                </span>
-              </div>
-              <p className="text-[13px] text-[#4E585E] mt-2 flex items-center gap-1.5 flex-wrap">
-                <span className="text-[#141517] font-semibold">Flagship merchant</span>
-                <span className="text-[#4E585E]">·</span>
-                <span>Bonifacio Global City, Taguig City, Philippines</span>
-                <span className="text-[#4E585E]">·</span>
-                <span className="text-[#6B767D]">Merchant Hub ID: GB-DEALER-01</span>
+              <h1 className="font-display text-[clamp(1.6rem,3vw,2.4rem)] leading-none text-[#141517]">
+                {currentUser?.name || 'Agent'}
+              </h1>
+              <p className="text-[13px] text-[#4E585E] mt-2">
+                Sales agent · Help clients choose and buy, then track your commissions.
               </p>
             </div>
           </div>
@@ -187,11 +88,11 @@ export const SellerDashboardView: React.FC = () => {
               <span>Sales Report</span>
             </button>
             <button
-              onClick={() => navigateTo('seller', { sellerTab: 'add_vehicle' })}
+              onClick={() => navigateTo('seller', { sellerTab: 'messages' })}
               className="px-4 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[13px] flex items-center gap-2 cursor-pointer"
             >
-              <PlusCircle className="w-4 h-4" />
-              <span>Post Vehicle</span>
+              <MessageSquare className="w-4 h-4" />
+              <span>Client chats</span>
             </button>
           </div>
         </div>
@@ -252,7 +153,7 @@ export const SellerDashboardView: React.FC = () => {
                   <dl className="grid grid-cols-2 md:grid-cols-4 border-b border-[#C9D1D6]">
                     {[
                       { label: 'Live listings', value: sellerVehicles.filter((v) => v.status === 'available').length.toLocaleString(), note: 'On the marketplace' },
-                      { label: 'Open applications', value: sellerApplications.length.toLocaleString(), note: 'Awaiting your review' },
+                      { label: 'Commission earned', value: `₱${paidTotal.toLocaleString()}`, note: `₱${pendingTotal.toLocaleString()} awaiting payout` },
                       { label: 'Client chats', value: conversations.length.toLocaleString(), note: 'Active conversations' },
                       { label: 'Listing views', value: '12,480', note: 'This month' },
                     ].map((m, i) => (
@@ -305,59 +206,7 @@ export const SellerDashboardView: React.FC = () => {
                   </table>
                 </section>
 
-                {/* Recent Applications Quick Table */}
-                <div className="border-t-2 border-[#141517] pt-6 space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-[#DDE3E6]">
-                    <h2 className="font-display text-[22px] leading-tight text-[#141517]">
-                      Recent Client Purchase Inquiries
-                    </h2>
-                    <button
-                      onClick={() => navigateTo('seller', { sellerTab: 'applications' })}
-                      className="text-[13px] font-semibold text-[#141517] underline decoration-[#8C989F] hover:decoration-[#141517] underline-offset-4 cursor-pointer"
-                    >
-                      View All
-                    </button>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs min-w-[680px]">
-                      <thead>
-                        <tr className="border-b border-[#DDE3E6] text-[#6B767D] uppercase tabular-nums tracking-wider text-[10px]">
-                          <th className="pb-2.5 font-bold">Reference</th>
-                          <th className="pb-2.5 font-bold">Applicant</th>
-                          <th className="pb-2.5 font-bold">Vehicle</th>
-                          <th className="pb-2.5 font-bold">Method</th>
-                          <th className="pb-2.5 font-bold">Status</th>
-                          <th className="pb-2.5 font-bold text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#DDE3E6]">
-                        {sellerApplications.slice(0, 4).map((app) => (
-                          <tr key={app.id} className="hover:bg-[#F7F8F8] transition-colors">
-                            <td className="py-3 tabular-nums font-bold text-[#141517]">{app.referenceNo}</td>
-                            <td className="py-3 font-medium text-[#202426]">{app.applicantName}</td>
-                            <td className="py-3 font-medium text-[#202426]">{app.vehicleTitle}</td>
-                            <td className="py-3 capitalize text-[#4E585E]">{app.purchaseMethod}</td>
-                            <td className="py-3">
-                              <StatusMark status={app.status} />
-                            </td>
-                            <td className="py-3 text-right">
-                              <button
-                                onClick={() => {
-                                  setRespondingAppId(app.id);
-                                  setNewStatus(app.status);
-                                }}
-                                className="px-3 py-1 bg-[#EEF1F2] hover:bg-[#1D5FD1] hover:text-white rounded-[2px] text-xs font-semibold transition-colors cursor-pointer"
-                              >
-                                Update
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                <Commissions mode="agent" compact />
               </div>
             )}
 
@@ -369,15 +218,9 @@ export const SellerDashboardView: React.FC = () => {
               <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#C9D1D6]">
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">
-                    Vehicle Inventory Management <span className="text-[#6B767D] font-normal">({sellerVehicles.length})</span>
+                    Listings <span className="text-[#6B767D] font-normal">({sellerVehicles.length})</span>
                   </h2>
-                  <button
-                    onClick={() => navigateTo('seller', { sellerTab: 'add_vehicle' })}
-                    className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] flex items-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                    <span>Add Vehicle</span>
-                  </button>
+                  <p className="text-[13px] text-[#4E585E]">Inventory is managed by the admin team.</p>
                 </div>
 
                 <div className="space-y-3.5">
@@ -411,18 +254,6 @@ export const SellerDashboardView: React.FC = () => {
 
                       <div className="flex items-center gap-2 self-end sm:self-center">
                         <button
-                          onClick={() => {
-                            setEditingVehicleId(vehicle.id);
-                            setEditPriceVal(vehicle.price);
-                            setEditStatusVal(vehicle.status);
-                          }}
-                          className="px-3 py-1.5 border border-[#C9D1D6] hover:bg-[#F7F8F8] text-[#2A2E31] text-xs font-semibold rounded-[2px] flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          <span>Edit</span>
-                        </button>
-
-                        <button
                           onClick={() => window.open(portalUrl('buyer', `?vehicle=${vehicle.id}`), '_blank', 'noopener')}
                           className="px-3 py-1.5 bg-[#EEF1F2] hover:bg-gray-200 text-[#141517] text-xs font-semibold rounded-[2px] flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
@@ -430,271 +261,6 @@ export const SellerDashboardView: React.FC = () => {
                           <span>View</span>
                         </button>
 
-                        <button
-                          onClick={() => deleteVehicleListing(vehicle.id)}
-                          className="p-2 text-[#6B767D] hover:text-[#B42318] hover:bg-white rounded-[2px] transition-colors cursor-pointer"
-                          title="Delete Listing"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 4. ADD VEHICLE FORM */}
-            {sellerTab === 'add_vehicle' && (
-              <div className="border-t-2 border-[#141517] pt-6 space-y-6">
-                <div>
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Post a Vehicle for Sale</h2>
-                  <p className="text-xs text-[#4E585E] mt-1">
-                    Your listing will be indexed across the Groom Broom automotive inventory.
-                  </p>
-                </div>
-
-                <form onSubmit={(e) => handleCreateVehicle(e, false)} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="gb-label block mb-2">
-                        Vehicle Headline Title *
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 2025 Honda Civic RS Turbo"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="gb-label block mb-2">
-                        Category *
-                      </label>
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value as any)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
-                      >
-                        <option value="cars">Cars & Sedans</option>
-                        <option value="motorcycles">Motorcycles & Superbikes</option>
-                        <option value="trucks">Trucks & Pickups</option>
-                        <option value="ebikes">Smart E-Bikes</option>
-                        <option value="scooters">Scooters & Maxi-Scooters</option>
-                        <option value="atvs">ATVs & Buggies</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="gb-label block mb-2">Brand *</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Honda, Porsche, Toyota"
-                        value={brand}
-                        onChange={(e) => setBrand(e.target.value)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="gb-label block mb-2">Model *</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Civic RS, 911 Carrera"
-                        value={model}
-                        onChange={(e) => setModel(e.target.value)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="gb-label block mb-2">Year *</label>
-                      <input
-                        type="number"
-                        value={year}
-                        onChange={(e) => setYear(Number(e.target.value))}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="gb-label block mb-2">Price (₱) *</label>
-                      <input
-                        type="number"
-                        value={price}
-                        onChange={(e) => setPrice(Number(e.target.value))}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="gb-label block mb-2">Mileage (km)</label>
-                      <input
-                        type="number"
-                        value={mileage}
-                        onChange={(e) => setMileage(Number(e.target.value))}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="gb-label block mb-2">Condition</label>
-                      <select
-                        value={condition}
-                        onChange={(e) => setCondition(e.target.value as any)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
-                      >
-                        <option value="New">New</option>
-                        <option value="Certified Pre-Owned">Certified Pre-Owned</option>
-                        <option value="Used">Used</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="gb-label block mb-2">Transmission</label>
-                      <select
-                        value={transmission}
-                        onChange={(e) => setTransmission(e.target.value as any)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
-                      >
-                        <option value="Automatic">Automatic</option>
-                        <option value="Manual">Manual</option>
-                        <option value="CVT">CVT</option>
-                        <option value="Dual-Clutch">Dual-Clutch</option>
-                        <option value="Direct Drive">Direct Drive (Electric)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="gb-label block mb-2">Fuel Type</label>
-                      <select
-                        value={fuel}
-                        onChange={(e) => setFuel(e.target.value as any)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
-                      >
-                        <option value="Gasoline">Gasoline</option>
-                        <option value="Diesel">Diesel</option>
-                        <option value="Hybrid">Hybrid</option>
-                        <option value="Electric">Electric</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="gb-label block mb-2">Location</label>
-                      <input
-                        type="text"
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="gb-label block mb-2">
-                      Full Description & Vehicle Condition Notes
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Detail maintenance records, tire health, registered OR/CR status..."
-                      className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2">
-                    <input
-                      type="checkbox"
-                      id="sellerFinancing"
-                      checked={financingAvailable}
-                      onChange={(e) => setFinancingAvailable(e.target.checked)}
-                      className="w-4 h-4 accent-[#1D5FD1]"
-                    />
-                    <label htmlFor="sellerFinancing" className="text-xs font-semibold text-[#2A2E31] cursor-pointer">
-                      Offer low-downpayment partner financing on this vehicle
-                    </label>
-                  </div>
-
-                  <div className="flex gap-3 pt-3">
-                    <button
-                      type="button"
-                      onClick={(e) => handleCreateVehicle(e, true)}
-                      className="py-3 px-5 border border-[#C9D1D6] hover:bg-[#F7F8F8] text-[#2A2E31] font-semibold text-xs rounded-[2px] cursor-pointer transition-colors"
-                    >
-                      Save as Draft
-                    </button>
-                    <button
-                      type="submit"
-                      className="py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] transition-colors cursor-pointer"
-                    >
-                      Publish Listing Now
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {/* 5. APPLICATIONS TAB */}
-            {sellerTab === 'applications' && (
-              <div className="space-y-6">
-                <div className="pb-3 border-b border-[#C9D1D6]">
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">
-                    Client Applications <span className="text-[#6B767D] font-normal">({sellerApplications.length})</span>
-                  </h2>
-                </div>
-                <div className="space-y-4">
-                  {sellerApplications.map((app) => (
-                    <div
-                      key={app.id}
-                      className="border-t-2 border-[#141517] pt-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="tabular-nums text-xs font-bold text-[#6B767D]">
-                            {app.referenceNo}
-                          </span>
-                          <StatusMark status={app.status} />
-                        </div>
-                        <h3 className="font-bold text-[#141517] text-sm">
-                          {app.applicantName} · <span className="text-[#4E585E] font-normal tabular-nums">{app.applicantPhone}</span>
-                        </h3>
-                        <p className="text-xs text-[#4E585E]">
-                          Applied for: <strong>{app.vehicleTitle}</strong> (₱{app.vehiclePrice.toLocaleString()})
-                        </p>
-                        <p className="text-[11px] text-[#6B767D] tabular-nums">
-                          Submitted {new Date(app.submittedAt).toLocaleDateString()} · Method: {app.purchaseMethod.toUpperCase()}
-                        </p>
-                        {app.notes && (
-                          <p className="text-xs bg-[#F7F8F8] border border-[#C9D1D6] p-3 rounded-[2px] text-[#2A2E31] mt-2">
-                            <strong>Client Note:</strong> "{app.notes}"
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 self-end md:self-center">
-                        <button
-                          onClick={() => {
-                            setRespondingAppId(app.id);
-                            setNewStatus(app.status);
-                            setSellerNoteInput(app.sellerNotes || '');
-                          }}
-                          className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] transition-colors cursor-pointer"
-                        >
-                          Update Status
-                        </button>
                       </div>
                     </div>
                   ))}
@@ -777,170 +343,12 @@ export const SellerDashboardView: React.FC = () => {
               </div>
             )}
 
-            {/* 7. PROFILE / STORE */}
-            {sellerTab === 'profile_settings' && (
-              <div className="border-t-2 border-[#141517] pt-6 space-y-6">
-                <div>
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Dealer Storefront Profile</h2>
-                  <p className="text-xs text-[#4E585E] mt-1">
-                    This verified profile is displayed to clients on your vehicle listings.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="gb-label block mb-2">Dealership Name</label>
-                    <input
-                      type="text"
-                      defaultValue="Groom Broom Certified Motors"
-                      className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="gb-label block mb-2">Showroom Address</label>
-                    <input
-                      type="text"
-                      defaultValue="Groom Broom Flagship Hub, 32nd St, Bonifacio Global City, Taguig City, Metro Manila"
-                      className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="gb-label block mb-2">Dealership Bio</label>
-                    <textarea
-                      rows={3}
-                      defaultValue="Official flagship certified automotive merchant of Groom Broom. Complete LTO documentation, verified 160-point multi-point inspection warranty, guaranteed clean titles, and seamless vehicle financing."
-                      className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] font-medium"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => showToast('Store Profile Saved', 'Public dealership details refreshed.')}
-                    className="py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] cursor-pointer transition-colors"
-                  >
-                    Save Storefront Details
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* 5. COMMISSIONS */}
+            {sellerTab === 'commissions' && <Commissions mode="agent" />}
           </main>
         </div>
       </div>
 
-      {/* Edit Vehicle Modal */}
-      {editingVehicleId && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#141517]/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white p-6 space-y-4 border border-[#141517] animate-modal-in">
-            <div className="flex items-center justify-between pb-2 border-b border-[#DDE3E6]">
-              <h3 className="font-display text-[18px] leading-tight text-[#141517]">Quick Edit Vehicle</h3>
-              <button
-                onClick={() => setEditingVehicleId(null)}
-                className="p-1 rounded-[2px] text-[#6B767D] hover:text-[#2A2E31] cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div>
-              <label className="gb-label block mb-2">Selling Price (₱)</label>
-              <input
-                type="number"
-                value={editPriceVal}
-                onChange={(e) => setEditPriceVal(Number(e.target.value))}
-                className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-              />
-            </div>
-
-            <div>
-              <label className="gb-label block mb-2">Listing Status</label>
-              <select
-                value={editStatusVal}
-                onChange={(e) => setEditStatusVal(e.target.value as VehicleStatus)}
-                className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
-              >
-                <option value="available">Available (Public)</option>
-                <option value="reserved">Reserved (Under Contract)</option>
-                <option value="sold">Sold</option>
-                <option value="unpublished">Unpublished (Hidden)</option>
-              </select>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-[#DDE3E6]">
-              <button
-                onClick={() => setEditingVehicleId(null)}
-                className="px-4 py-2 border border-[#C9D1D6] hover:bg-[#F7F8F8] rounded-[2px] text-xs font-semibold cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleSaveVehicleEdit(editingVehicleId)}
-                className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white rounded-[2px] text-xs font-bold cursor-pointer transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Update Application Modal */}
-      {respondingAppId && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#141517]/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white p-6 space-y-4 border border-[#141517] animate-modal-in">
-            <div className="flex items-center justify-between pb-2 border-b border-[#DDE3E6]">
-              <h3 className="font-display text-[18px] leading-tight text-[#141517]">Update Application Progress</h3>
-              <button
-                onClick={() => setRespondingAppId(null)}
-                className="p-1 rounded-[2px] text-[#6B767D] hover:text-[#2A2E31] cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div>
-              <label className="gb-label block mb-2">Status</label>
-              <select
-                value={newStatus}
-                onChange={(e) => setNewStatus(e.target.value as ApplicationStatus)}
-                className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
-              >
-                <option value="under_review">Under Review</option>
-                <option value="contacted">Contacted Client</option>
-                <option value="approved">Approved for Viewing/Sale</option>
-                <option value="declined">Declined</option>
-                <option value="completed">Completed Transaction</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="gb-label block mb-2">
-                Agent Response Message / Schedule Details
-              </label>
-              <textarea
-                rows={3}
-                value={sellerNoteInput}
-                onChange={(e) => setSellerNoteInput(e.target.value)}
-                placeholder="e.g. Scheduled viewing for Saturday at 2 PM. Please bring 2 valid IDs."
-                className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-[#DDE3E6]">
-              <button
-                onClick={() => setRespondingAppId(null)}
-                className="px-4 py-2 border border-[#C9D1D6] hover:bg-[#F7F8F8] rounded-[2px] text-xs font-semibold cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateApplication}
-                className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white rounded-[2px] text-xs font-bold cursor-pointer transition-colors"
-              >
-                Update Status
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
