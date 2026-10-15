@@ -4,6 +4,7 @@ import { Stamp } from '../components/Stamp.tsx';
 import { portalUrl } from '../portals.ts';
 import { AnimatePresence, motion } from 'motion/react';
 import { EASE_OUT } from '../motion.ts';
+import { StoredVideo } from '../components/StoredVideo.tsx';
 import {
   Bookmark,
   MessageSquare,
@@ -24,6 +25,7 @@ import {
   Palette,
   Car,
   ArrowLeftRight,
+  Play,
 } from 'lucide-react';
 
 export const VehicleDetailView: React.FC = () => {
@@ -72,6 +74,9 @@ export const VehicleDetailView: React.FC = () => {
     );
   }
 
+  // Photos first, then any uploaded videos, in one gallery.
+  const media = [...vehicle.images.map((src) => ({ kind: 'photo' as const, src })), ...(vehicle.videos ?? []).map((src) => ({ kind: 'video' as const, src }))];
+  const current = media[activeImageIndex] ?? media[0];
   const saved = isVehicleSaved(vehicle.id);
 
   // Financial calculations
@@ -199,9 +204,21 @@ export const VehicleDetailView: React.FC = () => {
             <div>
               <div className="relative aspect-[16/10] overflow-hidden bg-[#EEF1F2] group">
                 <AnimatePresence initial={false}>
+                  {current.kind === 'video' ? (
+                    <motion.div
+                      key={activeImageIndex}
+                      initial={{ opacity: 0, zIndex: 1 }}
+                      animate={{ opacity: 1, zIndex: 1 }}
+                      exit={{ opacity: 0, zIndex: 0, transition: { opacity: { delay: 0.25, duration: 0 } } }}
+                      transition={{ duration: 0.25, ease: EASE_OUT }}
+                      className="absolute inset-0"
+                    >
+                      <StoredVideo id={current.src} controls className="w-full h-full object-contain" label={`${vehicle.title} video`} />
+                    </motion.div>
+                  ) : (
                   <motion.img
                     key={activeImageIndex}
-                    src={vehicle.images[activeImageIndex] || vehicle.images[0]}
+                    src={current.src}
                     alt={vehicle.title}
                     initial={{ opacity: 0, zIndex: 1 }}
                     animate={{ opacity: 1, zIndex: 1 }}
@@ -210,25 +227,26 @@ export const VehicleDetailView: React.FC = () => {
                     style={{ viewTransitionName: 'listing-photo' }}
                     className="absolute inset-0 w-full h-full object-cover"
                   />
+                  )}
                 </AnimatePresence>
                 <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
                   <Stamp label="Saved" show={saved} className="bg-white/85" />
                   <Stamp label="Compare" show={inCompare} className="bg-white/85" />
                 </div>
-                {vehicle.images.length > 1 && (
-                  <div className="absolute bottom-0 right-0 z-10 flex bg-white border-l border-t border-[#141517]">
+                {media.length > 1 && (
+                  <div className={`absolute z-10 flex bg-white border-[#141517] ${current.kind === 'video' ? 'top-0 left-0 border-r border-b' : 'bottom-0 right-0 border-l border-t'}`}>
                     <button
-                      onClick={() => setActiveImageIndex((prev) => (prev === 0 ? vehicle.images.length - 1 : prev - 1))}
+                      onClick={() => setActiveImageIndex((prev) => (prev === 0 ? media.length - 1 : prev - 1))}
                       className="p-3 text-[#141517] hover:bg-[#EEF1F2] cursor-pointer"
                       aria-label="Previous image"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
                     <span className="px-3 grid place-items-center text-[13px] tabular-nums text-[#141517] border-x border-[#C9D1D6]">
-                      {activeImageIndex + 1} / {vehicle.images.length}
+                      {activeImageIndex + 1} / {media.length}
                     </span>
                     <button
-                      onClick={() => setActiveImageIndex((prev) => (prev === vehicle.images.length - 1 ? 0 : prev + 1))}
+                      onClick={() => setActiveImageIndex((prev) => (prev === media.length - 1 ? 0 : prev + 1))}
                       className="p-3 text-[#141517] hover:bg-[#EEF1F2] cursor-pointer"
                       aria-label="Next image"
                     >
@@ -237,19 +255,26 @@ export const VehicleDetailView: React.FC = () => {
                   </div>
                 )}
               </div>
-              {vehicle.images.length > 1 && (
+              {media.length > 1 && (
                 <div className="flex gap-2 mt-2 overflow-x-auto scrollbar-none">
-                  {vehicle.images.map((img, idx) => (
+                  {media.map((item, idx) => (
                     <button
                       key={idx}
                       onClick={() => setActiveImageIndex(idx)}
-                      aria-label={`Show image ${idx + 1}`}
+                      aria-label={item.kind === 'video' ? `Play video ${idx + 1 - vehicle.images.length}` : `Show image ${idx + 1}`}
                       aria-current={activeImageIndex === idx}
                       className={`relative flex-shrink-0 w-24 h-16 overflow-hidden cursor-pointer ${
                         activeImageIndex === idx ? 'outline outline-2 outline-[#141517] outline-offset-2' : 'opacity-60 hover:opacity-100'
                       }`}
                     >
-                      <img src={img} alt="" className="w-full h-full object-cover" />
+                      {item.kind === 'video' ? (
+                        <>
+                          <StoredVideo id={item.src} className="w-full h-full object-cover" />
+                          <span className="absolute inset-0 grid place-items-center bg-black/25 text-white" aria-hidden="true"><Play className="w-5 h-5 fill-current" /></span>
+                        </>
+                      ) : (
+                        <img src={item.src} alt="" className="w-full h-full object-cover" />
+                      )}
                     </button>
                   ))}
                 </div>

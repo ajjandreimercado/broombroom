@@ -37,6 +37,7 @@ export interface Vehicle {
   sellerVerified: boolean;
   description: string;
   images: string[];
+  videos?: string[]; // "idb:<id>" refs, see media.ts
   specs: {
     engine?: string;
     horsepower?: string;

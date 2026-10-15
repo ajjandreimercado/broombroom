@@ -1063,6 +1063,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         vehicleData.images && vehicleData.images.length > 0
           ? vehicleData.images
           : [generateVehicleSvg(category === 'cars' ? 'car' : category === 'motorcycles' ? 'bike' : 'car', '#111827', vehicleData.title || 'Vehicle')],
+      videos: vehicleData.videos,
       specs: vehicleData.specs || {
         engine: 'Standard Engine',
         horsepower: 'Standard HP',

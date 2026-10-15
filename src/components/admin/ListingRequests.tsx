@@ -11,7 +11,7 @@ const FIELD_LABEL: Partial<Record<keyof Vehicle, string>> = {
   condition: 'Condition', transmission: 'Transmission', fuel: 'Fuel', location: 'Location', description: 'Description',
 };
 const show = (k: keyof Vehicle, v: unknown) =>
-  v === undefined || v === '' ? '-' : k === 'price' ? peso(Number(v)) : k === 'mileage' ? `${Number(v).toLocaleString()} km` : String(v);
+  v === undefined || v === '' ? '-' : Array.isArray(v) ? `${v.length} attached` : k === 'price' ? peso(Number(v)) : k === 'mileage' ? `${Number(v).toLocaleString()} km` : String(v);
 
 // Admin: agents' requests to add, edit or remove a listing. Approving applies the change.
 export const ListingRequests: React.FC = () => {

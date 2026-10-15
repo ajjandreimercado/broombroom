@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { VehicleCategory, VehicleCondition, TransmissionType, FuelType, Vehicle } from '../types.ts';
 import { AGENTS } from '../data/mockData.ts';
+import { MAX_PHOTOS, MAX_VIDEOS, MAX_VIDEO_BYTES, photoDataUrl, saveMedia } from '../media.ts';
+import { StoredVideo } from './StoredVideo.tsx';
+import { ImagePlus, X } from 'lucide-react';
 
 
 // Admins post listings straight to the marketplace; agents use the same form to request one.
@@ -27,6 +30,41 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [financingAvailable, setFinancingAvailable] = useState(true);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [videos, setVideos] = useState<string[]>([]);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaError, setMediaError] = useState('');
+
+  // Photos are shrunk into the listing; videos go to browser storage (see media.ts).
+  const addMedia = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setMediaBusy(true);
+    const problems: string[] = [];
+    let nPhotos = photos.length;
+    let nVideos = videos.length;
+    for (const file of Array.from(files)) {
+      try {
+        if (file.type.startsWith('image/')) {
+          if (nPhotos >= MAX_PHOTOS) { problems.push(`Up to ${MAX_PHOTOS} photos. ${file.name} was skipped.`); continue; }
+          const url = await photoDataUrl(file);
+          nPhotos++;
+          setPhotos((p) => [...p, url]);
+        } else if (file.type.startsWith('video/')) {
+          if (nVideos >= MAX_VIDEOS) { problems.push(`Up to ${MAX_VIDEOS} videos. ${file.name} was skipped.`); continue; }
+          if (file.size > MAX_VIDEO_BYTES) { problems.push(`${file.name} is over 100 MB. Use a shorter or smaller video.`); continue; }
+          const ref = await saveMedia(file);
+          nVideos++;
+          setVideos((v) => [...v, ref]);
+        } else {
+          problems.push(`${file.name} is not a photo or video.`);
+        }
+      } catch {
+        problems.push(`${file.name} could not be read. Try another file.`);
+      }
+    }
+    setMediaError(problems.join(' '));
+    setMediaBusy(false);
+  };
 
 
   const handleCreateVehicle = (e: React.FormEvent, isDraft = false) => {
@@ -52,6 +90,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
       location: location.trim() || undefined,
       description: description.trim(),
       financingAvailable,
+      images: photos.length ? photos : undefined,
+      videos: videos.length ? videos : undefined,
       status: isDraft ? 'unpublished' : 'available',
     };
 
@@ -67,6 +107,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
     setModel('');
     setDescription('');
     setLocation('');
+    setPhotos([]);
+    setVideos([]);
     navigateTo('admin', { adminTab: 'vehicles' });
   };
 
@@ -242,6 +284,48 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     />
                   </div>
 
+                  <div>
+                    <span className="gb-label block mb-2">
+                      Photos and videos <span className="normal-case tracking-normal font-normal">(optional, first photo is the cover)</span>
+                    </span>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                      {photos.map((src, i) => (
+                        <div key={src.slice(-40) + i} className="relative aspect-[4/3] bg-[#EEF1F2]">
+                          <img src={src} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                          {i === 0 && <span className="absolute left-1 bottom-1 px-1.5 py-0.5 bg-white text-[10px] font-semibold uppercase tracking-[0.06em] text-[#141517]">Cover</span>}
+                          <button type="button" onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))} aria-label={`Remove photo ${i + 1}`} className="absolute top-1 right-1 p-1 bg-white/90 hover:bg-white text-[#141517] cursor-pointer">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      {videos.map((ref, i) => (
+                        <div key={ref} className="relative aspect-[4/3]">
+                          <StoredVideo id={ref} className="w-full h-full object-cover" label={`Video ${i + 1}`} />
+                          <span className="absolute left-1 bottom-1 px-1.5 py-0.5 bg-white text-[10px] font-semibold uppercase tracking-[0.06em] text-[#141517]">Video</span>
+                          <button type="button" onClick={() => setVideos((v) => v.filter((r) => r !== ref))} aria-label={`Remove video ${i + 1}`} className="absolute top-1 right-1 p-1 bg-white/90 hover:bg-white text-[#141517] cursor-pointer">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      {(photos.length < MAX_PHOTOS || videos.length < MAX_VIDEOS) && (
+                        <label className={`aspect-[4/3] flex flex-col items-center justify-center gap-1 border border-dashed border-[#8C989F] text-[12px] font-semibold text-[#141517] transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1] ${mediaBusy ? 'opacity-60' : 'hover:bg-[#EEF1F2] cursor-pointer'}`}>
+                          <ImagePlus className="w-5 h-5" aria-hidden="true" />
+                          {mediaBusy ? 'Adding…' : 'Add files'}
+                          <input
+                            type="file"
+                            accept="image/*,video/*"
+                            multiple
+                            disabled={mediaBusy}
+                            className="sr-only"
+                            onChange={(e) => { addMedia(e.target.files); e.target.value = ''; }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-[12px] text-[#4E585E]">Up to {MAX_PHOTOS} photos and {MAX_VIDEOS} videos (MP4, MOV or WebM, 100 MB each). Without photos the listing uses a drawn placeholder.</p>
+                    {mediaError && <p role="alert" className="mt-1 text-[12px] text-[#B42318]">{mediaError}</p>}
+                  </div>
+
                   {isRequest ? (
                     <div>
                       <label className="gb-label block mb-2">Note to the admin team</label>
@@ -292,7 +376,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     )}
                     <button
                       type="submit"
-                      className="py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[13px] transition-colors cursor-pointer"
+                      disabled={mediaBusy}
+                      className="disabled:opacity-60 py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[13px] transition-colors cursor-pointer"
                     >
                       {isRequest ? 'Send request' : 'Publish listing'}
                     </button>
