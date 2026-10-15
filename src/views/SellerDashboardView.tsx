@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
-import { motion } from 'motion/react';
-import { indicatorTransition } from '../motion.ts';
 import { portalUrl } from '../portals.ts';
 import { SellerTab } from '../context/AppContext.tsx';
 import { SellerSalesReport } from '../components/SellerSalesReport.tsx';
@@ -120,7 +118,7 @@ export const SellerDashboardView: React.FC = () => {
                     aria-current={isActive ? 'page' : undefined}
                   >
                     {isActive && (
-                      <motion.span layoutId="seller-side-tab" transition={indicatorTransition} className="absolute inset-0 bg-[#141517]" aria-hidden="true" />
+                      <span className="absolute inset-0 bg-[#141517]" aria-hidden="true" />
                     )}
                     <div className="relative flex items-center gap-2.5">
                       <Icon className="w-4 h-4 shrink-0" />

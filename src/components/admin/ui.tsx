@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { backdropMotion, drawerMotion, indicatorTransition } from '../../motion.ts';
+import { backdropMotion, drawerMotion } from '../../motion.ts';
 
 export const peso = (n: number) => `₱${Math.round(n).toLocaleString()}`;
 export const shortDate = (iso?: string) =>
@@ -42,7 +42,7 @@ export function FilterTabs<T extends string>({
             onClick={() => onChange(o.value)}
             className={`relative px-3.5 py-2 text-[13px] cursor-pointer transition-colors duration-200 ${active ? 'text-white font-semibold' : 'text-[#141517] hover:bg-[#EEF1F2]'}`}
           >
-            {active && <motion.span layoutId={`filter-${id}`} transition={indicatorTransition} className="absolute inset-0 bg-[#141517]" aria-hidden="true" />}
+            {active && <span className="absolute inset-0 bg-[#141517]" aria-hidden="true" />}
             <span className="relative">
               {o.label}
               {o.count !== undefined && <span className={`ml-1.5 tabular-nums ${active ? 'text-[#C9D1D6]' : 'text-[#6B767D]'}`}>{o.count}</span>}

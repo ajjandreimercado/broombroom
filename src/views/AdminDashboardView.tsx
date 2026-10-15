@@ -1,7 +1,5 @@
 import React from 'react';
 import { useApp, AdminTab } from '../context/AppContext.tsx';
-import { motion } from 'motion/react';
-import { indicatorTransition } from '../motion.ts';
 import { AddVehicleForm } from '../components/AddVehicleForm.tsx';
 import { ApplicationsManager, docSummary } from '../components/ApplicationsManager.tsx';
 import { Commissions } from '../components/Commissions.tsx';
@@ -95,7 +93,7 @@ export const AdminDashboardView: React.FC = () => {
           isActive ? 'text-white' : 'text-[#2A2E31] hover:bg-[#EEF1F2] hover:text-[#141517]'
         }`}
       >
-        {isActive && <motion.span layoutId="admin-side-tab" transition={indicatorTransition} className="absolute inset-0 bg-[#141517]" aria-hidden="true" />}
+        {isActive && <span className="absolute inset-0 bg-[#141517]" aria-hidden="true" />}
         <span className="relative flex items-center gap-2.5">
           <Icon className="w-4 h-4 shrink-0" />
           {item.label}

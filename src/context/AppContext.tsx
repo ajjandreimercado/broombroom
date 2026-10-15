@@ -501,6 +501,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (params?.adminTab) setAdminTab(params.adminTab);
       window.scrollTo({ top: 0, behavior: scroll });
     };
+    // Switching tabs inside the same page swaps only the panel; a whole-page transition there reads as a blink.
+    if (view === currentView) return apply('instant');
     // View Transitions crossfade the swap (styles in index.css); older browsers just swap.
     const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
     if (doc.startViewTransition) doc.startViewTransition(() => flushSync(() => apply('instant')));

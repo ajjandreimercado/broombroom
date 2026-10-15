@@ -187,10 +187,11 @@ select:focus, textarea:focus {
 /* ---------- Page changes (View Transitions) ----------
    The header stays put; the page crossfades and settles; a listing photo flows card -> detail. */
 .site-header { view-transition-name: site-header; }
-@keyframes vt-out { to { opacity: 0; } }
 @keyframes vt-in { from { opacity: 0; transform: translateY(8px); } }
-::view-transition-old(root) { animation: 140ms var(--ease-out) both vt-out; }
-::view-transition-new(root) { animation: 300ms var(--ease-out) both vt-in; }
+/* The old page stays fully drawn underneath while the new one fades in on top, so the background never shows through. */
+::view-transition-image-pair(root) { isolation: auto; }
+::view-transition-old(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: 260ms var(--ease-out) both vt-in; mix-blend-mode: normal; }
 ::view-transition-group(listing-photo) { animation-duration: 420ms; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
 ::view-transition-old(listing-photo), ::view-transition-new(listing-photo) { height: 100%; object-fit: cover; overflow: hidden; }
 /* The transition replaces the old per-page entrance where it is supported. */
