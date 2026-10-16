@@ -13,6 +13,7 @@ import { SafetyReports } from '../components/admin/SafetyReports.tsx';
 import { AccountingOverview } from '../components/accounting/AccountingOverview.tsx';
 import { VoucherPage } from '../components/accounting/VoucherPage.tsx';
 import { SalesReport } from '../components/accounting/SalesReport.tsx';
+import { Quotations } from '../components/admin/Quotations.tsx';
 import { EmptyState, SectionHeader } from '../components/admin/ui.tsx';
 import {
   ShieldAlert,
@@ -31,12 +32,13 @@ import {
   CreditCard,
   PiggyBank,
   FileSpreadsheet,
+  Calculator,
 } from 'lucide-react';
 
 type NavItem = { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number };
 
 export const AdminDashboardView: React.FC = () => {
-  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations } = useApp();
+  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations } = useApp();
   const open = ['submitted', 'under_review', 'contacted'];
 
   // Grouped so the admin reads the sidebar as: what needs me, what I manage, who I oversee.
@@ -46,6 +48,7 @@ export const AdminDashboardView: React.FC = () => {
       items: [
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
         { id: 'approvals', label: 'Listing approvals', icon: ClipboardCheck, count: listingRequests.filter((r) => r.status === 'pending').length },
+        { id: 'quotations', label: 'Quotations', icon: Calculator, count: quotations.filter((q) => q.status === 'requested').length },
         { id: 'applications', label: 'Applications', icon: FileText, count: applications.filter((a) => open.includes(a.status)).length },
         {
           id: 'financing',
@@ -150,6 +153,7 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'acc_expenses' && <VoucherPage kind="expense" />}
             {adminTab === 'acc_credit' && <VoucherPage kind="credit" />}
             {adminTab === 'acc_reports' && <SalesReport />}
+            {adminTab === 'quotations' && <Quotations />}
             {adminTab === 'acc_savings' && (
               <section>
                 <SectionHeader title="Savings deposit" />

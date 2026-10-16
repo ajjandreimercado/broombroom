@@ -97,6 +97,7 @@ export interface VehicleApplication {
   sellerNotes?: string;
   documents?: ApplicationDocument[];
   payments?: PaymentReceipt[];
+  quotationNo?: string; // the client applied from this quotation
 }
 
 // A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).
@@ -270,4 +271,42 @@ export interface Expense {
   remarks: string;
   total: number;
   createdAt: string;
+}
+
+// A priced offer for one unit. The client requests it, the admin fills in the unit and the numbers and sends it.
+export interface Quotation {
+  id: string;
+  quoteNo?: string; // QT-2026-0001, given when first sent
+  status: 'requested' | 'sent' | 'accepted';
+  requestedAt: string;
+  sentAt?: string;
+  validUntil?: string; // yyyy-mm-dd; a sent quotation past this date is expired
+  vehicleId: string;
+  vehicleTitle: string;
+  vehicleImage: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  clientAddress: string;
+  method: 'cash' | 'financing';
+  clientNote?: string;
+  // Unit details
+  unitType: string;
+  variant: string;
+  engineNo: string;
+  chassisNo: string;
+  color: string;
+  transmission: string;
+  // Price and terms
+  unitPrice: number;
+  downPayment: number;
+  termMonths: number;
+  annualRate: number; // percent, e.g. 8.5
+  insurance: number;
+  registration: number;
+  chattelMortgage: number;
+  remarks: string;
+  preparedBy?: string;
+  applicationRef?: string; // set when the client applies from this quotation
 }

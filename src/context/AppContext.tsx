@@ -20,8 +20,10 @@ import {
   ApplicationDocument,
   Expense,
   PaymentReceipt,
+  Quotation,
 } from '../types.ts';
 import { nextArNo } from '../components/ar.ts';
+import { DEFAULT_RATE, DEFAULT_VALID_DAYS, daysFromToday, nextQuoteNo } from '../components/quote.ts';
 import {
   INITIAL_VEHICLES,
   INITIAL_GUIDES,
@@ -34,6 +36,7 @@ import {
   INITIAL_LISTING_REQUESTS,
   INITIAL_EXPENSES,
   INITIAL_CREDITS,
+  INITIAL_QUOTATIONS,
   COMMISSION_RATE,
   DEMO_AGENT,
   generateVehicleSvg,
@@ -63,7 +66,8 @@ export type AccountTab =
   | 'messages'
   | 'recently_viewed'
   | 'settings'
-  | 'notifications';
+  | 'notifications'
+  | 'quotations';
 
 export type SellerTab =
   | 'dashboard'
@@ -87,7 +91,8 @@ export type AdminTab =
   | 'acc_expenses'
   | 'acc_credit'
   | 'acc_savings'
-  | 'acc_reports';
+  | 'acc_reports'
+  | 'quotations';
 
 export interface FilterState {
   searchQuery: string;
@@ -127,8 +132,10 @@ interface AppContextType {
       accountTab?: AccountTab;
       sellerTab?: SellerTab;
       adminTab?: AdminTab;
+      quotationId?: string | null;
     }
   ) => void;
+  selectedQuotationId: string | null;
 
   // Modals
   authModalOpen: boolean;
@@ -156,6 +163,10 @@ interface AppContextType {
   attachDocumentForClient: (appId: string, docIndex: number, fileName: string) => void;
   listingRequests: ListingRequest[];
   expenses: Expense[];
+  quotations: Quotation[];
+  requestQuotation: (vehicleId: string, req: { method: 'cash' | 'financing'; downPayment: number; termMonths: number; note: string }) => Quotation | undefined;
+  saveQuotation: (id: string, changes: Partial<Quotation>, send: boolean) => Quotation | undefined;
+  markQuotationAccepted: (id: string, applicationRef: string) => void;
   addExpense: (e: Omit<Expense, 'id' | 'voucherNo' | 'createdAt'>) => Expense;
   credits: Expense[];
   submitListingRequest: (req: Pick<ListingRequest, 'type' | 'vehicleId' | 'vehicleTitle' | 'changes' | 'note'>) => void;
@@ -368,6 +379,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [expenses, setExpenses] = useState<Expense[]>(() => readJson<Expense[]>('gb_expenses', INITIAL_EXPENSES));
   const [credits, setCredits] = useState<Expense[]>(() => readJson<Expense[]>('gb_credits', INITIAL_CREDITS));
+  const [quotations, setQuotations] = useState<Quotation[]>(() => readJson<Quotation[]>('gb_quotations', INITIAL_QUOTATIONS));
+  const [selectedQuotationId, setSelectedQuotationId] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem('gb_quotations', JSON.stringify(quotations));
+    } catch {}
+  }, [quotations]);
   useEffect(() => {
     try {
       localStorage.setItem('gb_expenses', JSON.stringify(expenses));
@@ -468,6 +486,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       gb_listing_requests: (raw) => setListingRequests(JSON.parse(raw)),
       gb_expenses: (raw) => setExpenses(JSON.parse(raw)),
       gb_credits: (raw) => setCredits(JSON.parse(raw)),
+      gb_quotations: (raw) => setQuotations(JSON.parse(raw)),
     };
     const onStorage = (e: StorageEvent) => {
       if (!e.key || !e.newValue || !sync[e.key]) return;
@@ -505,13 +524,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (params?.accountTab) setAccountTab(params.accountTab);
       if (params?.sellerTab) setSellerTab(params.sellerTab);
       if (params?.adminTab) setAdminTab(params.adminTab);
+      if (params && 'quotationId' in params) setSelectedQuotationId(params.quotationId ?? null);
       window.scrollTo({ top: 0, behavior: scroll });
     };
     // Switching tabs inside the same page swaps only the panel; a whole-page transition there reads as a blink.
     if (view === currentView) return apply('instant');
     // View Transitions crossfade the swap (styles in index.css); older browsers just swap.
-    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
-    if (doc.startViewTransition) doc.startViewTransition(() => flushSync(() => apply('instant')));
+    const doc = document as Document & { startViewTransition?: (update: () => void) => { ready: Promise<void> } };
+    // A hidden tab can't run a transition (the browser rejects it), so it just swaps.
+    if (doc.startViewTransition && !document.hidden) doc.startViewTransition(() => flushSync(() => apply('instant'))).ready.catch(() => {});
     else apply('smooth');
   };
 
@@ -895,6 +916,74 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('Document uploaded', `${doc.label} was added to ${app.referenceNo} for review.`);
   };
 
+  // Quotations: the client asks for one on a listing; the admin fills in the unit and the numbers and sends it.
+  const requestQuotation: AppContextType['requestQuotation'] = (vehicleId, req) => {
+    const v = vehicles.find((x) => x.id === vehicleId);
+    if (!v || !currentUser) return undefined;
+    const a = currentUser.address;
+    const q: Quotation = {
+      id: `qt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      status: 'requested',
+      requestedAt: new Date().toISOString(),
+      vehicleId: v.id,
+      vehicleTitle: v.title,
+      vehicleImage: v.images[0],
+      clientId: currentUser.id,
+      clientName: currentUser.name,
+      clientEmail: currentUser.email,
+      clientPhone: currentUser.phone,
+      clientAddress: [a?.street, a?.barangay, a?.city, a?.province].filter(Boolean).join(', ') + (a?.postalCode ? ` ${a.postalCode}` : ''),
+      method: req.method,
+      clientNote: req.note.trim() || undefined,
+      unitType: `${v.year} ${v.brand} ${v.model}`,
+      variant: '',
+      engineNo: '',
+      chassisNo: '',
+      color: v.color,
+      transmission: v.transmission,
+      unitPrice: v.price,
+      downPayment: req.method === 'financing' ? req.downPayment : 0,
+      termMonths: req.termMonths,
+      annualRate: DEFAULT_RATE,
+      insurance: 0,
+      registration: 0,
+      chattelMortgage: 0,
+      remarks: '',
+    };
+    setQuotations((prev) => [q, ...prev]);
+    notify('admin', 'Quotation requested', `${q.clientName} asked for a ${q.method} quotation on the ${q.vehicleTitle}.`, 'quotations');
+    showToast('Quotation requested', 'The admin team will send it to your account. You can also see it under My Quotations.');
+    return q;
+  };
+
+  const saveQuotation: AppContextType['saveQuotation'] = (id, changes, send) => {
+    const q = quotations.find((x) => x.id === id);
+    if (!q) return undefined;
+    const updated: Quotation = { ...q, ...changes };
+    if (send) {
+      updated.quoteNo = q.quoteNo ?? nextQuoteNo(quotations);
+      updated.status = q.status === 'accepted' ? 'accepted' : 'sent';
+      updated.sentAt = new Date().toISOString();
+      updated.validUntil = changes.validUntil || q.validUntil || daysFromToday(DEFAULT_VALID_DAYS);
+      updated.preparedBy = currentUser?.name || 'Admin';
+    }
+    setQuotations((prev) => prev.map((x) => (x.id === id ? updated : x)));
+    if (send) {
+      notify('client', q.quoteNo ? 'Quotation updated' : 'Quotation ready', `Quotation ${updated.quoteNo} for the ${q.vehicleTitle} is ready. It is valid until ${new Date(`${updated.validUntil}T00:00:00`).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}.`, 'quotations');
+      showToast(q.quoteNo ? 'Quotation updated' : 'Quotation sent', `${updated.quoteNo} was sent to ${q.clientName}.`);
+    } else {
+      showToast('Draft saved', 'The client will see it once you send it.');
+    }
+    return updated;
+  };
+
+  const markQuotationAccepted = (id: string, applicationRef: string) => {
+    const q = quotations.find((x) => x.id === id);
+    if (!q) return;
+    setQuotations((prev) => prev.map((x) => (x.id === id ? { ...x, status: 'accepted', applicationRef } : x)));
+    notify('admin', 'Quotation accepted', `${q.clientName} applied for the ${q.vehicleTitle} using ${q.quoteNo} (${applicationRef}).`, 'applications');
+  };
+
   // Commission stages: receivable -> payable (admin approval, sale must be complete) -> paid (cash + proof).
   const approveCommission = (id: string) => {
     const c = commissions.find((x) => x.id === id);
@@ -1249,6 +1338,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         attachDocumentForClient,
         listingRequests,
         expenses,
+        quotations,
+        requestQuotation,
+        saveQuotation,
+        markQuotationAccepted,
+        selectedQuotationId,
         addExpense,
         credits,
         submitListingRequest,

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts';
 import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
+import { MyQuotations } from '../components/MyQuotations.tsx';
 import { useApp } from '../context/AppContext.tsx';
 import { AccountTab } from '../context/AppContext.tsx';
 import { VehicleCard } from '../components/VehicleCard.tsx';
@@ -26,6 +27,7 @@ import {
   X,
   ArrowLeftRight,
   Sparkles,
+  Calculator,
 } from 'lucide-react';
 
 export const AccountView: React.FC = () => {
@@ -49,6 +51,7 @@ export const AccountView: React.FC = () => {
     setCompareModalOpen,
     toggleCompareVehicle,
     clearCompare,
+    quotations,
   } = useApp();
   // Clients only see notifications meant for them.
   const notifications = allNotifications.filter((n) => (n.audience ?? 'client') === 'client');
@@ -133,6 +136,7 @@ export const AccountView: React.FC = () => {
     { id: 'saved', label: 'Saved Vehicles', icon: Bookmark, badge: savedVehicles.length },
     { id: 'compare', label: 'Compare Vehicles', icon: ArrowLeftRight, badge: comparedVehicleIds.length || undefined },
     { id: 'applications', label: 'My Applications', icon: FileText, badge: userApplications.length },
+    { id: 'quotations', label: 'My Quotations', icon: Calculator, badge: quotations.filter((q) => q.clientId === currentUser?.id).length || undefined },
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: conversations.length },
     { id: 'recently_viewed', label: 'Recently Viewed', icon: Clock },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: notifications.filter((n) => !n.read).length },
@@ -410,6 +414,8 @@ export const AccountView: React.FC = () => {
             )}
 
             {/* 3. MY APPLICATIONS TAB */}
+            {accountTab === 'quotations' && <MyQuotations />}
+
             {accountTab === 'applications' && (
               <div className="space-y-6">
                 <div>

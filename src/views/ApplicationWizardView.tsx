@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { indicatorTransition } from '../motion.ts';
 import { Stamp } from '../components/Stamp.tsx';
 import { VehicleApplication } from '../types.ts';
+import { isExpired, QUOTE_TERMS } from '../components/quote.ts';
 import {
   ArrowLeft,
   ArrowRight,
@@ -58,9 +59,15 @@ export const ApplicationWizardView: React.FC = () => {
     currentUser,
     createApplication,
     navigateTo,
+    quotations,
+    selectedQuotationId,
+    markQuotationAccepted,
   } = useApp();
 
   const vehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
+  // Applying from a sent quotation: its method, down payment, term and price carry over.
+  const quote = quotations.find((q) => q.id === selectedQuotationId && q.vehicleId === vehicle?.id && q.status === 'sent' && !isExpired(q));
+  const price = quote?.unitPrice ?? vehicle?.price ?? 0;
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [confirmedApp, setConfirmedApp] = useState<VehicleApplication | null>(null);
@@ -80,9 +87,9 @@ export const ApplicationWizardView: React.FC = () => {
   const country = 'Philippines';
 
   // Purchase Method
-  const [purchaseMethod, setPurchaseMethod] = useState<'cash' | 'financing'>('financing');
-  const [financingTerm, setFinancingTerm] = useState(36);
-  const [downPayment, setDownPayment] = useState(Math.round(vehicle ? vehicle.price * 0.25 : 500000));
+  const [purchaseMethod, setPurchaseMethod] = useState<'cash' | 'financing'>(quote?.method ?? 'financing');
+  const [financingTerm, setFinancingTerm] = useState(quote?.termMonths ?? 36);
+  const [downPayment, setDownPayment] = useState(quote?.method === 'financing' ? quote.downPayment : Math.round(price * 0.25));
   const [notes, setNotes] = useState('Interested in viewing this weekend. Documents ready.');
 
   // Required documents: file names keyed by requirement (no upload backend yet).
@@ -150,7 +157,7 @@ export const ApplicationWizardView: React.FC = () => {
     const created = createApplication({
       vehicleId: vehicle.id,
       vehicleTitle: vehicle.title,
-      vehiclePrice: vehicle.price,
+      vehiclePrice: price,
       vehicleImage: vehicle.images[0],
       vehicleLocation: vehicle.location,
       sellerId: vehicle.sellerId,
@@ -173,7 +180,9 @@ export const ApplicationWizardView: React.FC = () => {
       downPayment: purchaseMethod === 'financing' ? downPayment : undefined,
       notes: notes.trim(),
       documents: requiredDocs.map((d) => ({ label: d.label, fileName: docs[d.key] || '' })),
+      quotationNo: quote?.quoteNo,
     });
+    if (quote) markQuotationAccepted(quote.id, created.referenceNo);
 
     setConfirmedApp(created);
     setStep(4);
@@ -184,7 +193,7 @@ export const ApplicationWizardView: React.FC = () => {
     style: 'currency',
     currency: 'PHP',
     maximumFractionDigits: 0,
-  }).format(vehicle.price);
+  }).format(price);
 
   return (
     <div className="min-h-screen bg-[#F7F8F8] pb-24">
@@ -435,6 +444,12 @@ export const ApplicationWizardView: React.FC = () => {
                   </p>
                 </div>
 
+                {quote && (
+                  <p className="text-[13px] text-[#141517] border border-[#1D5FD1] bg-white px-4 py-3">
+                    Using quotation <strong className="tabular-nums">{quote.quoteNo}</strong>: price, payment method, down payment and term are filled in from it.
+                  </p>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     type="button"
@@ -469,8 +484,8 @@ export const ApplicationWizardView: React.FC = () => {
                   <div className="p-5 bg-[#F7F8F8] border border-[#C9D1D6] rounded-[2px] space-y-4 text-xs">
                     <div>
                       <label className="block font-bold text-[#2A2E31] mb-2">Preferred Loan Term</label>
-                      <div className="grid grid-cols-4 gap-2">
-                        {[12, 24, 36, 48].map((m) => (
+                      <div className="grid grid-cols-5 gap-2">
+                        {QUOTE_TERMS.map((m) => (
                           <button
                             key={m}
                             type="button"
@@ -494,8 +509,8 @@ export const ApplicationWizardView: React.FC = () => {
                       </div>
                       <input
                         type="range"
-                        min={Math.round(vehicle.price * 0.15)}
-                        max={Math.round(vehicle.price * 0.5)}
+                        min={Math.round(Math.min(price * 0.15, downPayment))}
+                        max={Math.round(Math.max(price * 0.5, downPayment))}
                         step={10000}
                         value={downPayment}
                         onChange={(e) => setDownPayment(Number(e.target.value))}

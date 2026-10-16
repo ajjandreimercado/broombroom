@@ -14,6 +14,7 @@ import {
   LogOut,
   ChevronDown,
   FileText,
+  Calculator,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -46,10 +47,11 @@ export const Navbar: React.FC = () => {
     if (PORTAL === 'seller') {
       navigateTo('seller', { sellerTab: target === 'commissions' ? 'commissions' : target === 'vehicles' ? 'vehicles' : 'messages' });
     } else if (PORTAL === 'admin') {
-      const tab = (['approvals', 'applications', 'financing', 'commissions', 'reports'] as const).find((t) => t === target);
+      const tab = (['approvals', 'applications', 'financing', 'commissions', 'reports', 'quotations'] as const).find((t) => t === target);
       navigateTo('admin', { adminTab: tab || 'dashboard' });
     } else if (target === 'messages') navigateTo('account', { accountTab: 'messages' });
     else if (target === 'applications') navigateTo('account', { accountTab: 'applications' });
+    else if (target === 'quotations') navigateTo('account', { accountTab: 'quotations' });
     else if (target === 'deals') navigateTo('deals');
     else navigateTo('account', { accountTab: 'notifications' });
   };
@@ -296,6 +298,7 @@ export const Navbar: React.FC = () => {
                       { icon: UserIcon, label: 'My Account', action: () => navigateTo('account', { accountTab: 'profile' }) },
                       { icon: Bookmark, label: 'Saved Vehicles', action: () => navigateTo('account', { accountTab: 'saved' }) },
                       { icon: FileText, label: 'My Applications', action: () => navigateTo('account', { accountTab: 'applications' }) },
+                      { icon: Calculator, label: 'My Quotations', action: () => navigateTo('account', { accountTab: 'quotations' }) },
                     ].map(({ icon: Icon, label, action }) => (
                       <button
                         key={label}

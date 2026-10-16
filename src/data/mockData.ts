@@ -1,4 +1,4 @@
-import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission, ListingRequest, Expense } from '../types.ts';
+import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission, ListingRequest, Expense, Quotation } from '../types.ts';
 
 // Minimalist, high-end studio automotive SVG generator
 export const generateVehicleSvg = (
@@ -1193,5 +1193,39 @@ export const INITIAL_CREDITS: Expense[] = [
     id: 'cr-002', kind: 'credit', voucherNo: 'CV-2026-0032', payee: 'Shell Fleet', accountId: 'bdo-card', paymentDate: '2026-10-03', method: 'bank', refNo: 'BDO-CC-88213',
     lines: [{ category: 'Credit card purchase', description: 'Fuel for test drives and deliveries', amount: 18450, party: 'BDO' }],
     remarks: '', total: 18450, createdAt: '2026-10-03T09:00:00.000Z',
+  },
+];
+
+// One request waiting in the admin's Quotations queue.
+const civic = INITIAL_VEHICLES.find((v) => v.id === 'veh-04')!;
+export const INITIAL_QUOTATIONS: Quotation[] = [
+  {
+    id: 'qt-001',
+    status: 'requested',
+    requestedAt: '2026-10-12T10:05:00.000Z',
+    vehicleId: civic.id,
+    vehicleTitle: civic.title,
+    vehicleImage: civic.images[0],
+    clientId: 'usr-buyer-01',
+    clientName: 'Andrei Mercado',
+    clientEmail: 'ajjandreimercado@gmail.com',
+    clientPhone: '+63 917 842 9918',
+    clientAddress: '28th Street, High Street South Block, Fort Bonifacio, Taguig City, Metro Manila 1634',
+    method: 'financing',
+    clientNote: 'Can I see the monthly for 36 months with about 1M down?',
+    unitType: `${civic.year} ${civic.brand} ${civic.model}`,
+    variant: '',
+    engineNo: '',
+    chassisNo: '',
+    color: civic.color,
+    transmission: civic.transmission,
+    unitPrice: civic.price,
+    downPayment: 1000000,
+    termMonths: 36,
+    annualRate: 8.5,
+    insurance: 0,
+    registration: 0,
+    chattelMortgage: 0,
+    remarks: '',
   },
 ];

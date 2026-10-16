@@ -181,7 +181,7 @@ export const ApplicationsManager: React.FC = () => {
                 <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[12.5px] tabular-nums text-[#4E585E]">{app.referenceNo}</span>
+                      <span className="text-[12.5px] tabular-nums text-[#4E585E]">{app.referenceNo}{app.quotationNo ? ` · from ${app.quotationNo}` : ''}</span>
                       <StatusMark status={app.status} />
                       {isOngoing(app) && <StatusMark status="Ongoing" />}
                       <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[#141517]">
