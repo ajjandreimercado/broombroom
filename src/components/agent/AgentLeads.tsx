@@ -1,0 +1,105 @@
+import React, { useEffect, useState } from 'react';
+import { useApp } from '../../context/AppContext.tsx';
+import { ClientLead } from '../../types.ts';
+import { EmptyState, FilterTabs, SectionHeader, btn } from '../admin/ui.tsx';
+import { REPLY_RELEASE_MS, duration, waitingSince } from '../leads.ts';
+import { Hand, MessageSquare } from 'lucide-react';
+
+const SOURCE: Record<ClientLead['source'], string> = { link: 'Came through your link', pool: 'Claimed from Open leads', admin: 'Assigned by the admin' };
+
+// Agent: claim new clients from the shared pool, and keep track of the clients who are yours.
+export const AgentLeads: React.FC = () => {
+  const { leads, claimLead, currentUser, conversations, navigateTo, setActiveConversationId } = useApp();
+  const me = currentUser?.name;
+  const [view, setView] = useState<'open' | 'mine'>('open');
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const open = leads.filter((l) => !l.agentName).sort((a, b) => (a.pooledAt ?? a.createdAt).localeCompare(b.pooledAt ?? b.createdAt));
+  const mine = leads.filter((l) => l.agentName === me);
+  const lastClientLine = (clientId: string) =>
+    conversations
+      .filter((c) => c.buyerId === clientId)
+      .flatMap((c) => c.messages.filter((m) => !m.isSeller))
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0]?.text;
+  const openChat = (clientId: string) => {
+    const conv = conversations.filter((c) => c.buyerId === clientId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    if (conv) setActiveConversationId(conv.id);
+    navigateTo('seller', { sellerTab: 'messages' });
+  };
+
+  return (
+    <section className="space-y-5">
+      <SectionHeader
+        title="Leads"
+        hint="Clients who came through your share link are yours automatically. Everyone else waits in Open leads: the first agent to claim a client gets their chats and the commission if they buy."
+      />
+      <FilterTabs
+        id="agent-leads"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'open', label: 'Open leads', count: open.length },
+          { value: 'mine', label: 'My clients', count: mine.length },
+        ]}
+      />
+
+      {view === 'open' &&
+        (open.length === 0 ? (
+          <EmptyState title="No open leads" body="New clients who did not come through an agent's link appear here for anyone to claim." />
+        ) : (
+          <ul key="open" className="animate-view-fade border-b border-[#C9D1D6]">
+            {open.map((l) => {
+              const line = lastClientLine(l.clientId);
+              return (
+                <li key={l.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4 border-t border-[#C9D1D6]">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[15px] text-[#141517]">{l.clientName}</p>
+                    <p className="text-[13px] text-[#2A2E31]">Interested in {l.interest}</p>
+                    {line && <p className="text-[12.5px] text-[#4E585E] truncate max-w-[60ch]">“{line}”</p>}
+                    <p className="text-[12px] text-[#6B767D] tabular-nums">Waiting {duration(now - new Date(l.pooledAt ?? l.createdAt).getTime())}</p>
+                  </div>
+                  <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-center`} onClick={() => claimLead(l.clientId)}>
+                    <Hand className="w-4 h-4" aria-hidden="true" /> Claim client
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ))}
+
+      {view === 'mine' &&
+        (mine.length === 0 ? (
+          <EmptyState title="No clients yet" body="Share your listing links or claim clients from Open leads." />
+        ) : (
+          <ul key="mine" className="animate-view-fade border-b border-[#C9D1D6]">
+            {mine.map((l) => {
+              const since = waitingSince(l);
+              const left = since === null ? null : REPLY_RELEASE_MS - (now - since);
+              return (
+                <li key={l.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4 border-t border-[#C9D1D6]">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[15px] text-[#141517]">{l.clientName}</p>
+                    <p className="text-[13px] text-[#2A2E31]">Interested in {l.interest} · {SOURCE[l.source]}</p>
+                    {left === null ? (
+                      <p className="text-[12.5px] text-[#1B7F35]">Up to date</p>
+                    ) : (
+                      <p className={`text-[12.5px] font-medium ${left < 4 * 3600e3 ? 'text-[#B42318]' : 'text-[#B4690E]'}`}>
+                        Waiting for your reply · goes back to Open leads in {duration(left)}
+                      </p>
+                    )}
+                  </div>
+                  <button className={`${btn.outline} flex items-center gap-1.5 self-start sm:self-center`} onClick={() => openChat(l.clientId)}>
+                    <MessageSquare className="w-4 h-4" aria-hidden="true" /> Open chat
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ))}
+    </section>
+  );
+};

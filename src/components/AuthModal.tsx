@@ -59,7 +59,7 @@ export const AuthModal: React.FC = () => {
   };
 
   const handlePasskeySignIn = () => {
-    login('andrei.passkey@groombroom.ph');
+    login('ajjandreimercado@gmail.com');
     showToast('Passkey Verified', 'Biometric key validated successfully.');
   };
 

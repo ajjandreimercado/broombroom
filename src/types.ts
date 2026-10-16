@@ -310,3 +310,21 @@ export interface Quotation {
   preparedBy?: string;
   applicationRef?: string; // set when the client applies from this quotation
 }
+
+// Which agent a client belongs to. One per client: every chat, application and commission follows it.
+export interface ClientLead {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  agentName?: string; // empty = waiting in the Open leads pool
+  source: 'link' | 'pool' | 'admin'; // came through an agent's link, claimed from the pool, or set by the admin
+  createdAt: string;
+  pooledAt?: string; // when it (re-)entered the pool; the 2-hour unclaimed rule counts from here
+  claimedAt?: string;
+  interest: string; // the vehicle that first brought the client in
+  lastClientAt?: string; // client's latest message, application or quotation request
+  lastAgentAt?: string; // owning agent's latest reply
+  escalatedAt?: string; // admin was told it sat unclaimed
+  history: { at: string; text: string }[];
+}

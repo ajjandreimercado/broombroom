@@ -45,9 +45,9 @@ export const Navbar: React.FC = () => {
   const unreadNotifs = myNotifs.filter((n) => !n.read).length;
   const openNotification = (target?: string) => {
     if (PORTAL === 'seller') {
-      navigateTo('seller', { sellerTab: target === 'commissions' ? 'commissions' : target === 'vehicles' ? 'vehicles' : 'messages' });
+      navigateTo('seller', { sellerTab: target === 'commissions' ? 'commissions' : target === 'vehicles' ? 'vehicles' : target === 'leads' ? 'leads' : 'messages' });
     } else if (PORTAL === 'admin') {
-      const tab = (['approvals', 'applications', 'financing', 'commissions', 'reports', 'quotations'] as const).find((t) => t === target);
+      const tab = (['approvals', 'applications', 'financing', 'commissions', 'reports', 'quotations', 'leads'] as const).find((t) => t === target);
       navigateTo('admin', { adminTab: tab || 'dashboard' });
     } else if (target === 'messages') navigateTo('account', { accountTab: 'messages' });
     else if (target === 'applications') navigateTo('account', { accountTab: 'applications' });

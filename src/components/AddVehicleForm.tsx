@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { VehicleCategory, VehicleCondition, TransmissionType, FuelType, Vehicle } from '../types.ts';
-import { AGENTS } from '../data/mockData.ts';
 import { MAX_PHOTOS, MAX_VIDEOS, MAX_VIDEO_BYTES, photoDataUrl, saveMedia } from '../media.ts';
 import { StoredVideo } from './StoredVideo.tsx';
 import { ImagePlus, X } from 'lucide-react';
@@ -11,7 +10,6 @@ import { ImagePlus, X } from 'lucide-react';
 export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () => void }> = ({ mode = 'admin', onDone }) => {
   const { createVehicleListing, submitListingRequest, navigateTo, showToast } = useApp();
   const isRequest = mode === 'request';
-  const [agent, setAgent] = useState(AGENTS[0]);
   const [note, setNote] = useState('');
 
   // Add Vehicle Form state
@@ -100,7 +98,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
       onDone?.();
       return;
     }
-    createVehicleListing(data, agent);
+    createVehicleListing(data);
 
     // Reset and route to vehicles list
     setTitle('');
@@ -119,7 +117,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                   <p className="text-[13px] text-[#4E585E] mt-1">
                     {isRequest
                       ? 'The admin team reviews your request before anything is posted.'
-                      : 'Publishes to the marketplace and assigns the listing to an agent.'}
+                      : 'Publishes to the marketplace for the whole sales team.'}
                   </p>
                 </div>
 
@@ -338,17 +336,9 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                       />
                     </div>
                   ) : (
-                    <div className="max-w-sm">
-                      <label className="gb-label block mb-2">Assigned agent</label>
-                      <select
-                        value={agent}
-                        onChange={(e) => setAgent(e.target.value)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
-                      >
-                        {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
-                      </select>
-                      <p className="mt-1.5 text-[12px] text-[#4E585E]">This agent handles clients for the listing and earns its commission.</p>
-                    </div>
+                    <p className="text-[12.5px] text-[#4E585E] border-l-2 border-[#1D5FD1] pl-3">
+                      Every agent can sell this listing. A client belongs to the agent whose link they used, or to the first agent who claims them in Open leads.
+                    </p>
                   )}
 
                   <div className="flex items-center gap-2 pt-2">

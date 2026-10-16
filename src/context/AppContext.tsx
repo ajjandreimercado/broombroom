@@ -21,9 +21,11 @@ import {
   Expense,
   PaymentReceipt,
   Quotation,
+  ClientLead,
 } from '../types.ts';
 import { nextArNo } from '../components/ar.ts';
 import { DEFAULT_RATE, DEFAULT_VALID_DAYS, daysFromToday, nextQuoteNo } from '../components/quote.ts';
+import { agentFromSlug, agentSlug, shouldAlertUnclaimed, shouldRelease } from '../components/leads.ts';
 import {
   INITIAL_VEHICLES,
   INITIAL_GUIDES,
@@ -37,6 +39,9 @@ import {
   INITIAL_EXPENSES,
   INITIAL_CREDITS,
   INITIAL_QUOTATIONS,
+  INITIAL_LEADS,
+  TEAM_NAME,
+  AGENTS,
   COMMISSION_RATE,
   DEMO_AGENT,
   generateVehicleSvg,
@@ -74,7 +79,8 @@ export type SellerTab =
   | 'sales_report'
   | 'vehicles'
   | 'messages'
-  | 'commissions';
+  | 'commissions'
+  | 'leads';
 
 export type AdminTab =
   | 'dashboard'
@@ -92,7 +98,8 @@ export type AdminTab =
   | 'acc_credit'
   | 'acc_savings'
   | 'acc_reports'
-  | 'quotations';
+  | 'quotations'
+  | 'leads';
 
 export interface FilterState {
   searchQuery: string;
@@ -228,7 +235,10 @@ interface AppContextType {
   clearAllNotifications: () => void;
 
   // Seller Actions
-  createVehicleListing: (vehicleData: Partial<Vehicle>, agentName?: string) => Vehicle;
+  createVehicleListing: (vehicleData: Partial<Vehicle>) => Vehicle;
+  leads: ClientLead[];
+  claimLead: (clientId: string) => void;
+  assignLead: (clientId: string, agentName: string | null) => void;
   updateVehicleListing: (id: string, updates: Partial<Vehicle>) => void;
   deleteVehicleListing: (id: string) => void;
 
@@ -257,8 +267,13 @@ const defaultFilters: FilterState = {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // Older saved data used other condition names and a two-state commission.
-const normalizeVehicle = (v: Vehicle): Vehicle =>
-  v.condition === 'New' || v.condition === 'Surplus / 2nd hand' ? v : { ...v, condition: 'Surplus / 2nd hand' };
+// Listings belong to the whole sales team; older data named one agent per listing.
+const normalizeVehicle = (v: Vehicle): Vehicle => ({
+  ...v,
+  condition: v.condition === 'New' || v.condition === 'Surplus / 2nd hand' ? v.condition : 'Surplus / 2nd hand',
+  sellerName: TEAM_NAME,
+  sellerId: 'team',
+});
 const normalizeCommission = (c: Commission): Commission => {
   if ((c as unknown as { status: string }).status === 'pending') return { ...c, status: 'receivable', agentName: c.agentName || DEMO_AGENT, transactionCompleted: true };
   // Saved data from before proof images and sale dates: pick them up from the seed.
@@ -278,6 +293,14 @@ const USER_KEY = `gb_user_${PORTAL}`;
 
 // Buyer links like /?vehicle=v-123 open straight on that listing (used by Share and the portals).
 const linkedVehicleId = PORTAL === 'buyer' ? new URLSearchParams(window.location.search).get('vehicle') : null;
+// An agent's share link (?agent=carlo-santos) remembers that agent for this browser's client, so their
+// first inquiry goes to that agent instead of the Open leads pool.
+const linkedAgent = PORTAL === 'buyer' ? agentFromSlug(new URLSearchParams(window.location.search).get('agent')) : undefined;
+if (linkedAgent) {
+  try {
+    localStorage.setItem('gb_ref_agent', linkedAgent);
+  } catch {}
+}
 const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedVehicleId ? 'vehicle_detail' : 'intro';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -381,6 +404,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [credits, setCredits] = useState<Expense[]>(() => readJson<Expense[]>('gb_credits', INITIAL_CREDITS));
   const [quotations, setQuotations] = useState<Quotation[]>(() => readJson<Quotation[]>('gb_quotations', INITIAL_QUOTATIONS));
   const [selectedQuotationId, setSelectedQuotationId] = useState<string | null>(null);
+  const [leads, setLeads] = useState<ClientLead[]>(() => readJson<ClientLead[]>('gb_leads', INITIAL_LEADS));
+  useEffect(() => {
+    try {
+      localStorage.setItem('gb_leads', JSON.stringify(leads));
+    } catch {}
+  }, [leads]);
   useEffect(() => {
     try {
       localStorage.setItem('gb_quotations', JSON.stringify(quotations));
@@ -487,6 +516,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       gb_expenses: (raw) => setExpenses(JSON.parse(raw)),
       gb_credits: (raw) => setCredits(JSON.parse(raw)),
       gb_quotations: (raw) => setQuotations(JSON.parse(raw)),
+      gb_leads: (raw) => setLeads(JSON.parse(raw)),
     };
     const onStorage = (e: StorageEvent) => {
       if (!e.key || !e.newValue || !sync[e.key]) return;
@@ -540,9 +570,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const login = (email: string, role: 'buyer' | 'seller' | 'admin' = PORTAL) => {
     const user: UserProfile = {
       ...INITIAL_USER,
+      // Each email is its own client (leads, chats and applications are per client); the demo email keeps the seeded id.
+      id: email.trim().toLowerCase() === INITIAL_USER.email ? INITIAL_USER.id : `usr-${email.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
       email,
       role,
-      name: role === 'seller' ? DEMO_AGENT : email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Valued User',
+      name:
+        role === 'seller'
+          ? DEMO_AGENT
+          : email.trim().toLowerCase() === INITIAL_USER.email
+          ? INITIAL_USER.name
+          : email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Valued User',
     };
     setCurrentUser(user);
     setAuthModalOpen(false);
@@ -783,12 +820,137 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Applications
+  // ----- Client ownership (Open leads) -----
+  const ownerOf = (clientId: string) => leads.find((l) => l.clientId === clientId)?.agentName;
+
+  // A client's chats, open applications and not-yet-earned commissions follow their owner (or go back to the team).
+  const moveClient = (clientId: string, owner: string | undefined) => {
+    const name = owner ?? TEAM_NAME;
+    setConversations((prev) => prev.map((c) => (c.buyerId === clientId ? { ...c, sellerName: name, sellerId: owner ? agentSlug(owner) : 'team' } : c)));
+    const refs = applications.filter((a) => a.applicantId === clientId && a.status !== 'completed').map((a) => a.referenceNo);
+    setApplications((prev) =>
+      prev.map((a) => (a.applicantId === clientId && !['completed', 'declined', 'withdrawn'].includes(a.status) ? { ...a, sellerName: name } : a))
+    );
+    if (owner) setCommissions((prev) => prev.map((c) => (refs.includes(c.applicationRef) && !c.transactionCompleted ? { ...c, agentName: owner } : c)));
+  };
+
+  // The client did something (first message, application, quotation request). New clients go to the agent whose
+  // link they came through, otherwise into the Open leads pool. Returns the owning agent, if any.
+  // Only a chat message starts the 24-hour reply clock: an agent can only answer in a chat.
+  const touchLead = (interest: string, isMessage: boolean): string | undefined => {
+    if (!currentUser || PORTAL !== 'buyer') return undefined;
+    const now = new Date().toISOString();
+    const existing = leads.find((l) => l.clientId === currentUser.id);
+    if (existing) {
+      try {
+        localStorage.removeItem('gb_ref_agent'); // already someone's client; the link does not move them
+      } catch {}
+      if (isMessage) setLeads((prev) => prev.map((l) => (l.id === existing.id ? { ...l, lastClientAt: now } : l)));
+      return existing.agentName;
+    }
+    let ref: string | null = null;
+    try {
+      ref = localStorage.getItem('gb_ref_agent');
+      localStorage.removeItem('gb_ref_agent'); // a link credits one client, not everyone who later uses this browser
+    } catch {}
+    const agent = ref && AGENTS.includes(ref) ? ref : undefined;
+    const lead: ClientLead = {
+      id: `lead-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      clientId: currentUser.id,
+      clientName: currentUser.name,
+      clientEmail: currentUser.email,
+      agentName: agent,
+      source: agent ? 'link' : 'pool',
+      createdAt: now,
+      pooledAt: agent ? undefined : now,
+      claimedAt: agent ? now : undefined,
+      interest,
+      lastClientAt: isMessage ? now : undefined,
+      history: [{ at: now, text: agent ? `Came through ${agent}'s link` : 'Entered Open leads' }],
+    };
+    setLeads((prev) => [lead, ...prev]);
+    if (agent) notify('agent', 'New client from your link', `${lead.clientName} contacted you about the ${interest}.`, 'leads', agent);
+    else notify('agent', 'New lead', `${lead.clientName} is asking about the ${interest}. Claim them in Open leads.`, 'leads');
+    return agent;
+  };
+
+  const claimLead = (clientId: string) => {
+    const me = currentUser?.name;
+    const lead = leads.find((l) => l.clientId === clientId);
+    if (!me || !lead) return;
+    if (lead.agentName) {
+      showToast('Already claimed', `${lead.clientName} is already ${lead.agentName === me ? 'your' : `${lead.agentName}'s`} client.`, 'error');
+      return;
+    }
+    const now = new Date().toISOString();
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.id === lead.id ? { ...l, agentName: me, source: 'pool', claimedAt: now, escalatedAt: undefined, history: [...l.history, { at: now, text: `Claimed by ${me}` }] } : l
+      )
+    );
+    moveClient(clientId, me);
+    notify('admin', 'Lead claimed', `${me} claimed ${lead.clientName} (${lead.interest}).`, 'leads');
+    showToast('Client claimed', `${lead.clientName} is now your client. Their chats are in Client Chats.`);
+  };
+
+  // Admin: give a client to an agent, or put them back in Open leads (null).
+  const assignLead = (clientId: string, agentName: string | null, reason?: string) => {
+    const lead = leads.find((l) => l.clientId === clientId);
+    if (!lead || (lead.agentName ?? null) === agentName) return;
+    const now = new Date().toISOString();
+    const text = agentName ? `Assigned to ${agentName} by the admin` : reason || 'Returned to Open leads by the admin';
+    setLeads((prev) =>
+      prev.map((l) =>
+        l.id === lead.id
+          ? {
+              ...l,
+              agentName: agentName ?? undefined,
+              source: agentName ? 'admin' : 'pool',
+              claimedAt: agentName ? now : undefined,
+              pooledAt: agentName ? l.pooledAt : now,
+              escalatedAt: undefined,
+              history: [...l.history, { at: now, text }],
+            }
+          : l
+      )
+    );
+    moveClient(clientId, agentName ?? undefined);
+    if (lead.agentName) notify('agent', 'Client reassigned', `${lead.clientName} is no longer your client. ${text}.`, 'leads', lead.agentName);
+    if (agentName) notify('agent', 'New client assigned', `${lead.clientName} (${lead.interest}) is now your client.`, 'leads', agentName);
+    else notify('agent', 'New lead', `${lead.clientName} is back in Open leads (${lead.interest}).`, 'leads');
+    if (!reason) showToast(agentName ? 'Client reassigned' : 'Back in Open leads', agentName ? `${lead.clientName} now belongs to ${agentName}.` : `${lead.clientName} can be claimed by any agent.`);
+  };
+
+  // The 2-hour and 24-hour rules, checked every minute.
+  // ponytail: runs in every open tab of the demo; move to a scheduled server job with the backend.
+  useEffect(() => {
+    const check = () => {
+      const now = Date.now();
+      leads.forEach((l) => {
+        if (shouldRelease(l, now)) {
+          assignLead(l.clientId, null, `No reply from ${l.agentName} within 24 hours`);
+          notify('admin', 'Client released', `${l.clientName} waited 24 hours for ${l.agentName} and is back in Open leads.`, 'leads');
+        } else if (shouldAlertUnclaimed(l, now)) {
+          setLeads((prev) => prev.map((x) => (x.id === l.id ? { ...x, escalatedAt: new Date().toISOString() } : x)));
+          notify('admin', 'Lead waiting', `${l.clientName} has been in Open leads for over 2 hours (${l.interest}).`, 'leads');
+        }
+      });
+    };
+    check();
+    const id = window.setInterval(check, 60_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, applications]);
+
   const createApplication = (
     appData: Omit<VehicleApplication, 'id' | 'referenceNo' | 'submittedAt' | 'status'>
   ): VehicleApplication => {
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const owner = touchLead(appData.vehicleTitle, false);
     const newApp: VehicleApplication = {
       ...appData,
+      sellerId: owner ? agentSlug(owner) : 'team',
+      sellerName: owner ?? TEAM_NAME,
       id: `app-${Date.now()}`,
       referenceNo: `GB-2026-${randomSuffix}`,
       status: 'submitted',
@@ -798,7 +960,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setApplications((prev) => [newApp, ...prev]);
 
     notify('client', 'Application received', `Your application ${newApp.referenceNo} for ${newApp.vehicleTitle} is with the admin team for review.`, 'applications');
-    notify('agent', 'New application on your listing', `${newApp.applicantName} applied for the ${newApp.vehicleTitle} (${newApp.purchaseMethod}).`, 'messages', newApp.sellerName);
+    if (owner) notify('agent', 'Your client applied', `${newApp.applicantName} applied for the ${newApp.vehicleTitle} (${newApp.purchaseMethod}).`, 'messages', owner);
     notify('admin', 'Application to review', `${newApp.referenceNo}: ${newApp.applicantName} applied for the ${newApp.vehicleTitle}.`, 'applications');
 
     showToast('Application Submitted', `Reference No: ${newApp.referenceNo}`);
@@ -830,10 +992,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setStatusOf('reserved');
       if (!commissions.some((c) => c.applicationRef === app.referenceNo)) {
         const amount = Math.round(app.vehiclePrice * COMMISSION_RATE);
+        const agent = ownerOf(app.applicantId) ?? app.sellerName;
         setCommissions((prev) => [
           {
             id: `com-${Date.now()}`,
-            agentName: app.sellerName,
+            agentName: agent,
             applicationRef: app.referenceNo,
             vehicleTitle: app.vehicleTitle,
             clientName: app.applicantName,
@@ -846,13 +1009,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           },
           ...prev,
         ]);
-        notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It becomes payable once the transaction is complete.`, 'commissions', app.sellerName);
+        notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It becomes payable once the transaction is complete.`, 'commissions', agent);
       }
       notify('client', 'Application approved', `${app.referenceNo} was approved. The ${app.vehicleTitle} is now reserved for you.`, 'applications');
     } else if (status === 'completed') {
       setStatusOf('sold');
-      setCommissions((prev) => prev.map((c) => (c.applicationRef === app.referenceNo ? { ...c, transactionCompleted: true, completedAt: new Date().toISOString() } : c)));
-      notify('agent', 'Sale completed', `The ${app.vehicleTitle} sale to ${app.applicantName} is complete. Your commission can now be approved for payout.`, 'commissions', app.sellerName);
+      // The commission goes to whoever owns the client when the sale completes.
+      const owner = ownerOf(app.applicantId);
+      setCommissions((prev) =>
+        prev.map((c) => (c.applicationRef === app.referenceNo ? { ...c, agentName: owner ?? c.agentName, transactionCompleted: true, completedAt: new Date().toISOString() } : c))
+      );
+      notify('agent', 'Sale completed', `The ${app.vehicleTitle} sale to ${app.applicantName} is complete. Your commission can now be approved for payout.`, 'commissions', owner ?? app.sellerName);
       notify('client', 'Purchase completed', `The ${app.vehicleTitle} has been released to you. Thank you for choosing Broom Broom.`, 'applications');
     } else if (status === 'declined' || status === 'withdrawn') {
       if (app.status === 'approved') setStatusOf('available');
@@ -920,6 +1087,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const requestQuotation: AppContextType['requestQuotation'] = (vehicleId, req) => {
     const v = vehicles.find((x) => x.id === vehicleId);
     if (!v || !currentUser) return undefined;
+    touchLead(v.title, false);
     const a = currentUser.address;
     const q: Quotation = {
       id: `qt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1026,7 +1194,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
     if (approve) {
-      if (req.type === 'add') createVehicleListing(req.changes || {}, req.agentName);
+      if (req.type === 'add') createVehicleListing(req.changes || {});
       if (req.type === 'edit' && req.vehicleId) updateVehicleListing(req.vehicleId, req.changes || {});
       if (req.type === 'remove' && req.vehicleId) deleteVehicleListing(req.vehicleId);
     }
@@ -1070,6 +1238,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return existing.id;
     }
 
+    const owner = touchLead(vehicle.title, true);
     const newConv: Conversation = {
       id: `conv-${Date.now()}`,
       vehicleId: vehicle.id,
@@ -1078,8 +1247,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       vehicleImage: vehicle.images[0] || generateVehicleSvg('car', '#111827', vehicle.model),
       buyerId,
       buyerName,
-      sellerId: vehicle.sellerId,
-      sellerName: vehicle.sellerName,
+      sellerId: owner ? agentSlug(owner) : 'team',
+      sellerName: owner ?? TEAM_NAME,
       lastMessage: `Inquiry regarding ${vehicle.title}`,
       updatedAt: new Date().toISOString(),
       unreadBuyer: 0,
@@ -1089,7 +1258,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           id: `msg-${Date.now()}`,
           senderId: buyerId,
           senderName: buyerName,
-          text: `Hi ${vehicle.sellerName}, I am interested in your ${vehicle.title}. Is this vehicle still available for a viewing?`,
+          text: `Hi${owner ? ` ${owner}` : ''}, I am interested in the ${vehicle.title}. Is it still available for a viewing?`,
           timestamp: new Date().toISOString(),
           isSeller: false,
         },
@@ -1102,6 +1271,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const sendMessage = (conversationId: string, text: string) => {
     if (!text.trim()) return;
+    // Track who is waiting on whom for the 24-hour reply rule.
+    const conv = conversations.find((c) => c.id === conversationId);
+    if (conv) {
+      const now = new Date().toISOString();
+      const fromAgent = currentUser?.role === 'seller';
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.clientId !== conv.buyerId ? l : fromAgent ? (l.agentName === currentUser?.name ? { ...l, lastAgentAt: now } : l) : { ...l, lastClientAt: now }
+        )
+      );
+    }
 
     setConversations((prev) =>
       prev.map((conv) => {
@@ -1158,7 +1338,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Seller Listing Management
-  const createVehicleListing = (vehicleData: Partial<Vehicle>, agentName = DEMO_AGENT): Vehicle => {
+  const createVehicleListing = (vehicleData: Partial<Vehicle>): Vehicle => {
     const id = `veh-${Date.now()}`;
     const category = vehicleData.category || 'cars';
     const newVehicle: Vehicle = {
@@ -1179,8 +1359,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       location: vehicleData.location || 'Philippines',
       province: vehicleData.province || 'Metro Manila',
       region: vehicleData.region || 'NCR',
-      sellerId: currentUser?.id || 'sel-01',
-      sellerName: agentName,
+      sellerId: 'team',
+      sellerName: TEAM_NAME,
       sellerLocation: 'Metro Manila, Philippines',
       sellerRating: 5.0,
       sellerReviewCount: 1,
@@ -1340,6 +1520,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         expenses,
         quotations,
         requestQuotation,
+        leads,
+        claimLead,
+        assignLead,
         saveQuotation,
         markQuotationAccepted,
         selectedQuotationId,

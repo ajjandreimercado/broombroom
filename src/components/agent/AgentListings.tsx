@@ -6,13 +6,23 @@ import { STATUS_LABEL } from '../admin/ListingsManager.tsx';
 import { SectionHeader, EmptyState, Drawer, btn, peso, shortDate } from '../admin/ui.tsx';
 import { Vehicle } from '../../types.ts';
 import { portalUrl } from '../../portals.ts';
-import { Eye, PlusCircle } from 'lucide-react';
+import { referralLink } from '../leads.ts';
+import { Eye, Link2, PlusCircle } from 'lucide-react';
 
 type Panel = { kind: 'add' } | { kind: 'edit' | 'remove'; vehicle: Vehicle } | null;
 
-// Agents can't change listings. They see their own and send change requests to the admin.
+// Agents can't change listings. Every agent sees all of them, shares them with a personal link, and sends change requests to the admin.
 export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) => {
-  const { listingRequests, submitListingRequest, currentUser } = useApp();
+  const { listingRequests, submitListingRequest, currentUser, showToast } = useApp();
+  const copyLink = async (v: Vehicle) => {
+    const link = referralLink(v.id, currentUser?.name || '');
+    try {
+      await navigator.clipboard.writeText(link);
+      showToast('Your link is copied', 'Clients who open it become your clients when they message or apply.');
+    } catch {
+      window.prompt('Copy your link', link);
+    }
+  };
   const [panel, setPanel] = useState<Panel>(null);
   const [price, setPrice] = useState(0);
   const [mileage, setMileage] = useState(0);
@@ -47,13 +57,13 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
   return (
     <section className="space-y-8">
       <div className="space-y-4">
-        <SectionHeader title="My listings" hint="The admin team posts listings and sets their status. Ask for a change and they will review it.">
+        <SectionHeader title="Listings" hint="Every listing is open to every agent. Share one with your own link: clients who use it become your clients. The admin team posts listings and sets their status.">
           <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => setPanel({ kind: 'add' })}>
             <PlusCircle className="w-4 h-4" aria-hidden="true" /> Request new listing
           </button>
         </SectionHeader>
         {vehicles.length === 0 ? (
-          <EmptyState title="No listings yet" body="Listings the admin assigns to you appear here." />
+          <EmptyState title="No listings yet" body="Listings the admin team posts appear here." />
         ) : (
           <ul>
             {vehicles.map((v) => (
@@ -72,6 +82,9 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => copyLink(v)}>
+                    <Link2 className="w-4 h-4" aria-hidden="true" /> Copy my link
+                  </button>
                   <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => window.open(portalUrl('buyer', `?vehicle=${v.id}`), '_blank', 'noopener')}>
                     <Eye className="w-4 h-4" aria-hidden="true" /> View
                   </button>

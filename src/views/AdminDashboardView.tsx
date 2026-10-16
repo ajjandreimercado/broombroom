@@ -14,6 +14,7 @@ import { AccountingOverview } from '../components/accounting/AccountingOverview.
 import { VoucherPage } from '../components/accounting/VoucherPage.tsx';
 import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { Quotations } from '../components/admin/Quotations.tsx';
+import { LeadsManager } from '../components/admin/LeadsManager.tsx';
 import { EmptyState, SectionHeader } from '../components/admin/ui.tsx';
 import {
   ShieldAlert,
@@ -33,12 +34,13 @@ import {
   PiggyBank,
   FileSpreadsheet,
   Calculator,
+  Users,
 } from 'lucide-react';
 
 type NavItem = { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number };
 
 export const AdminDashboardView: React.FC = () => {
-  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations } = useApp();
+  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations, leads } = useApp();
   const open = ['submitted', 'under_review', 'contacted'];
 
   // Grouped so the admin reads the sidebar as: what needs me, what I manage, who I oversee.
@@ -80,6 +82,7 @@ export const AdminDashboardView: React.FC = () => {
     {
       title: 'Agents',
       items: [
+        { id: 'leads', label: 'Clients & leads', icon: Users, count: leads.filter((l) => !l.agentName).length },
         { id: 'agent_reports', label: 'Agent reports', icon: BarChart3 },
         { id: 'conversations', label: 'Conversations', icon: MessagesSquare, count: conversations.length },
       ],
@@ -154,6 +157,7 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'acc_credit' && <VoucherPage kind="credit" />}
             {adminTab === 'acc_reports' && <SalesReport />}
             {adminTab === 'quotations' && <Quotations />}
+            {adminTab === 'leads' && <LeadsManager />}
             {adminTab === 'acc_savings' && (
               <section>
                 <SectionHeader title="Savings deposit" />

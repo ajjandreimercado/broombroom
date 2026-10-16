@@ -171,7 +171,7 @@ export const CompareModal: React.FC = () => {
         verdictDescription = `Engineered with high-efficiency ${winner.fuel} powertrain, ensuring reduced fuel expenses and modern emissions.`;
       } else if (activeTag === 'trust') {
         verdictTitle = `Top Reliability & Trust: ${winner.title}`;
-        verdictDescription = `Listed by verified agent ${winner.sellerName} (rated ${winner.sellerRating} of 5) with ${winner.condition} certification.`;
+        verdictDescription = `Listed by the Broom Broom sales team (rated ${winner.sellerRating} of 5) with ${winner.condition} certification.`;
       } else {
         verdictTitle = `Best Overall Value: ${winner.title} (${scores[winner.id]}/100 Score)`;
         verdictDescription = `Combines the most favorable balance of purchase price, low mileage (${winner.mileage.toLocaleString()} km), ${winner.year} model year, and ${winner.condition} condition.`;

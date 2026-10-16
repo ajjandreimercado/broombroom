@@ -6,6 +6,7 @@ import { SellerTab } from '../context/AppContext.tsx';
 import { SellerSalesReport } from '../components/SellerSalesReport.tsx';
 import { Commissions } from '../components/Commissions.tsx';
 import { AgentListings } from '../components/agent/AgentListings.tsx';
+import { AgentLeads } from '../components/agent/AgentLeads.tsx';
 import {
   LayoutDashboard,
   BarChart3,
@@ -15,6 +16,7 @@ import {
   Eye,
   ArrowUpRight,
   Send,
+  Users,
 } from 'lucide-react';
 
 export const SellerDashboardView: React.FC = () => {
@@ -28,11 +30,13 @@ export const SellerDashboardView: React.FC = () => {
     activeConversationId,
     setActiveConversationId,
     sendMessage,
+    leads,
   } = useApp();
 
-  // An agent works only with their own listings, client chats and commissions.
+  // Every agent can sell every listing; chats and commissions are only for the agent's own clients.
   const me = currentUser?.name;
-  const sellerVehicles = vehicles.filter((v) => v.sellerName === me);
+  const sellerVehicles = vehicles;
+  const openLeads = leads.filter((l) => !l.agentName).length;
   const conversations = allConversations.filter((c) => c.sellerName === me);
   const commissions = allCommissions.filter((c) => c.agentName === me);
   const pendingCommissions = commissions.filter((c) => c.status !== 'paid');
@@ -53,6 +57,7 @@ export const SellerDashboardView: React.FC = () => {
   const sellerTabs: { id: SellerTab; label: string; icon: any; count?: number }[] = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'sales_report', label: 'Sales Report', icon: BarChart3 },
+    { id: 'leads', label: 'Leads', icon: Users, count: openLeads },
     { id: 'messages', label: 'Client Chats', icon: MessageSquare, count: conversations.length },
     { id: 'commissions', label: 'Commissions', icon: Wallet, count: pendingCommissions.length },
     { id: 'vehicles', label: 'Listings', icon: Car, count: sellerVehicles.length },
@@ -154,7 +159,7 @@ export const SellerDashboardView: React.FC = () => {
                   </div>
                   <dl className="grid grid-cols-2 md:grid-cols-4 border-b border-[#C9D1D6]">
                     {[
-                      { label: 'My listings', value: sellerVehicles.length.toLocaleString(), note: `${sellerVehicles.filter((v) => v.status === 'available').length} approved, ${sellerVehicles.filter((v) => v.status === 'reserved').length} reserved` },
+                      { label: 'Open leads', value: openLeads.toLocaleString(), note: `${leads.filter((l) => l.agentName === me).length} clients are yours` },
                       { label: 'Commission paid', value: `₱${paidTotal.toLocaleString()}`, note: `₱${pendingTotal.toLocaleString()} receivable or payable` },
                       { label: 'Client chats', value: conversations.length.toLocaleString(), note: 'Active conversations' },
                       { label: 'Listing views', value: '12,480', note: 'This month' },
@@ -217,6 +222,7 @@ export const SellerDashboardView: React.FC = () => {
 
             {/* 3. VEHICLES MANAGEMENT */}
             {sellerTab === 'vehicles' && <AgentListings vehicles={sellerVehicles} />}
+            {sellerTab === 'leads' && <AgentLeads />}
 
             {/* 6. MESSAGES TAB */}
             {sellerTab === 'messages' && (

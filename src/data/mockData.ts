@@ -1,4 +1,7 @@
-import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission, ListingRequest, Expense, Quotation } from '../types.ts';
+import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission, ListingRequest, Expense, Quotation, ClientLead } from '../types.ts';
+
+// Listings belong to the whole team; clients belong to the agent who claimed them (see components/leads.ts).
+export const TEAM_NAME = 'Broom Broom sales team';
 
 // Minimalist, high-end studio automotive SVG generator
 export const generateVehicleSvg = (
@@ -826,8 +829,8 @@ export const INITIAL_APPLICATIONS: VehicleApplication[] = [
     vehiclePrice: 2548000,
     vehicleImage: generateVehicleSvg('truck', '#334155', 'Ranger Raptor'),
     vehicleLocation: 'San Fernando City, Pampanga',
-    sellerId: 'sel-03',
-    sellerName: 'Bea Villanueva',
+    sellerId: 'sel-01',
+    sellerName: 'Carlo Santos',
     applicantId: 'usr-buyer-01',
     applicantName: 'Andrei Mercado',
     applicantEmail: 'ajjandreimercado@gmail.com',
@@ -891,8 +894,8 @@ export const INITIAL_CONVERSATIONS: Conversation[] = [
     vehicleImage: generateVehicleSvg('bike', '#b91c1c', 'Ducati Panigale'),
     buyerId: 'usr-buyer-01',
     buyerName: 'Andrei Mercado',
-    sellerId: 'sel-02',
-    sellerName: 'Miguel Reyes',
+    sellerId: 'sel-01',
+    sellerName: 'Carlo Santos',
     lastMessage: 'All original stock exhaust parts and extra key fobs are included in the crate.',
     updatedAt: '2026-09-30T16:20:00Z',
     unreadBuyer: 0,
@@ -908,11 +911,36 @@ export const INITIAL_CONVERSATIONS: Conversation[] = [
       },
       {
         id: 'msg-04',
-        senderId: 'sel-02',
-        senderName: 'Miguel Reyes',
+        senderId: 'sel-01',
+        senderName: 'Carlo Santos',
         text: 'All original stock exhaust parts and extra key fobs are included in the crate. Everything is 100% street-legal with valid emission certificates.',
         timestamp: '2026-09-30T16:20:00Z',
         isSeller: true,
+      },
+    ],
+  },
+  {
+    id: 'conv-03',
+    vehicleId: 'veh-05',
+    vehicleTitle: '2025 Yamaha TMAX 560 Tech MAX',
+    vehiclePrice: 825000,
+    vehicleImage: generateVehicleSvg('bike', '#334155', 'TMAX 560'),
+    buyerId: 'usr-buyer-02',
+    buyerName: 'Jessa Ramos',
+    sellerId: 'team',
+    sellerName: TEAM_NAME,
+    lastMessage: 'Hi! Is the TMAX still available? I can visit on Saturday.',
+    updatedAt: '2026-10-16T09:10:00Z',
+    unreadBuyer: 0,
+    unreadSeller: 1,
+    messages: [
+      {
+        id: 'msg-05',
+        senderId: 'usr-buyer-02',
+        senderName: 'Jessa Ramos',
+        text: 'Hi! Is the TMAX still available? I can visit on Saturday.',
+        timestamp: '2026-10-16T09:10:00Z',
+        isSeller: false,
       },
     ],
   },
@@ -1227,5 +1255,35 @@ export const INITIAL_QUOTATIONS: Quotation[] = [
     registration: 0,
     chattelMortgage: 0,
     remarks: '',
+  },
+];
+
+// Who each client belongs to: the demo client is Carlo's; Jessa is waiting in the Open leads pool.
+export const INITIAL_LEADS: ClientLead[] = [
+  {
+    id: 'lead-001',
+    clientId: 'usr-buyer-01',
+    clientName: 'Andrei Mercado',
+    clientEmail: 'ajjandreimercado@gmail.com',
+    agentName: 'Carlo Santos',
+    source: 'pool',
+    createdAt: '2026-09-29T14:00:00.000Z',
+    claimedAt: '2026-09-29T14:20:00.000Z',
+    interest: '2024 Porsche 911 Carrera S Coupe',
+    lastClientAt: '2026-09-30T15:05:00.000Z',
+    lastAgentAt: '2026-09-30T16:20:00.000Z',
+    history: [{ at: '2026-09-29T14:20:00.000Z', text: 'Claimed by Carlo Santos' }],
+  },
+  {
+    id: 'lead-002',
+    clientId: 'usr-buyer-02',
+    clientName: 'Jessa Ramos',
+    clientEmail: 'jessa.ramos@example.com',
+    source: 'pool',
+    createdAt: '2026-10-16T09:10:00.000Z',
+    pooledAt: '2026-10-16T09:10:00.000Z',
+    interest: '2025 Yamaha TMAX 560 Tech MAX',
+    lastClientAt: '2026-10-16T09:10:00.000Z',
+    history: [],
   },
 ];

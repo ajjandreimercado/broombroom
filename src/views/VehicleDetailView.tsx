@@ -45,9 +45,13 @@ export const VehicleDetailView: React.FC = () => {
     showToast,
     isInCompare,
     toggleCompareVehicle,
+    leads,
+    currentUser,
   } = useApp();
 
   const vehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
+  // A client who already belongs to an agent deals with that agent on every listing.
+  const myAgent = leads.find((l) => l.clientId === currentUser?.id)?.agentName;
   const inCompare = vehicle ? isInCompare(vehicle.id) : false;
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -427,12 +431,12 @@ export const VehicleDetailView: React.FC = () => {
 
               <div className="py-5 border-t border-[#C9D1D6] flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-[#141517] text-white font-semibold text-[14px] grid place-items-center shrink-0">
-                  {vehicle.sellerName.charAt(0)}
+                  {(myAgent ?? vehicle.sellerName).charAt(0)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-semibold text-[#141517] truncate">{vehicle.sellerName}</p>
+                  <p className="text-[14px] font-semibold text-[#141517] truncate">{myAgent ?? vehicle.sellerName}</p>
                   <p className="text-[12px] text-[#4E585E] flex items-center gap-1 truncate">
-                    <MapPin className="w-3 h-3 shrink-0" aria-hidden="true" /> {vehicle.sellerLocation}
+                    {myAgent ? 'Your agent' : <><MapPin className="w-3 h-3 shrink-0" aria-hidden="true" /> {vehicle.sellerLocation}</>}
                   </p>
                 </div>
                 {vehicle.sellerVerified && (

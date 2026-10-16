@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
 import { StatusMark } from '../StatusMark.tsx';
-import { AGENTS } from '../../data/mockData.ts';
 import { Vehicle, VehicleStatus } from '../../types.ts';
 import { FilterTabs, SectionHeader, EmptyState, Drawer, btn, peso } from './ui.tsx';
 import { PlusCircle, Search, ExternalLink } from 'lucide-react';
@@ -61,7 +60,6 @@ export const ListingDetail: React.FC<{ vehicle: Vehicle; onDeleted: () => void }
       <div>
         <p className="font-display text-[22px] leading-tight text-[#141517]">{peso(vehicle.price)}</p>
         <dl className="mt-3 grid grid-cols-2 gap-y-2 text-[13px]">
-          <dt className="text-[#4E585E]">Agent</dt><dd className="text-[#141517] font-medium">{vehicle.sellerName}</dd>
           <dt className="text-[#4E585E]">Condition</dt><dd className="text-[#141517]">{vehicle.condition}</dd>
           <dt className="text-[#4E585E]">Location</dt><dd className="text-[#141517]">{vehicle.location}</dd>
           <dt className="text-[#4E585E]">Mileage</dt><dd className="text-[#141517] tabular-nums">{vehicle.mileage.toLocaleString()} km</dd>
@@ -110,12 +108,10 @@ export const ListingsManager: React.FC = () => {
   const { vehicles, applications, navigateTo } = useApp();
   const ongoing = new Set(applications.filter((a) => a.status === 'approved').map((a) => a.vehicleId));
   const [status, setStatus] = useState<VehicleStatus | 'all'>('all');
-  const [agent, setAgent] = useState('all');
   const [query, setQuery] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const byAgent = vehicles.filter((v) => agent === 'all' || v.sellerName === agent);
-  const rows = byAgent.filter(
+  const rows = vehicles.filter(
     (v) => (status === 'all' || v.status === status) && (!query.trim() || v.title.toLowerCase().includes(query.trim().toLowerCase()))
   );
   const open = vehicles.find((v) => v.id === openId);
@@ -134,19 +130,10 @@ export const ListingsManager: React.FC = () => {
           value={status}
           onChange={setStatus}
           options={[
-            { value: 'all', label: 'All', count: byAgent.length },
-            ...ORDER.map((st) => ({ value: st, label: STATUS_LABEL[st], count: byAgent.filter((v) => v.status === st).length })),
+            { value: 'all', label: 'All', count: vehicles.length },
+            ...ORDER.map((st) => ({ value: st, label: STATUS_LABEL[st], count: vehicles.filter((v) => v.status === st).length })),
           ]}
         />
-        <select
-          value={agent}
-          onChange={(e) => setAgent(e.target.value)}
-          aria-label="Filter by agent"
-          className="px-3 py-2 text-[13px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
-        >
-          <option value="all">All agents</option>
-          {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
         <label className="flex items-center gap-2 px-3 py-2 bg-white border border-[#8C989F] min-w-[200px] flex-1 max-w-xs">
           <Search className="w-4 h-4 text-[#4E585E]" aria-hidden="true" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search listings" aria-label="Search listings" className="w-full bg-transparent text-[13px] outline-none" />
@@ -154,14 +141,13 @@ export const ListingsManager: React.FC = () => {
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState title="No listings" body="Try another status, agent or search." />
+        <EmptyState title="No listings" body="Try another status or search." />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[13px] min-w-[640px]">
             <thead>
               <tr>
                 <th className="gb-label py-3 font-semibold">Vehicle</th>
-                <th className="gb-label py-3 font-semibold">Agent</th>
                 <th className="gb-label py-3 font-semibold text-right">Price</th>
                 <th className="gb-label py-3 font-semibold pl-6">Status</th>
               </tr>
@@ -182,7 +168,6 @@ export const ListingsManager: React.FC = () => {
                       <span className="font-medium text-[#141517]">{v.title}</span>
                     </span>
                   </td>
-                  <td className="py-3 text-[#2A2E31]">{v.sellerName}</td>
                   <td className="py-3 text-right tabular-nums font-semibold text-[#141517] whitespace-nowrap">{peso(v.price)}</td>
                   <td className="py-3 pl-6">
                     <span className="flex flex-wrap gap-1.5">
