@@ -12,6 +12,7 @@ import { ConversationsMonitor } from '../components/admin/ConversationsMonitor.t
 import { SafetyReports } from '../components/admin/SafetyReports.tsx';
 import { AccountingOverview } from '../components/accounting/AccountingOverview.tsx';
 import { VoucherPage } from '../components/accounting/VoucherPage.tsx';
+import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { EmptyState, SectionHeader } from '../components/admin/ui.tsx';
 import {
   ShieldAlert,
@@ -148,9 +149,10 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'accounting' && <AccountingOverview />}
             {adminTab === 'acc_expenses' && <VoucherPage kind="expense" />}
             {adminTab === 'acc_credit' && <VoucherPage kind="credit" />}
-            {(adminTab === 'acc_savings' || adminTab === 'acc_reports') && (
+            {adminTab === 'acc_reports' && <SalesReport />}
+            {adminTab === 'acc_savings' && (
               <section>
-                <SectionHeader title={adminTab === 'acc_savings' ? 'Savings deposit' : 'Accounting reports'} />
+                <SectionHeader title="Savings deposit" />
                 <EmptyState title="Not set up yet" body="This section's layout hasn't been finalised yet." />
               </section>
             )}

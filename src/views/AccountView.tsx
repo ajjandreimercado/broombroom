@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
-import { openAcknowledgementReceipt } from '../components/receipt.ts';
-import { ApplicationProgress } from '../components/ApplicationProgress.tsx';
+import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts';
+import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
 import { useApp } from '../context/AppContext.tsx';
 import { AccountTab } from '../context/AppContext.tsx';
 import { VehicleCard } from '../components/VehicleCard.tsx';
@@ -452,6 +452,7 @@ export const AccountView: React.FC = () => {
                                   {app.referenceNo}
                                 </span>
                                 <StatusMark status={app.status} />
+                                {isOngoing(app) && <StatusMark status="Ongoing" />}
                               </div>
                               <h3 className="font-bold text-[#141517] text-sm mt-1">
                                 {app.vehicleTitle}
@@ -883,6 +884,11 @@ export const AccountView: React.FC = () => {
                         >
                           View &amp; save PDF
                         </button>
+                        {p.attachment && (
+                          <button onClick={() => openImage(p.attachment!, `Payment screenshot ${p.arNo}`)} className="text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer">
+                            Screenshot
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>

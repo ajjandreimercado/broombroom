@@ -152,7 +152,8 @@ interface AppContextType {
   commissions: Commission[];
   approveCommission: (id: string) => void;
   payCommission: (id: string, proofFileName: string, proofImage?: string) => void;
-  recordPartialPayment: (appId: string, amount: number, description: string) => PaymentReceipt | undefined;
+  recordPartialPayment: (appId: string, amount: number, description: string, attachment?: { image: string; name: string }) => PaymentReceipt | undefined;
+  attachDocumentForClient: (appId: string, docIndex: number, fileName: string) => void;
   listingRequests: ListingRequest[];
   expenses: Expense[];
   addExpense: (e: Omit<Expense, 'id' | 'voucherNo' | 'createdAt'>) => Expense;
@@ -249,9 +250,9 @@ const normalizeVehicle = (v: Vehicle): Vehicle =>
   v.condition === 'New' || v.condition === 'Surplus / 2nd hand' ? v : { ...v, condition: 'Surplus / 2nd hand' };
 const normalizeCommission = (c: Commission): Commission => {
   if ((c as unknown as { status: string }).status === 'pending') return { ...c, status: 'receivable', agentName: c.agentName || DEMO_AGENT, transactionCompleted: true };
-  // Saved data from before proof images: pick up the seed's sample proof.
-  const proofImage = c.proofImage ?? INITIAL_COMMISSIONS.find((s) => s.id === c.id)?.proofImage;
-  return { ...c, proofImage, agentName: c.agentName || DEMO_AGENT, transactionCompleted: c.transactionCompleted ?? true };
+  // Saved data from before proof images and sale dates: pick them up from the seed.
+  const seed = INITIAL_COMMISSIONS.find((s) => s.id === c.id);
+  return { ...c, proofImage: c.proofImage ?? seed?.proofImage, completedAt: c.completedAt ?? seed?.completedAt, agentName: c.agentName || DEMO_AGENT, transactionCompleted: c.transactionCompleted ?? true };
 };
 const readJson = <T,>(key: string, fallback: T): T => {
   try {
@@ -291,7 +292,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = (title: string, message?: string, type: 'success' | 'info' | 'error' = 'success') => {
-    const id = Date.now().toString();
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; // two toasts can land in the same millisecond
     setToasts((prev) => [...prev, { id, title, message, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -829,7 +830,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       notify('client', 'Application approved', `${app.referenceNo} was approved. The ${app.vehicleTitle} is now reserved for you.`, 'applications');
     } else if (status === 'completed') {
       setStatusOf('sold');
-      setCommissions((prev) => prev.map((c) => (c.applicationRef === app.referenceNo ? { ...c, transactionCompleted: true } : c)));
+      setCommissions((prev) => prev.map((c) => (c.applicationRef === app.referenceNo ? { ...c, transactionCompleted: true, completedAt: new Date().toISOString() } : c)));
       notify('agent', 'Sale completed', `The ${app.vehicleTitle} sale to ${app.applicantName} is complete. Your commission can now be approved for payout.`, 'commissions', app.sellerName);
       notify('client', 'Purchase completed', `The ${app.vehicleTitle} has been released to you. Thank you for choosing Broom Broom.`, 'applications');
     } else if (status === 'declined' || status === 'withdrawn') {
@@ -865,7 +866,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // A confirmed partial payment releases the next acknowledgement receipt (AR) to the client.
-  const recordPartialPayment = (appId: string, amount: number, description: string) => {
+  const recordPartialPayment = (appId: string, amount: number, description: string, attachment?: { image: string; name: string }) => {
     const app = applications.find((a) => a.id === appId);
     if (!app || !(amount > 0) || !description.trim()) return undefined;
     const receipt: PaymentReceipt = {
@@ -874,11 +875,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       description: description.trim(),
       amount,
       receivedBy: currentUser?.name || 'Admin',
+      attachment: attachment?.image,
+      attachmentName: attachment?.name,
     };
     setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, payments: [...(a.payments ?? []), receipt] } : a)));
     notify('client', 'Payment received', `Your payment of ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} for ${app.referenceNo} was confirmed. Acknowledgement receipt ${receipt.arNo} is ready.`, 'applications');
     showToast('Payment confirmed', `Acknowledgement receipt ${receipt.arNo} was released to ${app.applicantName}.`);
     return receipt;
+  };
+
+  // The client handed a document to the admin, who files it on their application; it then waits for review like any other.
+  const attachDocumentForClient = (appId: string, docIndex: number, fileName: string) => {
+    const app = applications.find((a) => a.id === appId);
+    const doc = app?.documents?.[docIndex];
+    if (!app || !doc) return;
+    const documents = app.documents!.map((d, i) => (i === docIndex ? { ...d, fileName, status: 'pending' as const, reason: undefined, addedByAdmin: true } : d));
+    setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, documents } : a)));
+    notify('client', 'Document received', `The admin team added your ${doc.label} to ${app.referenceNo}.`, 'applications');
+    showToast('Document uploaded', `${doc.label} was added to ${app.referenceNo} for review.`);
   };
 
   // Commission stages: receivable -> payable (admin approval, sale must be complete) -> paid (cash + proof).
@@ -1232,6 +1246,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         approveCommission,
         payCommission,
         recordPartialPayment,
+        attachDocumentForClient,
         listingRequests,
         expenses,
         addExpense,

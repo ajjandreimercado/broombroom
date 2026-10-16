@@ -106,6 +106,8 @@ export interface PaymentReceipt {
   description: string;
   amount: number;
   receivedBy: string;
+  attachment?: string; // payment screenshot, shrunk JPEG data URL
+  attachmentName?: string;
 }
 
 export interface ChatMessage {
@@ -187,6 +189,7 @@ export interface VehicleReport {
 export interface ApplicationDocument {
   label: string;
   fileName: string; // '' until the client or the admin supplies it
+  addedByAdmin?: boolean; // the client handed it in and the admin uploaded it
   // Admin review (financing section); a rejection always carries a reason.
   status?: 'pending' | 'approved' | 'rejected';
   reason?: string;
@@ -225,6 +228,7 @@ export interface Commission {
   proofImage?: string; // shrunk JPEG data URL, printed on the receipt; absent for PDF proofs
   receiptNo?: string;
   paidAt?: string;
+  completedAt?: string; // when the sale was completed; dates the sale in accounting reports
   createdAt: string;
 }
 

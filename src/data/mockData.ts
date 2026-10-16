@@ -1002,6 +1002,7 @@ export const INITIAL_COMMISSIONS: Commission[] = [
     amount: Math.round(2185000 * COMMISSION_RATE),
     status: 'paid',
     transactionCompleted: true,
+    completedAt: '2026-09-20T15:00:00.000Z',
     approvedAt: '2026-09-22T09:00:00.000Z',
     proofFileName: 'bdo-transfer-receipt-0923.png',
     proofImage: SAMPLE_PROOF,
@@ -1020,6 +1021,7 @@ export const INITIAL_COMMISSIONS: Commission[] = [
     amount: Math.round(2185000 * COMMISSION_RATE),
     status: 'payable',
     transactionCompleted: true,
+    completedAt: '2026-10-04T11:00:00.000Z',
     approvedAt: '2026-10-06T14:30:00.000Z',
     createdAt: '2026-09-30T08:00:00.000Z',
   },
@@ -1034,6 +1036,7 @@ export const INITIAL_COMMISSIONS: Commission[] = [
     amount: Math.round(825000 * COMMISSION_RATE),
     status: 'receivable',
     transactionCompleted: true,
+    completedAt: '2026-10-09T16:20:00.000Z',
     createdAt: '2026-10-03T09:30:00.000Z',
   },
   {

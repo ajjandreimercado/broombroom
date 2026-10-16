@@ -107,7 +107,8 @@ export const ListingDetail: React.FC<{ vehicle: Vehicle; onDeleted: () => void }
 
 // Admin: every listing, filterable by status and agent; a row opens its status panel.
 export const ListingsManager: React.FC = () => {
-  const { vehicles, navigateTo } = useApp();
+  const { vehicles, applications, navigateTo } = useApp();
+  const ongoing = new Set(applications.filter((a) => a.status === 'approved').map((a) => a.vehicleId));
   const [status, setStatus] = useState<VehicleStatus | 'all'>('all');
   const [agent, setAgent] = useState('all');
   const [query, setQuery] = useState('');
@@ -183,7 +184,12 @@ export const ListingsManager: React.FC = () => {
                   </td>
                   <td className="py-3 text-[#2A2E31]">{v.sellerName}</td>
                   <td className="py-3 text-right tabular-nums font-semibold text-[#141517] whitespace-nowrap">{peso(v.price)}</td>
-                  <td className="py-3 pl-6"><StatusMark status={STATUS_LABEL[v.status]} /></td>
+                  <td className="py-3 pl-6">
+                    <span className="flex flex-wrap gap-1.5">
+                      <StatusMark status={STATUS_LABEL[v.status]} />
+                      {v.status === 'reserved' && ongoing.has(v.id) && <StatusMark status="Ongoing" />}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

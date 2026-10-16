@@ -4,6 +4,10 @@ import { VehicleApplication } from '../types.ts';
 
 const STOPPED = ['declined', 'withdrawn'];
 
+// Approved and reserved, but not yet fully paid and released.
+export const isOngoing = (app: VehicleApplication) => app.status === 'approved';
+export const amountPaid = (app: VehicleApplication) => (app.payments ?? []).reduce((s, p) => s + p.amount, 0);
+
 // Where a client's purchase stands, from application to release. Built from the shared application record,
 // so it moves on its own when the admin acts in another tab (AppContext syncs storage across tabs).
 export const progressSteps = (app: VehicleApplication) => {

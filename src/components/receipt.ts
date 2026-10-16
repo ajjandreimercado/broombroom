@@ -77,6 +77,12 @@ export const openCommissionReceipt = (c: Commission) => {
   return openPrintable(html);
 };
 
+// Shows an attached image (e.g. a payment screenshot) in its own tab; browsers block opening data: URLs directly.
+export const openImage = (src: string, title: string) =>
+  openPrintable(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>body{margin:0;background:#141517;display:grid;place-items:center;min-height:100vh}img{max-width:100%;max-height:100vh}</style></head>
+<body><img src="${esc(src)}" alt="${esc(title)}"></body></html>`);
+
 const money2 = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Acknowledgement receipt for a confirmed partial payment, laid out like the paper AR template (US Letter).

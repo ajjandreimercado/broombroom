@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
 import { VehicleApplication } from '../types.ts';
-import { openAcknowledgementReceipt } from './receipt.ts';
-import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate } from './admin/ui.tsx';
-import { Check, PhoneCall, PackageCheck, ReceiptText } from 'lucide-react';
+import { openAcknowledgementReceipt, openImage } from './receipt.ts';
+import { isOngoing, amountPaid } from './ApplicationProgress.tsx';
+import { photoDataUrl } from '../media.ts';
+import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
+import { Check, PhoneCall, PackageCheck, ReceiptText, Paperclip, X } from 'lucide-react';
 
 type Filter = 'review' | 'approved' | 'completed' | 'closed' | 'all';
 const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'contacted'];
@@ -29,6 +31,15 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState(`Partial payment for ${app.vehicleTitle}`);
+  const [shot, setShot] = useState<{ image: string; name: string } | undefined>();
+  const [shotError, setShotError] = useState('');
+  const attachShot = async (file?: File) => {
+    if (!file) return;
+    const problem = checkUpload(file);
+    if (problem || !file.type.startsWith('image/')) return setShotError(problem || `${file.name} is not an image. Attach a screenshot or photo.`);
+    setShotError('');
+    setShot({ image: await photoDataUrl(file, 1400), name: file.name });
+  };
   const value = Number(amount);
   const canAccept = app.status !== 'declined' && app.status !== 'withdrawn';
   const show = (arNo: string) => {
@@ -45,6 +56,11 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
               <span className="tabular-nums font-semibold text-[#141517]">AR {p.arNo}</span>
               <span className="tabular-nums text-[#141517]">{peso(p.amount)}</span>
               <span className="text-[#4E585E] tabular-nums">{shortDate(p.date)}</span>
+              {p.attachment && (
+                <button onClick={() => openImage(p.attachment!, `Payment screenshot ${p.arNo}`)} className="inline-flex items-center gap-1 text-[13px] text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer">
+                  <Paperclip className="w-3.5 h-3.5" aria-hidden="true" /> Screenshot
+                </button>
+              )}
               <button onClick={() => show(p.arNo)} className="ml-auto text-[13px] font-semibold text-[#1D5FD1] underline underline-offset-4 cursor-pointer">
                 View receipt
               </button>
@@ -58,10 +74,11 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
             className="flex flex-wrap items-center gap-2 animate-fade-up"
             onSubmit={(e) => {
               e.preventDefault();
-              const receipt = recordPartialPayment(app.id, value, description);
+              const receipt = recordPartialPayment(app.id, value, description, shot);
               if (!receipt) return;
               setOpen(false);
               setAmount('');
+              setShot(undefined);
               openAcknowledgementReceipt({ ...app, payments: [...(app.payments ?? []), receipt] }, receipt);
             }}
           >
@@ -86,12 +103,28 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
               aria-label="Description on the receipt"
               className="flex-1 min-w-[220px] px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
             />
+            {shot ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-2 border border-[#1B7F35] text-[12.5px] text-[#141517] max-w-[200px]">
+                <Paperclip className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">{shot.name}</span>
+                <button type="button" onClick={() => setShot(undefined)} aria-label="Remove screenshot" className="cursor-pointer text-[#4E585E] hover:text-[#141517]">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            ) : (
+              <label className={`${btn.outline} inline-flex items-center gap-1.5 focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1]`}>
+                <Paperclip className="w-4 h-4" aria-hidden="true" />
+                Payment screenshot
+                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { attachShot(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+            )}
             <button type="submit" disabled={!(value > 0) || !description.trim()} className={btn.primary}>
               Confirm &amp; release AR
             </button>
             <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">
               Cancel
             </button>
+            {shotError && <p role="alert" className="w-full text-[12.5px] text-[#B42318]">{shotError}</p>}
           </form>
         ) : (
           <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => setOpen(true)}>
@@ -150,6 +183,7 @@ export const ApplicationsManager: React.FC = () => {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[12.5px] tabular-nums text-[#4E585E]">{app.referenceNo}</span>
                       <StatusMark status={app.status} />
+                      {isOngoing(app) && <StatusMark status="Ongoing" />}
                       <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[#141517]">
                         {app.purchaseMethod === 'cash' ? 'Cash' : `Financing · ${app.financingTermMonths ?? '-'} mo`}
                       </span>
@@ -204,7 +238,9 @@ export const ApplicationsManager: React.FC = () => {
                       Mark sale completed
                     </button>
                     <ReasonAction label="Cancel approval" confirmLabel="Cancel & release car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
-                    <span className="text-[12.5px] text-[#4E585E]">Vehicle is reserved for this client.</span>
+                    <span className="text-[12.5px] text-[#4E585E] tabular-nums">
+                      Reserved · payment ongoing: {peso(amountPaid(app))} of {peso(app.vehiclePrice)} received
+                    </span>
                   </div>
                 )}
                 {app.status === 'completed' && <p className="text-[12.5px] text-[#1B7F35] font-medium">Sale completed · vehicle released to the client.</p>}
