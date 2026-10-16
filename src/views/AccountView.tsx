@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
+import { openAcknowledgementReceipt } from '../components/receipt.ts';
+import { ApplicationProgress } from '../components/ApplicationProgress.tsx';
 import { useApp } from '../context/AppContext.tsx';
 import { AccountTab } from '../context/AppContext.tsx';
 import { VehicleCard } from '../components/VehicleCard.tsx';
@@ -434,9 +436,9 @@ export const AccountView: React.FC = () => {
                     {userApplications.map((app) => {
 
                       return (
+                        <div key={app.id} className="border-t-2 border-[#141517] pt-6 space-y-5">
                         <div
-                          key={app.id}
-                          className="border-t-2 border-[#141517] pt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                         >
                           <div className="flex items-center gap-4">
                             <img
@@ -479,6 +481,8 @@ export const AccountView: React.FC = () => {
                               </button>
                             )}
                           </div>
+                        </div>
+                        <ApplicationProgress app={app} />
                         </div>
                       );
                     })}
@@ -801,6 +805,8 @@ export const AccountView: React.FC = () => {
               </button>
             </div>
 
+            <ApplicationProgress app={viewingApplication} stacked />
+
             <div className="p-4 bg-[#F7F8F8] rounded-[2px] border border-[#C9D1D6] flex items-center gap-3.5">
               <img
                 src={viewingApplication.vehicleImage}
@@ -851,9 +857,32 @@ export const AccountView: React.FC = () => {
                       <li key={d.label} className="py-2 border-b border-[#DDE3E6]">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-[#141517]">{d.label}</span>
-                          <StatusMark status={d.status === 'approved' ? 'Approved' : d.status === 'rejected' ? 'Rejected' : 'In review'} />
+                          <StatusMark status={!d.fileName ? 'Hand to admin' : d.status === 'approved' ? 'Approved' : d.status === 'rejected' ? 'Rejected' : 'In review'} />
                         </div>
                         {d.status === 'rejected' && d.reason && <p className="text-[#B42318] mt-1">Reason: {d.reason}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!viewingApplication.payments?.length && (
+                <div className="pt-3">
+                  <p className="gb-label mb-2">Acknowledgement receipts</p>
+                  <ul className="border-t border-[#C9D1D6]">
+                    {viewingApplication.payments.map((p) => (
+                      <li key={p.arNo} className="flex flex-wrap items-center justify-between gap-3 py-2 border-b border-[#DDE3E6]">
+                        <span className="text-[#141517] tabular-nums">
+                          AR {p.arNo} · ₱{p.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          <span className="text-[#4E585E]"> · {new Date(p.date).toLocaleDateString()}</span>
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (!openAcknowledgementReceipt(viewingApplication, p)) showToast('Allow pop-ups', 'Your browser blocked the receipt window. Allow pop-ups for this site and try again.', 'error');
+                          }}
+                          className="font-semibold text-[#1D5FD1] underline underline-offset-4 cursor-pointer"
+                        >
+                          View &amp; save PDF
+                        </button>
                       </li>
                     ))}
                   </ul>

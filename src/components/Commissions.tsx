@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { COMMISSION_RATE } from '../data/mockData.ts';
 import { Commission } from '../types.ts';
 import { openCommissionReceipt } from './receipt.ts';
+import { photoDataUrl } from '../media.ts';
 import { FilterTabs, SectionHeader, EmptyState, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
 import { FileCheck2, Download, Check } from 'lucide-react';
 
@@ -48,12 +49,14 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
   const count = (s: Stage) => mine.filter((c) => c.status === s).length;
   const rows = (stage === 'all' ? mine : mine.filter((c) => c.status === stage)).slice(0, compact ? 4 : undefined);
 
-  const attachProof = (id: string, file?: File) => {
+  const attachProof = async (id: string, file?: File) => {
     if (!file) return;
     const problem = checkUpload(file);
     if (problem) return setError(problem);
     setError('');
-    payCommission(id, file.name);
+    // A photo of the proof is printed on the agent's receipt; a PDF proof is listed by name only.
+    const image = file.type.startsWith('image/') ? await photoDataUrl(file, 1200).catch(() => undefined) : undefined;
+    payCommission(id, file.name, image);
   };
 
   const receipt = (c: Commission) => {

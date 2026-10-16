@@ -981,6 +981,15 @@ export const AGENTS = ['Carlo Santos', 'Bea Villanueva', 'Miguel Reyes', 'Joy Me
 // The agent portal signs in as this demo agent.
 export const DEMO_AGENT = 'Carlo Santos';
 
+// Drawn stand-in for the seeded payout's proof of payment, marked as a demo sample.
+const SAMPLE_PROOF = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="520" height="300" viewBox="0 0 520 300" font-family="Arial, sans-serif">
+<rect width="520" height="300" fill="#fff" stroke="#C9D1D6"/><rect width="520" height="56" fill="#1D5FD1"/>
+<text x="24" y="36" fill="#fff" font-size="20" font-weight="700">Fund transfer confirmation</text>
+<text x="24" y="96" fill="#4E585E" font-size="13">Amount</text><text x="24" y="124" fill="#141517" font-size="26" font-weight="700">PHP 65,550.00</text>
+<text x="24" y="168" fill="#4E585E" font-size="13">To: Carlo Santos</text><text x="24" y="192" fill="#4E585E" font-size="13">Reference: 0923-4471-0088</text>
+<text x="24" y="216" fill="#4E585E" font-size="13">Date: September 25, 2026, 6:15 PM</text>
+<text x="496" y="282" fill="#B42318" font-size="12" font-weight="700" text-anchor="end">DEMO SAMPLE, NOT A REAL TRANSFER</text></svg>`)}`;
+
 export const INITIAL_COMMISSIONS: Commission[] = [
   {
     id: 'com-001',
@@ -994,7 +1003,8 @@ export const INITIAL_COMMISSIONS: Commission[] = [
     status: 'paid',
     transactionCompleted: true,
     approvedAt: '2026-09-22T09:00:00.000Z',
-    proofFileName: 'bdo-transfer-receipt-0923.pdf',
+    proofFileName: 'bdo-transfer-receipt-0923.png',
+    proofImage: SAMPLE_PROOF,
     receiptNo: 'BB-OR-2026-0412',
     paidAt: '2026-09-25T10:15:00.000Z',
     createdAt: '2026-09-18T08:00:00.000Z',

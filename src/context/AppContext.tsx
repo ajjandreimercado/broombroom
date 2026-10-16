@@ -19,7 +19,9 @@ import {
   ListingRequest,
   ApplicationDocument,
   Expense,
+  PaymentReceipt,
 } from '../types.ts';
+import { nextArNo } from '../components/ar.ts';
 import {
   INITIAL_VEHICLES,
   INITIAL_GUIDES,
@@ -149,7 +151,8 @@ interface AppContextType {
   reports: VehicleReport[];
   commissions: Commission[];
   approveCommission: (id: string) => void;
-  payCommission: (id: string, proofFileName: string) => void;
+  payCommission: (id: string, proofFileName: string, proofImage?: string) => void;
+  recordPartialPayment: (appId: string, amount: number, description: string) => PaymentReceipt | undefined;
   listingRequests: ListingRequest[];
   expenses: Expense[];
   addExpense: (e: Omit<Expense, 'id' | 'voucherNo' | 'createdAt'>) => Expense;
@@ -246,7 +249,9 @@ const normalizeVehicle = (v: Vehicle): Vehicle =>
   v.condition === 'New' || v.condition === 'Surplus / 2nd hand' ? v : { ...v, condition: 'Surplus / 2nd hand' };
 const normalizeCommission = (c: Commission): Commission => {
   if ((c as unknown as { status: string }).status === 'pending') return { ...c, status: 'receivable', agentName: c.agentName || DEMO_AGENT, transactionCompleted: true };
-  return { ...c, agentName: c.agentName || DEMO_AGENT, transactionCompleted: c.transactionCompleted ?? true };
+  // Saved data from before proof images: pick up the seed's sample proof.
+  const proofImage = c.proofImage ?? INITIAL_COMMISSIONS.find((s) => s.id === c.id)?.proofImage;
+  return { ...c, proofImage, agentName: c.agentName || DEMO_AGENT, transactionCompleted: c.transactionCompleted ?? true };
 };
 const readJson = <T,>(key: string, fallback: T): T => {
   try {
@@ -859,6 +864,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // A confirmed partial payment releases the next acknowledgement receipt (AR) to the client.
+  const recordPartialPayment = (appId: string, amount: number, description: string) => {
+    const app = applications.find((a) => a.id === appId);
+    if (!app || !(amount > 0) || !description.trim()) return undefined;
+    const receipt: PaymentReceipt = {
+      arNo: nextArNo(applications),
+      date: new Date().toISOString(),
+      description: description.trim(),
+      amount,
+      receivedBy: currentUser?.name || 'Admin',
+    };
+    setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, payments: [...(a.payments ?? []), receipt] } : a)));
+    notify('client', 'Payment received', `Your payment of ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} for ${app.referenceNo} was confirmed. Acknowledgement receipt ${receipt.arNo} is ready.`, 'applications');
+    showToast('Payment confirmed', `Acknowledgement receipt ${receipt.arNo} was released to ${app.applicantName}.`);
+    return receipt;
+  };
+
   // Commission stages: receivable -> payable (admin approval, sale must be complete) -> paid (cash + proof).
   const approveCommission = (id: string) => {
     const c = commissions.find((x) => x.id === id);
@@ -872,12 +894,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('Commission approved', 'It is now payable.');
   };
 
-  const payCommission = (id: string, proofFileName: string) => {
+  const payCommission = (id: string, proofFileName: string, proofImage?: string) => {
     const c = commissions.find((x) => x.id === id);
     if (!c || c.status !== 'payable') return;
     const receiptNo = `BB-OR-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
     setCommissions((prev) =>
-      prev.map((x) => (x.id === id ? { ...x, status: 'paid', proofFileName, receiptNo, paidAt: new Date().toISOString() } : x))
+      prev.map((x) => (x.id === id ? { ...x, status: 'paid', proofFileName, proofImage, receiptNo, paidAt: new Date().toISOString() } : x))
     );
     notify('agent', 'Cash transferred', `₱${c.amount.toLocaleString()} for the ${c.vehicleTitle} was sent. Your receipt ${receiptNo} is ready.`, 'commissions', c.agentName);
     showToast('Commission paid', 'The agent has been notified and can download the receipt.');
@@ -1209,6 +1231,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         commissions,
         approveCommission,
         payCommission,
+        recordPartialPayment,
         listingRequests,
         expenses,
         addExpense,

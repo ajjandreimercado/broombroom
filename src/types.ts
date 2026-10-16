@@ -96,6 +96,16 @@ export interface VehicleApplication {
   notes?: string;
   sellerNotes?: string;
   documents?: ApplicationDocument[];
+  payments?: PaymentReceipt[];
+}
+
+// A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).
+export interface PaymentReceipt {
+  arNo: string; // 2026-0001, counted across every application
+  date: string;
+  description: string;
+  amount: number;
+  receivedBy: string;
 }
 
 export interface ChatMessage {
@@ -176,7 +186,7 @@ export interface VehicleReport {
 
 export interface ApplicationDocument {
   label: string;
-  fileName: string;
+  fileName: string; // '' until the client or the admin supplies it
   // Admin review (financing section); a rejection always carries a reason.
   status?: 'pending' | 'approved' | 'rejected';
   reason?: string;
@@ -212,6 +222,7 @@ export interface Commission {
   transactionCompleted: boolean;
   approvedAt?: string;
   proofFileName?: string;
+  proofImage?: string; // shrunk JPEG data URL, printed on the receipt; absent for PDF proofs
   receiptNo?: string;
   paidAt?: string;
   createdAt: string;

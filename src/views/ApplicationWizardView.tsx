@@ -21,25 +21,35 @@ import {
 
 const MAX_DOC_BYTES = 10 * 1024 * 1024;
 
-// What each settlement method needs from the client.
-const DOCS = {
-  cash: [{ key: 'id-signature', label: 'Valid ID with signature', hint: '' }],
+// What each settlement method needs from the client, grouped as the form shows them.
+type Doc = { key: string; label: string; hint: string };
+const DOCS: Record<'cash' | 'financing', { title: string; items: Doc[] }[]> = {
+  cash: [{ title: 'Valid ID', items: [{ key: 'id-signature', label: 'Valid ID with signature', hint: '' }] }],
   financing: [
-    { key: 'id-1', label: 'Valid ID (1 of 2)', hint: '' },
-    { key: 'id-2', label: 'Valid ID (2 of 2)', hint: '' },
-    { key: 'billing', label: 'Proof of billing', hint: 'Water, electric or internet bill' },
-  ],
-  employed: [
-    { key: 'payslip', label: 'Payslip', hint: '' },
-    { key: 'coe', label: 'Certificate of Employment (COE)', hint: '' },
-  ],
-  business: [
-    { key: 'dti', label: 'DTI registration', hint: '' },
-    { key: 'permit', label: 'Business permit', hint: '' },
-    { key: 'sales', label: 'Daily sales record', hint: '' },
-    { key: 'business-photo', label: 'Photo of the business', hint: '' },
+    {
+      title: 'Valid IDs',
+      items: [
+        { key: 'id-applicant', label: 'Valid ID: applicant', hint: '' },
+        { key: 'id-comaker-1', label: 'Valid ID: co-maker 1', hint: '' },
+        { key: 'id-comaker-2', label: 'Valid ID: co-maker 2', hint: '' },
+      ],
+    },
+    { title: 'Proof of billing', items: [{ key: 'billing', label: 'Proof of billing', hint: 'Water, electric or internet bill' }] },
+    {
+      title: 'Proof of income',
+      items: [
+        { key: 'payslip', label: 'Payslip', hint: 'If employed' },
+        { key: 'coe', label: 'Certificate of Employment (COE)', hint: 'If employed' },
+        { key: 'dti', label: 'DTI registration', hint: 'If a business owner' },
+        { key: 'permit', label: 'Business permit', hint: 'If a business owner' },
+        { key: 'sales', label: 'Daily sales record', hint: 'If a business owner' },
+        { key: 'business-photo', label: 'Photo of the business', hint: 'If a business owner' },
+      ],
+    },
   ],
 };
+// Clients may send the rest straight to the admin, who files it for them.
+const MIN_UPLOADS = 2;
 
 export const ApplicationWizardView: React.FC = () => {
   const {
@@ -76,12 +86,12 @@ export const ApplicationWizardView: React.FC = () => {
   const [notes, setNotes] = useState('Interested in viewing this weekend. Documents ready.');
 
   // Required documents: file names keyed by requirement (no upload backend yet).
-  const [incomeType, setIncomeType] = useState<'employed' | 'business'>('employed');
   const [docs, setDocs] = useState<Record<string, string>>({});
   const [docError, setDocError] = useState('');
-  const requiredDocs =
-    purchaseMethod === 'cash' ? DOCS.cash : [...DOCS.financing, ...(incomeType === 'employed' ? DOCS.employed : DOCS.business)];
-  const missingDocs = requiredDocs.filter((d) => !docs[d.key]);
+  const docGroups = DOCS[purchaseMethod];
+  const requiredDocs = docGroups.flatMap((g) => g.items);
+  const attachedCount = requiredDocs.filter((d) => docs[d.key]).length;
+  const minUploads = Math.min(MIN_UPLOADS, requiredDocs.length);
 
   const attachDoc = (key: string, file: File | undefined) => {
     if (!file) return;
@@ -133,8 +143,8 @@ export const ApplicationWizardView: React.FC = () => {
   };
 
   const handleSubmitApplication = () => {
-    if (missingDocs.length) {
-      setDocError(`Upload the remaining document${missingDocs.length > 1 ? 's' : ''}: ${missingDocs.map((d) => d.label).join(', ')}.`);
+    if (attachedCount < minUploads) {
+      setDocError(`Upload at least ${minUploads} document${minUploads > 1 ? 's' : ''} to send the application. You can hand the rest to the admin team.`);
       return;
     }
     const created = createApplication({
@@ -162,7 +172,7 @@ export const ApplicationWizardView: React.FC = () => {
       financingTermMonths: purchaseMethod === 'financing' ? financingTerm : undefined,
       downPayment: purchaseMethod === 'financing' ? downPayment : undefined,
       notes: notes.trim(),
-      documents: requiredDocs.map((d) => ({ label: d.label, fileName: docs[d.key] })),
+      documents: requiredDocs.map((d) => ({ label: d.label, fileName: docs[d.key] || '' })),
     });
 
     setConfirmedApp(created);
@@ -500,34 +510,21 @@ export const ApplicationWizardView: React.FC = () => {
                   <div className="flex flex-wrap items-end justify-between gap-2 pb-3 border-b-2 border-[#141517]">
                     <h3 id="docs-heading" className="font-display text-[18px] leading-tight text-[#141517]">Required documents</h3>
                     <span className="text-[12px] text-[#4E585E] tabular-nums">
-                      {requiredDocs.length - missingDocs.length} of {requiredDocs.length} attached
+                      {attachedCount} of {requiredDocs.length} attached
                     </span>
                   </div>
+                  <p className="pt-3 text-[13px] text-[#2A2E31]">
+                    {requiredDocs.length > 1
+                      ? `Upload at least ${minUploads} now. Anything you can't upload yet, hand to the admin team and they will add it to your application.`
+                      : 'Upload a clear photo or PDF.'}
+                  </p>
 
-                  {purchaseMethod === 'financing' && (
-                    <div className="py-4 border-b border-[#C9D1D6]">
-                      <span className="gb-label block mb-2">Proof of income</span>
-                      <div className="grid grid-cols-2 border border-[#8C989F] divide-x divide-[#8C989F] max-w-sm" role="radiogroup" aria-label="Source of income">
-                        {(['employed', 'business'] as const).map((t) => (
-                          <button
-                            key={t}
-                            type="button"
-                            role="radio"
-                            aria-checked={incomeType === t}
-                            onClick={() => setIncomeType(t)}
-                            className={`py-2.5 text-[13px] cursor-pointer transition-colors duration-150 ${
-                              incomeType === t ? 'bg-[#141517] text-white font-semibold' : 'text-[#141517] hover:bg-[#EEF1F2]'
-                            }`}
-                          >
-                            {t === 'employed' ? 'Employed' : 'Business owner'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
+                  {docGroups.map((g) => (
+                  <div key={g.title} className="pt-4">
+                  <p className="gb-label">{g.title}</p>
                   <ul>
-                    {requiredDocs.map((d) => {
+                    {g.items.map((d) => {
                       const fileName = docs[d.key];
                       return (
                         <li key={d.key} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 border-b border-[#C9D1D6]">
@@ -555,6 +552,8 @@ export const ApplicationWizardView: React.FC = () => {
                       );
                     })}
                   </ul>
+                  </div>
+                  ))}
                 </section>
 
                 <p className="text-[13px] text-[#2A2E31] bg-white border border-[#C9D1D6] px-4 py-3">
@@ -632,7 +631,7 @@ export const ApplicationWizardView: React.FC = () => {
                   </div>
                   <div className="flex justify-between text-[#2A2E31]">
                     <span className="text-[#6B767D]">Documents:</span>
-                    <span className="font-bold tabular-nums">{confirmedApp.documents?.length ?? 0} attached</span>
+                    <span className="font-bold tabular-nums">{confirmedApp.documents?.filter((d) => d.fileName).length ?? 0} of {confirmedApp.documents?.length ?? 0} attached</span>
                   </div>
                 </div>
 

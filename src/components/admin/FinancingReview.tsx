@@ -82,16 +82,16 @@ export const FinancingReview: React.FC = () => {
                         <FileText className="w-4 h-4 text-[#4E585E] shrink-0" aria-hidden="true" />
                         <div className="min-w-0 flex-1">
                           <p className="text-[14px] font-medium text-[#141517]">{d.label}</p>
-                          <p className="text-[12.5px] text-[#4E585E] truncate">{d.fileName}</p>
+                          <p className="text-[12.5px] text-[#4E585E] truncate">{d.fileName || 'Not submitted yet. The client will hand it to the admin team.'}</p>
                           {d.status === 'rejected' && d.reason && <p className="text-[12.5px] text-[#B42318]">Rejected: {d.reason}</p>}
                         </div>
-                        <StatusMark status={d.status === 'approved' ? 'Approved' : d.status === 'rejected' ? 'Rejected' : 'Pending'} />
-                        {d.status !== 'approved' && (
+                        <StatusMark status={!d.fileName ? 'Missing' : d.status === 'approved' ? 'Approved' : d.status === 'rejected' ? 'Rejected' : 'Pending'} />
+                        {d.fileName && d.status !== 'approved' && (
                           <button className={btn.outline} onClick={() => reviewDocument(app.id, i, true)}>
                             Approve
                           </button>
                         )}
-                        {d.status !== 'rejected' && (
+                        {d.fileName && d.status !== 'rejected' && (
                           <ReasonAction label="Reject" placeholder="Why it was rejected, e.g. ID is expired" onConfirm={(r) => reviewDocument(app.id, i, false, r)} />
                         )}
                       </li>

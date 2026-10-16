@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
 import { VehicleApplication } from '../types.ts';
+import { openAcknowledgementReceipt } from './receipt.ts';
 import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate } from './admin/ui.tsx';
-import { Check, PhoneCall, PackageCheck } from 'lucide-react';
+import { Check, PhoneCall, PackageCheck, ReceiptText } from 'lucide-react';
 
 type Filter = 'review' | 'approved' | 'completed' | 'closed' | 'all';
 const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'contacted'];
@@ -15,7 +16,91 @@ export const docSummary = (app: VehicleApplication) => {
   const rejected = docs.filter((d) => d.status === 'rejected').length;
   if (rejected) return { text: `${rejected} document${rejected > 1 ? 's' : ''} rejected`, tone: 'bad' as const };
   if (approved === docs.length) return { text: `All ${docs.length} documents approved`, tone: 'good' as const };
-  return { text: `${approved} of ${docs.length} documents approved`, tone: 'muted' as const };
+  const missing = docs.filter((d) => !d.fileName).length;
+  return {
+    text: `${approved} of ${docs.length} documents approved${missing ? ` · ${missing} not yet submitted` : ''}`,
+    tone: 'muted' as const,
+  };
+};
+
+// Confirmed partial payments on one application, each with its acknowledgement receipt, plus the form to confirm another.
+const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
+  const { recordPartialPayment, showToast } = useApp();
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState(`Partial payment for ${app.vehicleTitle}`);
+  const value = Number(amount);
+  const canAccept = app.status !== 'declined' && app.status !== 'withdrawn';
+  const show = (arNo: string) => {
+    const p = app.payments?.find((x) => x.arNo === arNo);
+    if (p && !openAcknowledgementReceipt(app, p)) showToast('Allow pop-ups', 'Your browser blocked the receipt window. Allow pop-ups for this site and try again.', 'error');
+  };
+  if (!app.payments?.length && !canAccept) return null;
+  return (
+    <div className="space-y-2">
+      {!!app.payments?.length && (
+        <ul className="text-[13px]">
+          {app.payments.map((p) => (
+            <li key={p.arNo} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 border-b border-[#DDE3E6] last:border-0">
+              <span className="tabular-nums font-semibold text-[#141517]">AR {p.arNo}</span>
+              <span className="tabular-nums text-[#141517]">{peso(p.amount)}</span>
+              <span className="text-[#4E585E] tabular-nums">{shortDate(p.date)}</span>
+              <button onClick={() => show(p.arNo)} className="ml-auto text-[13px] font-semibold text-[#1D5FD1] underline underline-offset-4 cursor-pointer">
+                View receipt
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {canAccept &&
+        (open ? (
+          <form
+            className="flex flex-wrap items-center gap-2 animate-fade-up"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const receipt = recordPartialPayment(app.id, value, description);
+              if (!receipt) return;
+              setOpen(false);
+              setAmount('');
+              openAcknowledgementReceipt({ ...app, payments: [...(app.payments ?? []), receipt] }, receipt);
+            }}
+          >
+            <label className="flex items-center border border-[#8C989F] bg-white">
+              <span className="pl-3 text-[14px] text-[#4E585E]">₱</span>
+              <input
+                autoFocus
+                type="number"
+                min="0.01"
+                step="0.01"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Amount received"
+                aria-label="Amount received"
+                className="w-[150px] px-2 py-2 text-[14px] tabular-nums outline-none"
+              />
+            </label>
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              aria-label="Description on the receipt"
+              className="flex-1 min-w-[220px] px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
+            />
+            <button type="submit" disabled={!(value > 0) || !description.trim()} className={btn.primary}>
+              Confirm &amp; release AR
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => setOpen(true)}>
+            <ReceiptText className="w-4 h-4" aria-hidden="true" />
+            Confirm partial payment
+          </button>
+        ))}
+    </div>
+  );
 };
 
 // Admin: move each client application from review to approval (reserves the car) to a completed sale.
@@ -36,7 +121,7 @@ export const ApplicationsManager: React.FC = () => {
     <section className="space-y-5">
       <SectionHeader
         title="Applications"
-        hint="Approving an application reserves the vehicle for that client. Financing applications need every document approved first."
+        hint="Approving an application reserves the vehicle for that client. Financing applications need every document approved first. Confirming a partial payment releases a numbered acknowledgement receipt (AR) to the client."
       />
       <FilterTabs
         id="applications"
@@ -123,6 +208,7 @@ export const ApplicationsManager: React.FC = () => {
                   </div>
                 )}
                 {app.status === 'completed' && <p className="text-[12.5px] text-[#1B7F35] font-medium">Sale completed · vehicle released to the client.</p>}
+                <PartialPayments app={app} />
               </li>
             );
           })}
