@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-10-16T13:51:24.617Z",
+        "reason": "Claude: acknowledgement receipt reproduces the user's Word AR template, whose styles.xml sets Arial"
+      }
+    ]
+  }
+}
