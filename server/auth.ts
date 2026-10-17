@@ -2,7 +2,7 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import type { UserProfile } from '../src/types.ts';
-import { db } from './db.ts';
+import { raw, opts } from './db.ts';
 
 export type Portal = 'buyer' | 'seller' | 'admin';
 export type Role = Portal;
@@ -27,65 +27,65 @@ const passwordMatches = (password: string, stored: string) => {
 };
 export const validPassword = (p: unknown): p is string => typeof p === 'string' && p.length >= 8 && p.length <= 200;
 
-const rowToUser = (row: any): User | undefined =>
-  row ? { ...JSON.parse(row.data), id: row.id, email: row.email, role: row.role, name: row.name, active: !!row.active } : undefined;
+// Stored as { _id, email, emailLower, role, name, passwordHash, active, createdAt, ...profile }.
+const toUser = (doc: any): User | undefined => {
+  if (!doc) return undefined;
+  const { _id, emailLower, passwordHash, createdAt, ...rest } = doc;
+  return { ...rest, id: _id, active: !!doc.active };
+};
+const users_ = () => raw('users');
+const PROFILE = ['phone', 'address', 'savedVehicleIds', 'recentlyViewedIds', 'memberSince'] as const;
 
 export const users = {
-  byId: (id: string) => rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)),
-  byEmail: (email: string) => rowToUser(db.prepare('SELECT * FROM users WHERE email = ?').get(email.trim())),
-  all: () => (db.prepare('SELECT * FROM users ORDER BY role, name').all() as any[]).map((r) => rowToUser(r)!),
-  agents: () => (db.prepare("SELECT * FROM users WHERE role = 'seller' AND active = 1 ORDER BY name").all() as any[]).map((r) => rowToUser(r)!),
-  create(u: Omit<User, 'active'> & { password: string }) {
-    const { id, email, role, name, password, ...profile } = u;
-    db.prepare('INSERT INTO users (id, email, role, name, password_hash, active, created_at, data) VALUES (?, ?, ?, ?, ?, 1, ?, ?)').run(
-      id, email.trim(), role, name.trim(), hashPassword(password), new Date().toISOString(), JSON.stringify(profile)
+  byId: async (id: string) => toUser(await users_().findOne({ _id: id }, opts())),
+  byEmail: async (email: string) => toUser(await users_().findOne({ emailLower: email.trim().toLowerCase() }, opts())),
+  all: async () => (await users_().find({}, opts()).sort({ role: 1, name: 1 }).toArray()).map((d) => toUser(d)!),
+  agents: async () => (await users_().find({ role: 'seller', active: true }, opts()).sort({ name: 1 }).toArray()).map((d) => toUser(d)!),
+  async create(u: Omit<User, 'active'> & { password: string }) {
+    const { id, email, role, name, password } = u;
+    const profile = Object.fromEntries(PROFILE.map((k) => [k, (u as any)[k]]));
+    await users_().insertOne(
+      { _id: id, email: email.trim(), emailLower: email.trim().toLowerCase(), role, name: name.trim(), passwordHash: hashPassword(password), active: true, createdAt: new Date(), ...profile },
+      opts()
     );
-    return users.byId(id)!;
+    return (await users.byId(id))!;
   },
   // Profile fields only; email, role and password change through their own paths.
-  saveProfile(u: User) {
-    const { id, email, role, name, active, ...profile } = u;
-    db.prepare('UPDATE users SET name = ?, data = ? WHERE id = ?').run(name, JSON.stringify(profile), id);
+  async saveProfile(u: User) {
+    const profile = Object.fromEntries(PROFILE.map((k) => [k, (u as any)[k]]));
+    await users_().updateOne({ _id: u.id }, { $set: { name: u.name, ...profile } }, opts());
   },
-  setPassword(id: string, password: string) {
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), id);
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id); // sign out everywhere
+  async setPassword(id: string, password: string) {
+    await users_().updateOne({ _id: id }, { $set: { passwordHash: hashPassword(password) } }, opts());
+    await raw('sessions').deleteMany({ userId: id }, opts()); // sign out everywhere
   },
-  setActive(id: string, active: boolean) {
-    db.prepare('UPDATE users SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
-    if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+  async setActive(id: string, active: boolean) {
+    await users_().updateOne({ _id: id }, { $set: { active } }, opts());
+    if (!active) await raw('sessions').deleteMany({ userId: id }, opts());
   },
-  checkPassword(id: string, password: string) {
-    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(id) as { password_hash: string } | undefined;
-    return !!row && passwordMatches(password, row.password_hash);
+  async checkPassword(id: string, password: string) {
+    const doc = await users_().findOne({ _id: id }, { projection: { passwordHash: 1 }, ...opts() });
+    return !!doc && passwordMatches(password, doc.passwordHash);
   },
-  verify(email: string, password: string) {
-    const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email.trim()) as any;
+  async verify(email: string, password: string) {
+    const doc = await users_().findOne({ emailLower: email.trim().toLowerCase() }, opts());
     // Hash anyway when the email is unknown, so response time does not reveal which emails exist.
-    if (!row) return void passwordMatches(password, `${'0'.repeat(32)}:${'0'.repeat(128)}`);
-    return passwordMatches(password, row.password_hash) ? rowToUser(row) : undefined;
+    if (!doc) return void passwordMatches(password, `${'0'.repeat(32)}:${'0'.repeat(128)}`);
+    return passwordMatches(password, doc.passwordHash) ? toUser(doc) : undefined;
   },
 };
 
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
 
-export const startSession = (res: Response, req: Request, user: User, portal: Portal) => {
+export const startSession = async (res: Response, req: Request, user: User, portal: Portal) => {
   const token = randomBytes(32).toString('base64url');
-  db.prepare('INSERT INTO sessions (token_hash, user_id, portal, expires_at) VALUES (?, ?, ?, ?)').run(
-    tokenHash(token), user.id, portal, Date.now() + SESSION_DAYS * 864e5
-  );
-  res.cookie(cookieName(portal), token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: req.secure,
-    maxAge: SESSION_DAYS * 864e5,
-    path: '/',
-  });
+  await raw('sessions').insertOne({ _id: tokenHash(token), userId: user.id, portal, expiresAt: new Date(Date.now() + SESSION_DAYS * 864e5) });
+  res.cookie(cookieName(portal), token, { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge: SESSION_DAYS * 864e5, path: '/' });
 };
 
-export const endSession = (req: Request, res: Response, portal: Portal) => {
+export const endSession = async (req: Request, res: Response, portal: Portal) => {
   const token = readCookie(req, cookieName(portal));
-  if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
+  if (token) await raw('sessions').deleteOne({ _id: tokenHash(token) });
   res.clearCookie(cookieName(portal), { path: '/' });
 };
 
@@ -102,16 +102,14 @@ export const portalOf = (req: Request): Portal => {
   return p === 'seller' || p === 'admin' ? p : 'buyer';
 };
 
-// Attaches req.user for the portal the request comes from. A session only works on the portal it was made for,
+// The signed-in user for a portal. A session only works on the portal it was made for,
 // and only while the account is active and still has that portal's role.
-export const sessionUser = (req: Request, portal: Portal = portalOf(req)): User | undefined => {
+export const sessionUser = async (req: Request, portal: Portal = portalOf(req)): Promise<User | undefined> => {
   const token = readCookie(req, cookieName(portal));
   if (!token) return undefined;
-  const s = db.prepare('SELECT user_id, portal, expires_at FROM sessions WHERE token_hash = ?').get(tokenHash(token)) as
-    | { user_id: string; portal: string; expires_at: number }
-    | undefined;
-  if (!s || s.portal !== portal || s.expires_at < Date.now()) return undefined;
-  const user = users.byId(s.user_id);
+  const s = await raw('sessions').findOne({ _id: tokenHash(token) });
+  if (!s || s.portal !== portal || s.expiresAt < new Date()) return undefined;
+  const user = await users.byId(s.userId);
   return user && user.active && user.role === portal ? user : undefined;
 };
 
@@ -136,7 +134,8 @@ export const requireRole = (...roles: Role[]) => (req: Request, _res: Response, 
   next();
 };
 
-// Simple sign-in throttle: 10 failed tries per email + address per 15 minutes.
+// Sign-in throttle: 10 failed tries per email + address per 15 minutes.
+// ponytail: kept in this process's memory; with several server instances, store it in the database.
 const attempts = new Map<string, { n: number; until: number }>();
 export const throttle = {
   check(key: string) {

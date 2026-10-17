@@ -1,14 +1,18 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, type Plugin} from 'vite';
+import {defineConfig, loadEnv, type Plugin} from 'vite';
 
 // In development the API runs inside the Vite server, so the site and /api share one address (localhost:3000).
 // Imported here, not at the top, so "vite build" never opens the database.
 const api = (): Plugin => ({
   name: 'broombroom-api',
   async configureServer(server) {
+    // MONGODB_URI may come from .env.local; without it a local development database starts.
+    process.env.MONGODB_URI ||= loadEnv('development', process.cwd(), '').MONGODB_URI || '';
+    const {boot} = await import('./server/boot.ts');
     const {createApp, startJobs} = await import('./server/app.ts');
+    await boot();
     const app = createApp();
     const timer = startJobs();
     server.httpServer?.once('close', () => clearInterval(timer));

@@ -1,26 +1,25 @@
 /// <reference types="node" />
-// API tests: security and business rules through real HTTP calls against a throwaway database.
+// API tests: security and business rules through real HTTP calls against a throwaway MongoDB.
 //   npm test
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import type { Server } from 'node:http';
+import { startDevMongo } from './devdb.ts';
+import { connectDb, closeDb, store } from './db.ts';
+import { seedIfEmpty } from './seed.ts';
+import { createApp } from './app.ts';
+import * as svc from './services.ts';
 
-const dir = mkdtempSync(path.join(tmpdir(), 'bb-test-'));
-process.env.BB_DATA_DIR = dir;
 process.env.SEED_DEMO = 'true';
 
 let server: Server;
 let base = '';
-let svc: typeof import('./services.ts');
-let store: typeof import('./db.ts')['store'];
+let mongo: Awaited<ReturnType<typeof startDevMongo>>;
 
 before(async () => {
-  const { createApp } = await import('./app.ts');
-  svc = await import('./services.ts');
-  store = (await import('./db.ts')).store;
+  mongo = await startDevMongo(); // in memory, thrown away afterwards
+  await connectDb(mongo.uri, 'broombroom_test');
+  await seedIfEmpty();
   server = createApp().listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${(server.address() as any).port}`;
@@ -28,8 +27,8 @@ before(async () => {
 after(async () => {
   server?.closeAllConnections();
   await new Promise((r) => server?.close(r));
-  (await import('./db.ts')).db.close(); // Windows won't delete an open database
-  rmSync(dir, { recursive: true, force: true });
+  await closeDb();
+  await mongo?.stop();
 });
 
 // A tiny client that keeps its own cookies, like one browser on one portal.
@@ -305,15 +304,15 @@ test('reassigning moves unearned commissions; 24-hour rule returns a waiting cli
 
   // the client writes, Joy does not reply for 25 hours
   await c.post('/api/conversations', { vehicleId: v.id });
-  const lead = store.get<any>('leads', c.id);
+  const lead = await store.get<any>('leads', c.id);
   const t = new Date(Date.now() - 25 * 3600e3).toISOString();
-  store.put('leads', { ...lead, lastClientAt: t, claimedAt: t, lastAgentAt: undefined });
-  assert.equal(svc.runLeadRules(), true);
+  await store.put('leads', { ...lead, lastClientAt: t, claimedAt: t, lastAgentAt: undefined });
+  assert.equal(await svc.runLeadRules(), true);
   s = await ad.state();
   const after = s.leads.find((l: any) => l.clientId === c.id);
   assert.equal(after.agentName, undefined);
   assert.match(after.history.at(-1).text, /No reply from Joy Mendoza within 24 hours/);
-  assert.equal(svc.runLeadRules(), false, 'fires once');
+  assert.equal(await svc.runLeadRules(), false, 'fires once');
 });
 
 // ---------------- quotations ----------------

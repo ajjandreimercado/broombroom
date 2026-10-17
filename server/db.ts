@@ -1,113 +1,143 @@
 /// <reference types="node" />
-import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { MongoClient, GridFSBucket, type Db, type ClientSession, type Filter, type Document } from 'mongodb';
 
-// SQLite file under server/data (git-ignored). Each record keeps its full JSON in `data` plus the columns the
-// server filters on, so moving to Postgres later is a column-for-column copy (data becomes jsonb).
-// Paths are from the project folder (npm runs scripts there; Vite bundles this file into its config).
-export const DATA_DIR = path.resolve(process.env.BB_DATA_DIR || path.join(process.cwd(), 'server', 'data'));
-export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
-mkdirSync(UPLOAD_DIR, { recursive: true });
+// MongoDB: Atlas in production (MONGODB_URI), a private local server in development and tests (server/devdb.ts).
+// Each record is stored as-is with its id as _id; the server filters on the record's own fields.
+let client: MongoClient | undefined;
+let database: Db | undefined;
+let bucket: GridFSBucket | undefined;
 
-export const db = new DatabaseSync(process.env.BB_DB_FILE || path.join(DATA_DIR, 'broombroom.db'));
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+export const COLLECTIONS = [
+  'vehicles',
+  'applications',
+  'conversations',
+  'leads',
+  'quotations',
+  'commissions',
+  'listing_requests',
+  'reports',
+  'notifications',
+  'vouchers',
+] as const;
+export type Table = (typeof COLLECTIONS)[number];
 
-// Indexed columns per table, read from the record when it is saved.
-const TABLES = {
-  vehicles: { status: (r: any) => r.status },
-  applications: { applicant_id: (r: any) => r.applicantId, seller_name: (r: any) => r.sellerName, status: (r: any) => r.status, reference_no: (r: any) => r.referenceNo },
-  conversations: { buyer_id: (r: any) => r.buyerId, seller_name: (r: any) => r.sellerName, vehicle_id: (r: any) => r.vehicleId },
-  leads: { client_id: (r: any) => r.clientId, agent_name: (r: any) => r.agentName ?? null },
-  quotations: { client_id: (r: any) => r.clientId, status: (r: any) => r.status },
-  commissions: { agent_name: (r: any) => r.agentName, application_ref: (r: any) => r.applicationRef, status: (r: any) => r.status },
-  listing_requests: { agent_name: (r: any) => r.agentName, status: (r: any) => r.status },
-  reports: { status: (r: any) => r.status },
-  notifications: { audience: (r: any) => r.audience ?? 'client', recipient: (r: any) => r.recipient ?? null, created_at: (r: any) => r.createdAt },
-  vouchers: { kind: (r: any) => r.kind, account_id: (r: any) => r.accountId },
-} as const;
-export type Table = keyof typeof TABLES;
-
-for (const [name, cols] of Object.entries(TABLES)) {
-  const extra = Object.keys(cols).map((c) => `${c} TEXT`).join(', ');
-  db.exec(`CREATE TABLE IF NOT EXISTS ${name} (id TEXT PRIMARY KEY, ${extra}, data TEXT NOT NULL)`);
-  for (const c of Object.keys(cols)) db.exec(`CREATE INDEX IF NOT EXISTS ${name}_${c} ON ${name}(${c})`);
-}
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    role TEXT NOT NULL CHECK (role IN ('buyer', 'seller', 'admin')),
-    name TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL,
-    data TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS sessions (
-    token_hash TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    portal TEXT NOT NULL,
-    expires_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS uploads (
-    id TEXT PRIMARY KEY,
-    owner_id TEXT NOT NULL,
-    uploaded_by TEXT NOT NULL,
-    visibility TEXT NOT NULL CHECK (visibility IN ('public', 'private')),
-    mime TEXT NOT NULL,
-    name TEXT NOT NULL,
-    size INTEGER NOT NULL,
-    attached INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
-`);
-
-const json = (row: any) => (row ? JSON.parse(row.data) : undefined);
-
-export const store = {
-  all<T>(table: Table, where = '', ...params: (string | number | null)[]): T[] {
-    return db.prepare(`SELECT data FROM ${table} ${where ? `WHERE ${where}` : ''}`).all(...params).map(json) as T[];
-  },
-  get<T>(table: Table, id: string): T | undefined {
-    return json(db.prepare(`SELECT data FROM ${table} WHERE id = ?`).get(id));
-  },
-  put<T extends { id: string }>(table: Table, record: T): T {
-    const cols = TABLES[table] as Record<string, (r: any) => unknown>;
-    const names = Object.keys(cols);
-    db.prepare(
-      `INSERT INTO ${table} (id, ${names.join(', ')}, data) VALUES (?, ${names.map(() => '?').join(', ')}, ?)
-       ON CONFLICT(id) DO UPDATE SET ${names.map((n) => `${n} = excluded.${n}`).join(', ')}, data = excluded.data`
-    ).run(record.id, ...names.map((n) => (cols[n](record) ?? null) as string | null), JSON.stringify(record));
-    return record;
-  },
-  remove(table: Table, id: string) {
-    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
-  },
-  count(table: Table): number {
-    return (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
-  },
+export const connectDb = async (uri: string, dbName = process.env.MONGODB_DB || 'broombroom') => {
+  client = new MongoClient(uri, { retryWrites: true });
+  await client.connect();
+  database = client.db(dbName);
+  bucket = new GridFSBucket(database, { bucketName: 'files' });
+  // Indexes for what the server looks up (creating them also creates the collections, which transactions need).
+  await Promise.all([
+    col('vehicles').createIndex({ status: 1 }),
+    col('applications').createIndex({ applicantId: 1 }),
+    col('applications').createIndex({ sellerName: 1 }),
+    col('applications').createIndex({ referenceNo: 1 }),
+    col('conversations').createIndex({ buyerId: 1, vehicleId: 1 }),
+    col('conversations').createIndex({ sellerName: 1 }),
+    col('leads').createIndex({ agentName: 1 }),
+    col('quotations').createIndex({ clientId: 1 }),
+    col('commissions').createIndex({ agentName: 1 }),
+    col('commissions').createIndex({ applicationRef: 1 }),
+    col('listing_requests').createIndex({ agentName: 1, status: 1 }),
+    col('reports').createIndex({ status: 1 }),
+    col('notifications').createIndex({ audience: 1, recipient: 1, createdAt: -1 }),
+    col('vouchers').createIndex({ kind: 1, accountId: 1 }),
+    raw('users').createIndex({ emailLower: 1 }, { unique: true }),
+    raw('users').createIndex({ role: 1, active: 1 }),
+    raw('sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }), // expired sign-ins delete themselves
+    raw('sessions').createIndex({ userId: 1 }),
+    raw('uploads').createIndex({ uploadedBy: 1 }),
+    // GridFS would build these on the first upload; doing it here keeps that first upload fast.
+    raw('files.files').createIndex({ filename: 1, uploadDate: 1 }),
+    raw('files.chunks').createIndex({ files_id: 1, n: 1 }, { unique: true }),
+  ]);
+  return database;
 };
 
-// Everything in fn commits together or not at all.
-export const tx = <T>(fn: () => T): T => {
-  db.exec('BEGIN IMMEDIATE');
+export const closeDb = async () => {
+  await client?.close();
+  client = database = bucket = undefined;
+};
+
+const db = () => {
+  if (!database) throw new Error('Database not connected');
+  return database;
+};
+export const raw = (name: string) => db().collection<any>(name);
+const col = (name: Table) => db().collection<any>(name);
+export const files = () => {
+  if (!bucket) throw new Error('Database not connected');
+  return bucket;
+};
+
+// Every database call made inside tx() joins its transaction automatically.
+const txSession = new AsyncLocalStorage<ClientSession>();
+export const opts = () => {
+  const session = txSession.getStore();
+  return session ? { session } : {};
+};
+
+// Everything in fn commits together or not at all. MongoDB may rerun fn on a write conflict, so fn only touches the database.
+export const tx = async <T>(fn: () => Promise<T>): Promise<T> => {
+  if (txSession.getStore()) return fn(); // already inside one
+  const session = client!.startSession();
   try {
-    const out = fn();
-    db.exec('COMMIT');
+    let out!: T;
+    await session.withTransaction(async () => {
+      out = await txSession.run(session, fn);
+    });
     return out;
-  } catch (e) {
-    db.exec('ROLLBACK');
-    throw e;
+  } finally {
+    await session.endSession();
   }
 };
 
-// Running numbers (AR, QT, PV, CV, OR, application refs) that can never repeat.
-export const nextNumber = (name: string, startAfter = 0): number => {
-  db.prepare('INSERT INTO counters (name, value) VALUES (?, ?) ON CONFLICT(name) DO NOTHING').run(name, startAfter);
-  return (db.prepare('UPDATE counters SET value = value + 1 WHERE name = ? RETURNING value').get(name) as { value: number }).value;
+const strip = <T>(doc: any): T => {
+  if (!doc) return doc;
+  const { _id, ...rest } = doc;
+  return rest as T;
 };
-export const setCounterAtLeast = (name: string, value: number) => {
-  db.prepare('INSERT INTO counters (name, value) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET value = MAX(value, excluded.value)').run(name, value);
+
+export const store = {
+  async all<T>(table: Table, filter: Filter<Document> = {}, sort?: Record<string, 1 | -1>): Promise<T[]> {
+    const cursor = col(table).find(filter, opts());
+    if (sort) cursor.sort(sort);
+    return (await cursor.toArray()).map((d) => strip<T>(d));
+  },
+  async one<T>(table: Table, filter: Filter<Document>): Promise<T | undefined> {
+    return strip<T>(await col(table).findOne(filter, opts())) ?? undefined;
+  },
+  async get<T>(table: Table, id: string): Promise<T | undefined> {
+    if (typeof id !== 'string') return undefined;
+    return strip<T>(await col(table).findOne({ _id: id }, opts())) ?? undefined;
+  },
+  async put<T extends { id: string }>(table: Table, record: T): Promise<T> {
+    // Undefined fields are dropped rather than stored as null.
+    const doc = JSON.parse(JSON.stringify(record));
+    await col(table).replaceOne({ _id: record.id }, { ...doc, _id: record.id }, { upsert: true, ...opts() });
+    return record;
+  },
+  async remove(table: Table, id: string) {
+    await col(table).deleteOne({ _id: id }, opts());
+  },
+  async removeWhere(table: Table, filter: Filter<Document>) {
+    await col(table).deleteMany(filter, opts());
+  },
+  async count(table: Table): Promise<number> {
+    return col(table).countDocuments({}, opts());
+  },
+};
+
+// Running numbers (AR, QT, PV, CV, OR, application refs) that can never repeat.
+export const nextNumber = async (name: string): Promise<number> => {
+  const doc = await raw('counters').findOneAndUpdate({ _id: name }, { $inc: { value: 1 } }, { upsert: true, returnDocument: 'after', ...opts() });
+  return doc!.value as number;
+};
+export const setCounterAtLeast = async (name: string, value: number) => {
+  await raw('counters').updateOne({ _id: name }, { $max: { value } }, { upsert: true, ...opts() });
+};
+
+export const ping = async () => {
+  await db().command({ ping: 1 });
 };
