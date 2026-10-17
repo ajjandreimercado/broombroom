@@ -369,7 +369,9 @@ const takeVia = (vehicleId: string) => {
 };
 // The re-submission email links to /?resubmit=<application id>: open that application in My Applications.
 const linkedApplicationId = PORTAL === 'buyer' ? params.get('resubmit') : null;
-const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : 'intro';
+// Direct links to the info pages: /?page=privacy, /?page=terms, /?page=help (Google's sign-in setup asks for them).
+const linkedPage = PORTAL === 'buyer' ? (['privacy', 'terms', 'help'] as const).find((p) => p === params.get('page')) : undefined;
+const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : linkedPage ?? 'intro';
 
 const EMPTY: ServerState = { me: null, vehicles: [] };
 
