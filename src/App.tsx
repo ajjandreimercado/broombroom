@@ -22,6 +22,7 @@ import { AdminDashboardView } from './views/AdminDashboardView.tsx';
 import { HowItWorksView } from './views/HowItWorksView.tsx';
 import { HelpView } from './views/HelpView.tsx';
 import { LegalView } from './views/LegalView.tsx';
+import { PermitsView } from './views/PermitsView.tsx';
 import { SetPassword } from './components/SetPassword.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
@@ -118,6 +119,8 @@ const AppContent: React.FC = () => {
         return <AccountView />;
       case 'how_it_works':
         return <HowItWorksView />;
+      case 'permits':
+        return <PermitsView />;
       default:
         return SHARED_VIEWS.includes(currentView) ? renderShared() : <MarketplaceView />;
     }

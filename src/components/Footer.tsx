@@ -34,6 +34,7 @@ export const Footer: React.FC = () => {
         { label: 'Marketplace', onClick: () => navigateTo('marketplace') },
         { label: 'Deals', onClick: () => navigateTo('deals') },
         { label: 'How it works', onClick: () => navigateTo('how_it_works') },
+        { label: 'Business permits', onClick: () => navigateTo('permits') },
         { label: 'Agent sign-in', onClick: () => window.location.assign(portalUrl('seller')) },
       ],
     },

@@ -84,6 +84,7 @@ export const Navbar: React.FC = () => {
         { label: 'Marketplace', view: 'marketplace' as const },
         { label: 'Deals', view: 'deals' as const },
         { label: 'How It Works', view: 'how_it_works' as const },
+        { label: 'Business Permits', view: 'permits' as const },
       ]
     : [];
   const homeView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : 'intro';
