@@ -21,7 +21,7 @@ const loadGis = () =>
   (loading ??= new Promise<Gis>((resolve, reject) => {
     if (window.google?.accounts?.id) return resolve(window.google);
     const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
+    s.src = 'https://accounts.google.com/gsi/client?hl=en'; // English like the rest of the site
     s.async = true;
     s.onload = () => (window.google ? resolve(window.google) : reject(new Error('Google sign-in did not load.')));
     s.onerror = () => {
