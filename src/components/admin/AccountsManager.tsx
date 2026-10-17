@@ -18,6 +18,32 @@ const tempPassword = () => {
   }
 };
 
+// A new sign-in email for an account (e.g. when someone's email changes). Their Google sign-in link is reset.
+const ChangeEmail: React.FC<{ account: AccountSummary }> = ({ account }) => {
+  const { changeEmail } = useApp();
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState(account.email);
+  if (!open)
+    return (
+      <button className={btn.outline} onClick={() => { setEmail(account.email); setOpen(true); }}>
+        Change email
+      </button>
+    );
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2 w-full animate-fade-up"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (await changeEmail(account.id, email.trim())) setOpen(false);
+      }}
+    >
+      <input type="email" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} aria-label={`New email for ${account.name}`} className={`${input} flex-1 min-w-[220px]`} />
+      <button type="submit" className={btn.primary} disabled={!email.trim() || email.trim().toLowerCase() === account.email.toLowerCase()}>Save email</button>
+      <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
+    </form>
+  );
+};
+
 const ResetPassword: React.FC<{ account: AccountSummary }> = ({ account }) => {
   const { resetPassword } = useApp();
   const [open, setOpen] = useState(false);
@@ -133,6 +159,7 @@ export const AccountsManager: React.FC = () => {
                 {a.memberSince && <p className="text-[12px] text-[#6B767D]">Since {a.memberSince}</p>}
               </div>
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <ChangeEmail account={a} />
                 <ResetPassword account={a} />
                 {a.id !== currentUser?.id && (
                   <button className={a.active ? btn.danger : btn.outline} onClick={() => setAccountActive(a.id, !a.active)}>

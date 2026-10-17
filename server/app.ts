@@ -349,6 +349,19 @@ export const createApp = () => {
     })
   );
   api.post(
+    '/users/:id/email',
+    requireRole('admin'),
+    act(async (req) => {
+      const target = await users.byId(String(req.params.id));
+      if (!target) throw new HttpError(404, 'Account not found.');
+      const email = typeof body(req).email === 'string' ? body(req).email.trim() : '';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) throw new HttpError(400, 'Enter a valid email.');
+      const other = await users.byEmail(email);
+      if (other && other.id !== target.id) throw new HttpError(400, `${email} already belongs to another account (${other.name}). Change or disable that one first.`);
+      await users.setEmail(target.id, email);
+    })
+  );
+  api.post(
     '/users/:id/active',
     requireRole('admin'),
     act(async (req) => {

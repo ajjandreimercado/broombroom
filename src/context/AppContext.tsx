@@ -314,6 +314,7 @@ interface AppContextType {
   // Accounts (admin)
   createAccount: (a: { name: string; email: string; role: 'seller' | 'admin'; password: string; phone?: string }) => Promise<boolean>;
   resetPassword: (userId: string, password: string) => Promise<boolean>;
+  changeEmail: (userId: string, email: string) => Promise<boolean>;
   setAccountActive: (userId: string, active: boolean) => Promise<boolean>;
 }
 
@@ -817,6 +818,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // ----- Accounts -----
   const createAccount: AppContextType['createAccount'] = async (a) =>
     done(await run(() => api('/users', { body: a }), ['Account created', `${a.name} can now sign in.`], 'Could not create the account'));
+  const changeEmail = async (userId: string, email: string) =>
+    done(await run(() => api(`/users/${userId}/email`, { body: { email } }), ['Email changed', 'They sign in with the new email from now on.']));
   const resetPassword = async (userId: string, password: string) =>
     done(await run(() => api(`/users/${userId}/password`, { body: { password } }), ['Password reset', 'Share it with them privately; they must set their own when they next sign in.']));
   const setAccountActive = async (userId: string, active: boolean) =>
@@ -950,6 +953,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         createAccount,
         resetPassword,
+        changeEmail,
         setAccountActive,
       }}
     >

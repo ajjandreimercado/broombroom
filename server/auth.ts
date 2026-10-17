@@ -84,6 +84,11 @@ export const users = {
     );
     await raw('sessions').deleteMany({ userId: id }, opts()); // sign out everywhere
   },
+  // A new sign-in email. The Google link belonged to the old address, so it is removed (the next Google sign-in with the
+  // new address links again).
+  async setEmail(id: string, email: string) {
+    await users_().updateOne({ _id: id }, { $set: { email: email.trim(), emailLower: email.trim().toLowerCase() }, $unset: { googleId: '' } }, opts());
+  },
   async setActive(id: string, active: boolean) {
     await users_().updateOne({ _id: id }, { $set: { active } }, opts());
     if (!active) await raw('sessions').deleteMany({ userId: id }, opts());

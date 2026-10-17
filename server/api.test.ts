@@ -723,3 +723,19 @@ test('staff Google sign-in: only accounts the admin made, for that portal; a tem
   await ad.post(`/api/users/${made.data.id}/active`, { active: false });
   await assert.rejects(svc.googleStaffSignIn({ sub: 'g-ga', email: 'google.agent@test.local', name: 'X' }, 'seller'), /disabled/);
 });
+
+test('change email: an address held by a client can be freed and given to an admin, who then signs in with Google', async () => {
+  const ad = await admin();
+  // a client made with Google holds the company Gmail
+  const { user: clientAcct } = await svc.googleSignIn({ sub: 'g-company', email: 'company@test.local', name: 'Company Gmail' });
+  const second = await ad.post('/api/users', { name: 'Second Admin', email: 'second.admin@test.local', role: 'admin', password: 'TempAdmin123' });
+  assert.equal((await ad.post(`/api/users/${second.data.id}/email`, { email: 'company@test.local' })).status, 400, 'still taken');
+  assert.equal((await (await carlo()).post(`/api/users/${clientAcct.id}/email`, { email: 'x@test.local' })).status, 403, 'admins only');
+  assert.equal((await ad.post(`/api/users/${clientAcct.id}/email`, { email: 'not an email' })).status, 400);
+  // free it: the client account gets another address and loses its Google link
+  assert.equal((await ad.post(`/api/users/${clientAcct.id}/email`, { email: 'company.client@test.local' })).status, 200);
+  assert.equal((await ad.post(`/api/users/${second.data.id}/email`, { email: 'company@test.local' })).status, 200);
+  const u = await svc.googleStaffSignIn({ sub: 'g-company', email: 'company@test.local', name: 'X' }, 'admin');
+  assert.equal(u.id, second.data.id, 'the Google account now opens the admin account');
+  assert.equal((await client('admin').login('company@test.local', 'TempAdmin123')).status, 401, 'its temporary password was retired');
+});
