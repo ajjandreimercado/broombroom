@@ -1,31 +1,105 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
-import { CREDIT_ACCOUNTS, PAYMENT_ACCOUNTS } from '../../data/mockData.ts';
+import { Expense, LedgerAccount } from '../../types.ts';
 import { FilterTabs, SectionHeader, btn, shortDate } from '../admin/ui.tsx';
 import { ColumnChart, LineChart, SALES, EXPENSE } from './charts.tsx';
-import { accountBalance, creditAvailable, monthLabel, monthlySeries, money } from './ledger.ts';
-import { PlusCircle } from 'lucide-react';
+import { accountBalance, monthLabel, monthlySeries, money } from './ledger.ts';
+import { Pencil, Plus, PlusCircle } from 'lucide-react';
 
 type Period = '3' | '6' | 'ytd';
+type Draft = { name: string; amount: string; method: 'cash' | 'bank' };
+const input = 'px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]';
+
+// The company's money accounts of one kind, with what is left on each, and the admin's add / edit / delete.
+const AccountList: React.FC<{ kind: LedgerAccount['kind']; vouchers: Expense[] }> = ({ kind, vouchers }) => {
+  const { ledgerAccounts, saveLedgerAccount, deleteLedgerAccount } = useApp();
+  const list = ledgerAccounts.filter((a) => a.kind === kind);
+  const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const [d, setD] = useState<Draft>({ name: '', amount: '', method: 'bank' });
+  const credit = kind === 'credit';
+  const open = (a?: LedgerAccount) => {
+    setD(a ? { name: a.name, amount: String(a.amount), method: a.method ?? 'bank' } : { name: '', amount: '', method: 'bank' });
+    setEditing(a?.id ?? 'new');
+  };
+  const used = (id: string) => vouchers.some((v) => v.accountId === id);
+  const form = (a?: LedgerAccount) => (
+    <form
+      className="flex flex-wrap items-center gap-2 py-3 border-b border-[#DDE3E6] animate-fade-up"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const ok = await saveLedgerAccount(a?.id ?? null, { kind, name: d.name.trim(), amount: Number(d.amount), method: credit ? undefined : d.method });
+        if (ok) setEditing(null);
+      }}
+    >
+      <input autoFocus required value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder={credit ? 'e.g. BDO corporate credit card' : 'e.g. BDO checking account'} aria-label="Account name" className={`flex-1 min-w-[180px] ${input}`} />
+      {!credit && (
+        <select value={d.method} onChange={(e) => setD({ ...d, method: e.target.value as Draft['method'] })} aria-label="Account type" className={`${input} cursor-pointer`}>
+          <option value="bank">Bank</option>
+          <option value="cash">Cash</option>
+        </select>
+      )}
+      <input required type="number" min="0" step="0.01" inputMode="decimal" value={d.amount} onChange={(e) => setD({ ...d, amount: e.target.value })} placeholder={credit ? 'Credit limit' : 'Opening balance'} aria-label={credit ? 'Credit limit' : 'Opening balance'} className={`w-[150px] tabular-nums ${input}`} />
+      <button type="submit" disabled={!d.name.trim() || d.amount === ''} className={btn.primary}>Save</button>
+      {a && !used(a.id) && (
+        <button type="button" onClick={async () => (await deleteLedgerAccount(a.id)) && setEditing(null)} className="px-2 py-2 text-[13px] font-semibold text-[#B42318] cursor-pointer">Delete</button>
+      )}
+      <button type="button" onClick={() => setEditing(null)} className="px-2 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
+    </form>
+  );
+  return (
+    <div>
+      <SectionHeader title={credit ? 'Credit available' : 'Cash and cash equivalents'} hint={credit ? 'Credit limit minus what was charged.' : 'Opening balance minus the expenses paid from it.'} />
+      <ul>
+        {list.length === 0 && editing !== 'new' && (
+          <li className="py-3 border-b border-[#DDE3E6] text-[13.5px] text-[#4E585E]">No {credit ? 'credit' : 'cash or bank'} accounts yet. Add the company's accounts to record {credit ? 'credit entries' : 'expenses'}.</li>
+        )}
+        {list.map((a) =>
+          editing === a.id ? (
+            <li key={a.id}>{form(a)}</li>
+          ) : (
+            <li key={a.id} className="flex items-center justify-between gap-3 py-3 border-b border-[#DDE3E6] text-[14px]">
+              <span className="text-[#141517]">{a.name}</span>
+              <span className="flex items-center gap-3">
+                <span className="tabular-nums text-[#141517]">
+                  <strong>{money(accountBalance(a, vouchers))}</strong>
+                  {credit && <span className="text-[#6B767D]"> of {money(a.amount)}</span>}
+                </span>
+                <button onClick={() => open(a)} aria-label={`Edit ${a.name}`} className="p-1 text-[#4E585E] hover:text-[#141517] cursor-pointer"><Pencil className="w-3.5 h-3.5" /></button>
+              </span>
+            </li>
+          )
+        )}
+        {editing === 'new' && <li>{form()}</li>}
+      </ul>
+      {editing !== 'new' && (
+        <button onClick={() => open()} className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1D5FD1] cursor-pointer">
+          <Plus className="w-4 h-4" aria-hidden="true" /> Add {credit ? 'credit account' : 'cash or bank account'}
+        </button>
+      )}
+    </div>
+  );
+};
 
 // Accounting home: sales, expenses and profit for the chosen period, then the money on hand.
 export const AccountingOverview: React.FC = () => {
-  const { expenses, credits, commissions, applications, navigateTo } = useApp();
+  const { expenses, credits, commissions, salesEntries, navigateTo } = useApp();
   const [period, setPeriod] = useState<Period>('3');
 
-  const all = useMemo(() => monthlySeries(expenses, credits, commissions, applications), [expenses, credits, commissions, applications]);
-  const rows = period === 'ytd' ? all : all.slice(-Number(period));
+  const all = useMemo(() => monthlySeries(expenses, credits, commissions, salesEntries), [expenses, credits, commissions, salesEntries]);
+  const thisYear = String(new Date().getFullYear());
+  const rows = period === 'ytd' ? all.filter((r) => r.month.startsWith(thisYear)) : all.slice(-Number(period));
   const sales = rows.reduce((s, r) => s + r.sales, 0);
   const spent = rows.reduce((s, r) => s + r.expenses, 0);
   const profit = sales - spent;
   const margin = sales ? Math.round((profit / sales) * 100) : 0;
   const scale = Math.max(sales, spent, 1);
-  const periodLabel = `${monthLabel(rows[0].month)} to ${monthLabel(rows[rows.length - 1].month)} 2026`;
+  const monthYear = (ym: string) => `${monthLabel(ym)} ${ym.slice(0, 4)}`;
+  const periodLabel = `${monthYear(rows[0].month)} to ${monthYear(rows[rows.length - 1].month)}`;
   const recent = [...expenses, ...credits].sort((a, b) => b.paymentDate.localeCompare(a.paymentDate)).slice(0, 5);
 
   return (
     <div className="space-y-10">
-      <SectionHeader title="Accounting" hint={`${periodLabel}. Demo figures: monthly history plus every voucher, payout and completed sale recorded here.`}>
+      <SectionHeader title="Accounting" hint={`${periodLabel}. Every voucher, commission payout, completed sale and sale entered by hand.`}>
         <FilterTabs
           id="acc-period"
           value={period}
@@ -94,28 +168,8 @@ export const AccountingOverview: React.FC = () => {
 
       {/* Money on hand */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-8">
-        <div>
-          <SectionHeader title="Cash and cash equivalents" />
-          <ul>
-            {PAYMENT_ACCOUNTS.map((a) => (
-              <li key={a.id} className="flex justify-between gap-3 py-3 border-b border-[#DDE3E6] text-[14px]">
-                <span className="text-[#141517]">{a.name}</span>
-                <span className="tabular-nums font-semibold text-[#141517]">{money(accountBalance(a.id, expenses))}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <SectionHeader title="Credit available" />
-          <ul>
-            {CREDIT_ACCOUNTS.map((a) => (
-              <li key={a.id} className="flex justify-between gap-3 py-3 border-b border-[#DDE3E6] text-[14px]">
-                <span className="text-[#141517]">{a.name}</span>
-                <span className="tabular-nums text-[#141517]"><strong>{money(creditAvailable(a.id, credits))}</strong> <span className="text-[#6B767D]">of {money(a.limit)}</span></span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <AccountList kind="payment" vouchers={expenses} />
+        <AccountList kind="credit" vouchers={credits} />
       </section>
 
       <section>

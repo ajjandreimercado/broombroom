@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
-import { VehicleApplication } from '../types.ts';
+import { PaymentReceipt, VehicleApplication } from '../types.ts';
 import { openAcknowledgementReceipt, openImage, reserveWindow } from './receipt.ts';
 import { dataUrlToBlob } from '../api.ts';
 import { isOngoing, amountPaid } from './ApplicationProgress.tsx';
 import { photoDataUrl } from '../media.ts';
 import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
-import { Check, PhoneCall, PackageCheck, ReceiptText, Paperclip, X } from 'lucide-react';
+import { Check, PhoneCall, PackageCheck, Paperclip, Pencil, Plus, X } from 'lucide-react';
 
 type Filter = 'review' | 'approved' | 'completed' | 'closed' | 'all';
 const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'contacted'];
@@ -26,24 +26,99 @@ export const docSummary = (app: VehicleApplication) => {
   };
 };
 
-// Confirmed partial payments on one application, each with its acknowledgement receipt, plus the form to confirm another.
-const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
-  const { recordPartialPayment, showToast } = useApp();
-  const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState(`Partial payment for ${app.vehicleTitle}`);
+// A payment screenshot picked by the admin, shrunk before upload (it only needs to be readable).
+const useScreenshot = () => {
   const [shot, setShot] = useState<{ blob: Blob; name: string } | undefined>();
-  const [saving, setSaving] = useState(false);
   const [shotError, setShotError] = useState('');
   const attachShot = async (file?: File) => {
     if (!file) return;
     const problem = checkUpload(file);
     if (problem || !file.type.startsWith('image/')) return setShotError(problem || `${file.name} is not an image. Attach a screenshot or photo.`);
     setShotError('');
-    // Shrunk before upload; the screenshot only needs to be readable.
     setShot({ blob: await dataUrlToBlob(await photoDataUrl(file, 1400)), name: file.name.replace(/\.\w+$/, '.jpg') });
   };
+  const blob = shot ? Object.assign(shot.blob, { name: shot.name }) : undefined;
+  const field = (label = 'Payment screenshot') =>
+    shot ? (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-2 border border-[#1B7F35] text-[12.5px] text-[#141517] max-w-[200px]">
+        <Paperclip className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+        <span className="truncate">{shot.name}</span>
+        <button type="button" onClick={() => setShot(undefined)} aria-label="Remove screenshot" className="cursor-pointer text-[#4E585E] hover:text-[#141517]">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </span>
+    ) : (
+      <label className={`${btn.outline} inline-flex items-center gap-1.5 focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1]`}>
+        <Paperclip className="w-4 h-4" aria-hidden="true" />
+        {label}
+        <input type="file" accept="image/*" className="sr-only" onChange={(e) => { attachShot(e.target.files?.[0]); e.target.value = ''; }} />
+      </label>
+    );
+  return { blob, field, shotError, clear: () => setShot(undefined) };
+};
+
+const input = 'px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]';
+
+// One AR line: amount received, description, payment screenshot and remarks. Used to release a new AR and to edit one.
+export const PaymentLineForm: React.FC<{
+  initial?: PaymentReceipt;
+  defaultDescription: string;
+  submitLabel: string;
+  onSubmit: (v: { amount: number; description: string; remarks: string }, screenshot?: Blob & { name?: string }) => Promise<boolean>;
+  onCancel: () => void;
+}> = ({ initial, defaultDescription, submitLabel, onSubmit, onCancel }) => {
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
+  const [description, setDescription] = useState(initial?.description ?? defaultDescription);
+  const [remarks, setRemarks] = useState(initial?.remarks ?? '');
+  const [saving, setSaving] = useState(false);
+  const shot = useScreenshot();
   const value = Number(amount);
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2 animate-fade-up"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (saving) return;
+        setSaving(true);
+        const ok = await onSubmit({ amount: value, description: description.trim(), remarks: remarks.trim() }, shot.blob);
+        setSaving(false);
+        if (ok) shot.clear();
+      }}
+    >
+      <label className="flex items-center border border-[#8C989F] bg-white">
+        <span className="pl-3 text-[14px] text-[#4E585E]">₱</span>
+        <input
+          autoFocus
+          type="number"
+          min="0.01"
+          step="0.01"
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="Amount received"
+          aria-label="Amount received"
+          className="w-[150px] px-2 py-2 text-[14px] tabular-nums outline-none"
+        />
+      </label>
+      <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" aria-label="Description on the receipt" className={`flex-1 min-w-[220px] ${input}`} />
+      {shot.field(initial?.attachment ? 'Replace screenshot' : 'Payment screenshot')}
+      <input value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Remarks (optional)" aria-label="Remarks on the receipt" className={`w-full ${input}`} />
+      <button type="submit" disabled={saving || !(value > 0) || !description.trim()} className={btn.primary}>
+        {saving ? 'Saving…' : submitLabel}
+      </button>
+      <button type="button" onClick={onCancel} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">
+        Cancel
+      </button>
+      {shot.shotError && <p role="alert" className="w-full text-[12.5px] text-[#B42318]">{shot.shotError}</p>}
+    </form>
+  );
+};
+
+// Confirmed partial payments on one application, each with its acknowledgement receipt, plus "Add new line" to release another.
+const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
+  const { recordPartialPayment, updatePayment, showToast } = useApp();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
   const canAccept = app.status !== 'declined' && app.status !== 'withdrawn' && app.status !== 'completed';
   const show = (arNo: string) => {
     const p = app.payments?.find((x) => x.arNo === arNo);
@@ -54,89 +129,69 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
     <div className="space-y-2">
       {!!app.payments?.length && (
         <ul className="text-[13px]">
-          {app.payments.map((p) => (
-            <li key={p.arNo} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 border-b border-[#DDE3E6] last:border-0">
-              <span className="tabular-nums font-semibold text-[#141517]">AR {p.arNo}</span>
-              <span className="tabular-nums text-[#141517]">{peso(p.amount)}</span>
-              <span className="text-[#4E585E] tabular-nums">{shortDate(p.date)}</span>
-              {p.attachment && (
-                <button onClick={() => openImage(p.attachment!, `Payment screenshot ${p.arNo}`)} className="inline-flex items-center gap-1 text-[13px] text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer">
-                  <Paperclip className="w-3.5 h-3.5" aria-hidden="true" /> Screenshot
-                </button>
-              )}
-              <button onClick={() => show(p.arNo)} className="ml-auto text-[13px] font-semibold text-[#1D5FD1] underline underline-offset-4 cursor-pointer">
-                View receipt
-              </button>
-            </li>
-          ))}
+          {app.payments.map((p) =>
+            editing === p.arNo ? (
+              <li key={p.arNo} className="py-2 border-b border-[#DDE3E6] last:border-0 space-y-1.5">
+                <p className="tabular-nums font-semibold text-[#141517]">Edit AR {p.arNo}</p>
+                <PaymentLineForm
+                  initial={p}
+                  defaultDescription={p.description}
+                  submitLabel="Save AR"
+                  onCancel={() => setEditing(null)}
+                  onSubmit={async (v, shot) => {
+                    const ok = !!(await updatePayment(app.id, p.arNo, v, shot));
+                    if (ok) setEditing(null);
+                    return ok;
+                  }}
+                />
+              </li>
+            ) : (
+              <li key={p.arNo} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 border-b border-[#DDE3E6] last:border-0">
+                <span className="tabular-nums font-semibold text-[#141517]">AR {p.arNo}</span>
+                <span className="tabular-nums text-[#141517]">{peso(p.amount)}</span>
+                <span className="text-[#4E585E] tabular-nums">{shortDate(p.date)}</span>
+                <span className="text-[#4E585E] truncate max-w-[260px]" title={p.description}>{p.description}</span>
+                {p.remarks && <span className="w-full text-[12.5px] text-[#4E585E]">Remarks: {p.remarks}</span>}
+                {p.attachment && (
+                  <button onClick={() => openImage(p.attachment!, `Payment screenshot ${p.arNo}`)} className="inline-flex items-center gap-1 text-[13px] text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer">
+                    <Paperclip className="w-3.5 h-3.5" aria-hidden="true" /> Screenshot
+                  </button>
+                )}
+                <span className="ml-auto flex gap-4">
+                  <button onClick={() => { setEditing(p.arNo); setOpen(false); }} className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer">
+                    <Pencil className="w-3.5 h-3.5" aria-hidden="true" /> Edit
+                  </button>
+                  <button onClick={() => show(p.arNo)} className="text-[13px] font-semibold text-[#1D5FD1] underline underline-offset-4 cursor-pointer">
+                    View receipt
+                  </button>
+                </span>
+              </li>
+            )
+          )}
         </ul>
       )}
       {canAccept &&
         (open ? (
-          <form
-            className="flex flex-wrap items-center gap-2 animate-fade-up"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (saving) return;
-              setSaving(true);
+          <PaymentLineForm
+            defaultDescription={`Partial payment for ${app.vehicleTitle}`}
+            submitLabel="Confirm & release AR"
+            onCancel={() => setOpen(false)}
+            onSubmit={async (v, shot) => {
               const win = reserveWindow(); // opened during the click so the browser allows it
-              const receipt = await recordPartialPayment(app.id, value, description, shot ? Object.assign(shot.blob, { name: shot.name }) : undefined);
-              setSaving(false);
-              if (!receipt) return win?.close();
+              const receipt = await recordPartialPayment(app.id, v.amount, v.description, shot, v.remarks || undefined);
+              if (!receipt) {
+                win?.close();
+                return false;
+              }
               setOpen(false);
-              setAmount('');
-              setShot(undefined);
               openAcknowledgementReceipt({ ...app, payments: [...(app.payments ?? []), receipt] }, receipt, win);
+              return true;
             }}
-          >
-            <label className="flex items-center border border-[#8C989F] bg-white">
-              <span className="pl-3 text-[14px] text-[#4E585E]">₱</span>
-              <input
-                autoFocus
-                type="number"
-                min="0.01"
-                step="0.01"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="Amount received"
-                aria-label="Amount received"
-                className="w-[150px] px-2 py-2 text-[14px] tabular-nums outline-none"
-              />
-            </label>
-            <input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              aria-label="Description on the receipt"
-              className="flex-1 min-w-[220px] px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-            />
-            {shot ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-2 border border-[#1B7F35] text-[12.5px] text-[#141517] max-w-[200px]">
-                <Paperclip className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                <span className="truncate">{shot.name}</span>
-                <button type="button" onClick={() => setShot(undefined)} aria-label="Remove screenshot" className="cursor-pointer text-[#4E585E] hover:text-[#141517]">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </span>
-            ) : (
-              <label className={`${btn.outline} inline-flex items-center gap-1.5 focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1]`}>
-                <Paperclip className="w-4 h-4" aria-hidden="true" />
-                Payment screenshot
-                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { attachShot(e.target.files?.[0]); e.target.value = ''; }} />
-              </label>
-            )}
-            <button type="submit" disabled={saving || !(value > 0) || !description.trim()} className={btn.primary}>
-              {saving ? 'Saving…' : 'Confirm & release AR'}
-            </button>
-            <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">
-              Cancel
-            </button>
-            {shotError && <p role="alert" className="w-full text-[12.5px] text-[#B42318]">{shotError}</p>}
-          </form>
+          />
         ) : (
-          <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => setOpen(true)}>
-            <ReceiptText className="w-4 h-4" aria-hidden="true" />
-            Confirm partial payment
+          <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => { setOpen(true); setEditing(null); }}>
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            Add new line
           </button>
         ))}
     </div>

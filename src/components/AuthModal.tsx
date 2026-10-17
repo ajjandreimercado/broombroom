@@ -5,9 +5,12 @@ import { AnimatePresence, motion } from 'motion/react';
 import { backdropMotion, modalMotion } from '../motion.ts';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
 import { X, Mail, Lock, Phone, User, Eye, EyeOff } from 'lucide-react';
+import { goodPassword, PASSWORD_RULE } from './password.ts';
+import { CONTACT_EMAIL } from '../data/constants.ts';
+import { GoogleButton } from './GoogleButton.tsx';
 
 export const AuthModal: React.FC = () => {
-  const { authModalOpen, setAuthModalOpen, login, register, pendingAction } = useApp();
+  const { authModalOpen, setAuthModalOpen, login, register, pendingAction, googleClientId, googleSignIn } = useApp();
   const [busy, setBusy] = useState(false);
 
   const [mode, setMode] = useState<'signin' | 'register' | 'forgot'>('signin');
@@ -31,6 +34,30 @@ export const AuthModal: React.FC = () => {
 
   const switchMode = (m: typeof mode) => { setError(''); setMode(m); };
 
+  // "Continue with Google" for clients, above the email form; shown once the server has a Google client ID.
+  const google = (text: 'signin_with' | 'signup_with') =>
+    PORTAL === 'buyer' && googleClientId ? (
+      <div className="mb-5">
+        <GoogleButton
+          clientId={googleClientId}
+          text={text}
+          onError={setError}
+          onCredential={async (credential) => {
+            setError('');
+            setBusy(true);
+            const problem = await googleSignIn(credential);
+            setBusy(false);
+            if (problem) setError(problem);
+          }}
+        />
+        <div className="mt-5 flex items-center gap-3 text-[12px] text-[#6B767D]" aria-hidden="true">
+          <span className="h-px flex-1 bg-[#C9D1D6]" />
+          or with email
+          <span className="h-px flex-1 bg-[#C9D1D6]" />
+        </div>
+      </div>
+    ) : null;
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -47,7 +74,7 @@ export const AuthModal: React.FC = () => {
     e.preventDefault();
     setError('');
     if (!regName.trim() || !regEmail.trim() || !regPhone.trim()) { setError('Please fill out all required fields.'); return; }
-    if (!regPass || regPass.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (!goodPassword(regPass)) { setError(PASSWORD_RULE); return; }
     if (regPass !== regConfirmPass) { setError('Passwords do not match.'); return; }
     if (!agreedTerms) { setError('Please agree to the Terms & Conditions.'); return; }
     setBusy(true);
@@ -71,7 +98,13 @@ export const AuthModal: React.FC = () => {
       className="fixed inset-0 z-50 bg-[#141517]/50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) { setError(''); setAuthModalOpen(false); } }}
     >
-      <motion.div {...modalMotion} className="w-full max-w-[420px] bg-[#F7F8F8] border border-[#141517] overflow-hidden">
+      <motion.div
+        {...modalMotion}
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === 'register' ? 'Create an account' : mode === 'forgot' ? 'Forgot your password' : 'Sign in'}
+        className="w-full max-w-[420px] bg-[#F7F8F8] border border-[#141517] overflow-hidden"
+      >
 
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between bg-[#141517]">
@@ -107,15 +140,16 @@ export const AuthModal: React.FC = () => {
             <div>
               <div className="mb-5">
                 <h2 className="font-display text-[24px] leading-tight text-[#141517]">Welcome back</h2>
-                <p className="text-[13px] text-[#6B767D] mt-0.5">Sign in to your Groom Broom account</p>
+                <p className="text-[13px] text-[#6B767D] mt-0.5">Sign in to your Broom Broom account</p>
               </div>
 
+              {google('signin_with')}
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div>
                   <label className={labelClass}>Email</label>
                   <div className={iconInputClass}>
                     <User className={iconClass} />
-                    <input
+                    <input aria-label="Email"
                       type="email"
                       placeholder="name@example.com"
                       value={identifier}
@@ -140,7 +174,7 @@ export const AuthModal: React.FC = () => {
                   </div>
                   <div className={iconInputClass}>
                     <Lock className={iconClass} />
-                    <input
+                    <input aria-label="Password"
                       type={showPass ? 'text' : 'password'}
                       placeholder="••••••••"
                       value={password}
@@ -187,39 +221,40 @@ export const AuthModal: React.FC = () => {
             <div>
               <div className="mb-5">
                 <h2 className="font-display text-[24px] leading-tight text-[#141517]">Create account</h2>
-                <p className="text-[13px] text-[#6B767D] mt-0.5">Join the Groom Broom marketplace</p>
+                <p className="text-[13px] text-[#6B767D] mt-0.5">Join the Broom Broom marketplace</p>
               </div>
 
+              {google('signup_with')}
               <form onSubmit={handleRegister} className="space-y-3.5">
                 <div>
                   <label className={labelClass}>Full Name</label>
                   <div className={iconInputClass}>
                     <User className={iconClass} />
-                    <input type="text" placeholder="e.g. Andrei Mercado" value={regName} onChange={(e) => setRegName(e.target.value)} className={inputClass + ' pl-10'} required />
+                    <input aria-label="Full Name" type="text" placeholder="e.g. Juan dela Cruz" value={regName} onChange={(e) => setRegName(e.target.value)} className={inputClass + ' pl-10'} required />
                   </div>
                 </div>
                 <div>
                   <label className={labelClass}>Email Address</label>
                   <div className={iconInputClass}>
                     <Mail className={iconClass} />
-                    <input type="email" placeholder="you@domain.com" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} className={inputClass + ' pl-10'} required />
+                    <input aria-label="Email Address" type="email" placeholder="you@domain.com" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} className={inputClass + ' pl-10'} required />
                   </div>
                 </div>
                 <div>
                   <label className={labelClass}>Mobile Number</label>
                   <div className={iconInputClass}>
                     <Phone className={iconClass} />
-                    <input type="tel" placeholder="+63 917 123 4567" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} className={inputClass + ' pl-10'} required />
+                    <input aria-label="Mobile Number" type="tel" placeholder="+63 917 123 4567" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} className={inputClass + ' pl-10'} required />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <label className={labelClass}>Password</label>
-                    <input type="password" placeholder="Min 8 chars" autoComplete="new-password" value={regPass} onChange={(e) => setRegPass(e.target.value)} className={inputClass} required />
+                    <input aria-label="Password" type="password" placeholder="8+ characters, letters and numbers" autoComplete="new-password" value={regPass} onChange={(e) => setRegPass(e.target.value)} className={inputClass} required />
                   </div>
                   <div>
                     <label className={labelClass}>Confirm</label>
-                    <input type="password" placeholder="Repeat" value={regConfirmPass} onChange={(e) => setRegConfirmPass(e.target.value)} className={inputClass} required />
+                    <input aria-label="Confirm password" type="password" placeholder="Repeat" value={regConfirmPass} onChange={(e) => setRegConfirmPass(e.target.value)} className={inputClass} required />
                   </div>
                 </div>
                 <div className="flex items-start gap-2.5 pt-1">
@@ -248,8 +283,9 @@ export const AuthModal: React.FC = () => {
               <div className="mb-5">
                 <h2 className="font-display text-[24px] leading-tight text-[#141517]">Forgot your password?</h2>
                 <p className="text-[13px] text-[#4E585E] mt-2 leading-relaxed">
-                  For your security, the Broom Broom admin team resets passwords. Contact them with the email you signed up with; they will give you a
-                  temporary password, which you can change in Settings after you sign in.
+                  For your security, the Broom Broom admin team resets passwords. Email{' '}
+                  <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#1D5FD1] underline underline-offset-4 [overflow-wrap:anywhere]">{CONTACT_EMAIL}</a>{' '}
+                  from the address you signed up with; they will give you a temporary password, which you can change in Settings after you sign in.
                 </p>
               </div>
               <button

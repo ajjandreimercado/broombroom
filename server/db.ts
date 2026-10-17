@@ -19,6 +19,9 @@ export const COLLECTIONS = [
   'reports',
   'notifications',
   'vouchers',
+  'receipts',
+  'sales_entries',
+  'ledger_accounts',
 ] as const;
 export type Table = (typeof COLLECTIONS)[number];
 
@@ -41,10 +44,12 @@ export const connectDb = async (uri: string, dbName = process.env.MONGODB_DB || 
     col('commissions').createIndex({ applicationRef: 1 }),
     col('listing_requests').createIndex({ agentName: 1, status: 1 }),
     col('reports').createIndex({ status: 1 }),
+    raw('uploads').createIndex({ attached: 1, createdAt: 1 }), // the daily clean-up of abandoned uploads
     col('notifications').createIndex({ audience: 1, recipient: 1, createdAt: -1 }),
     col('vouchers').createIndex({ kind: 1, accountId: 1 }),
     raw('users').createIndex({ emailLower: 1 }, { unique: true }),
     raw('users').createIndex({ role: 1, active: 1 }),
+    raw('users').createIndex({ googleId: 1 }, { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } }),
     raw('sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }), // expired sign-ins delete themselves
     raw('sessions').createIndex({ userId: 1 }),
     raw('uploads').createIndex({ uploadedBy: 1 }),

@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
 import { portalUrl } from '../portals.ts';
 import { VehicleCategory } from '../types.ts';
+import { CONTACT_EMAIL } from '../data/constants.ts';
 
 export const Footer: React.FC = () => {
   const { navigateTo, updateFilter } = useApp();
@@ -33,7 +34,7 @@ export const Footer: React.FC = () => {
         { label: 'Marketplace', onClick: () => navigateTo('marketplace') },
         { label: 'Deals', onClick: () => navigateTo('deals') },
         { label: 'How it works', onClick: () => navigateTo('how_it_works') },
-        { label: 'Sell on Broom Broom', onClick: () => window.location.assign(portalUrl('seller')) },
+        { label: 'Agent sign-in', onClick: () => window.location.assign(portalUrl('seller')) },
       ],
     },
     {
@@ -54,15 +55,15 @@ export const Footer: React.FC = () => {
             <button
               onClick={() => navigateTo('intro')}
               className="cursor-pointer inline-flex hover:opacity-80"
-              aria-label="Groom Broom home"
+              aria-label="Broom Broom home"
             >
               <GroomBroomLogo size="lg" variant="dark" />
             </button>
             <p className="mt-6 font-display text-[22px] leading-tight text-white max-w-[18ch]">
               Find the ride. Apply on the spot.
             </p>
-            <a href="mailto:support@groombroom.ph" className="mt-4 inline-block text-[14px] text-[#C9D1D6] hover:text-white underline decoration-[#4E585E] underline-offset-4">
-              support@groombroom.ph
+            <a href={`mailto:${CONTACT_EMAIL}`} className="mt-4 inline-block text-[14px] text-[#C9D1D6] hover:text-white underline decoration-[#4E585E] underline-offset-4">
+              {CONTACT_EMAIL}
             </a>
           </div>
           {columns.map((col) => (
@@ -78,7 +79,7 @@ export const Footer: React.FC = () => {
         </div>
 
         <div className="pt-6 border-t border-[#3A4044] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] text-[#8C989F]">
-          <p>© 2026 Groom Broom. A Happy Ride.</p>
+          <p>© 2026 Broom Broom. A Happy Ride.</p>
           <p className="tabular-nums">Prices in Philippine pesos (₱)</p>
         </div>
       </div>

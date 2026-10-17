@@ -20,13 +20,13 @@ export const HowItWorksView: React.FC = () => {
     {
       num: '01',
       title: 'Browse & Filter Inventory',
-      desc: 'Explore curated vehicles across cars, motorcycles, pickup trucks, e-bikes, and scooters with clean LTO documentation and verified mileage history.',
+      desc: 'Browse cars, motorcycles, pickup trucks, e-bikes and scooters. Filter by type, budget and condition, and compare up to four side by side.',
       icon: Search,
     },
     {
       num: '02',
       title: 'Inquire Directly with Agents',
-      desc: 'Connect in real time with certified dealerships and verified private owners. Request service logs, live walk-around videos, and reserve status.',
+      desc: 'Message an agent from any listing to ask about the unit, its papers or a viewing, or request a quotation for cash or financing.',
       icon: MessageSquare,
     },
     {
@@ -44,13 +44,13 @@ export const HowItWorksView: React.FC = () => {
     {
       num: '05',
       title: 'Transparent Settlement',
-      desc: 'Finalize notarized Deed of Absolute Sale (DOAS) or activate certified bank auto-financing terms with complete peace of mind.',
+      desc: 'Once the admin team approves your application, the vehicle is reserved for you. Settle the payment or complete your financing, and receive an acknowledgement receipt for each payment.',
       icon: CreditCard,
     },
     {
       num: '06',
       title: 'Take Delivery with Confidence',
-      desc: 'Receive the original OR/CR and keys directly from the agent.',
+      desc: 'Sign the Deed of Sale and receive the OR/CR and the keys.',
       icon: KeyRound,
     },
   ];
@@ -69,7 +69,7 @@ export const HowItWorksView: React.FC = () => {
       <section className="border-b border-[#141517]">
         <div className="gb-container pt-12 sm:pt-16 pb-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
           <h1 className="lg:col-span-7 font-display text-[clamp(2.4rem,5.4vw,4.4rem)] leading-[0.95] text-[#141517] max-w-[12ch]">
-            How Groom Broom works
+            How Broom Broom works
           </h1>
           <p className="lg:col-span-5 text-[16px] sm:text-[17px] leading-relaxed text-[#4E585E] max-w-[48ch]">
             Search, message the agent, apply and follow your application to the keys, all from one listing.

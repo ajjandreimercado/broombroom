@@ -13,10 +13,10 @@ import { SafetyReports } from '../components/admin/SafetyReports.tsx';
 import { AccountingOverview } from '../components/accounting/AccountingOverview.tsx';
 import { VoucherPage } from '../components/accounting/VoucherPage.tsx';
 import { SalesReport } from '../components/accounting/SalesReport.tsx';
+import { ReceiptsPage } from '../components/accounting/ReceiptsPage.tsx';
 import { Quotations } from '../components/admin/Quotations.tsx';
 import { LeadsManager } from '../components/admin/LeadsManager.tsx';
 import { AccountsManager } from '../components/admin/AccountsManager.tsx';
-import { EmptyState, SectionHeader } from '../components/admin/ui.tsx';
 import {
   ShieldAlert,
   LayoutDashboard,
@@ -32,8 +32,8 @@ import {
   LineChart as LineChartIcon,
   Receipt,
   CreditCard,
-  PiggyBank,
   FileSpreadsheet,
+  ReceiptText,
   Calculator,
   Users,
   UserCog,
@@ -69,7 +69,7 @@ export const AdminDashboardView: React.FC = () => {
         { id: 'accounting', label: 'Overview', icon: LineChartIcon },
         { id: 'acc_expenses', label: 'Expenses', icon: Receipt },
         { id: 'acc_credit', label: 'Credit', icon: CreditCard },
-        { id: 'acc_savings', label: 'Savings deposit', icon: PiggyBank },
+        { id: 'acc_receipts', label: 'Receipts (AR)', icon: ReceiptText },
         { id: 'acc_reports', label: 'Reports', icon: FileSpreadsheet },
       ],
     },
@@ -159,15 +159,10 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'acc_expenses' && <VoucherPage kind="expense" />}
             {adminTab === 'acc_credit' && <VoucherPage kind="credit" />}
             {adminTab === 'acc_reports' && <SalesReport />}
+            {adminTab === 'acc_receipts' && <ReceiptsPage />}
             {adminTab === 'quotations' && <Quotations />}
             {adminTab === 'leads' && <LeadsManager />}
             {adminTab === 'accounts' && <AccountsManager />}
-            {adminTab === 'acc_savings' && (
-              <section>
-                <SectionHeader title="Savings deposit" />
-                <EmptyState title="Not set up yet" body="This section's layout hasn't been finalised yet." />
-              </section>
-            )}
           </main>
         </div>
       </div>

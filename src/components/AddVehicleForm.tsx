@@ -133,10 +133,10 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                 <form onSubmit={(e) => handleCreateVehicle(e, false)} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="gb-label block mb-2">
+                      <label htmlFor="listing-field-1" className="gb-label block mb-2">
                         Vehicle Headline Title *
                       </label>
-                      <input
+                      <input id="listing-field-1"
                         type="text"
                         placeholder="e.g. 2025 Honda Civic RS Turbo"
                         value={title}
@@ -147,10 +147,10 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     </div>
 
                     <div>
-                      <label className="gb-label block mb-2">
+                      <label htmlFor="listing-field-2" className="gb-label block mb-2">
                         Category *
                       </label>
-                      <select
+                      <select id="listing-field-2"
                         value={category}
                         onChange={(e) => setCategory(e.target.value as any)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
@@ -167,8 +167,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
-                      <label className="gb-label block mb-2">Brand *</label>
-                      <input
+                      <label htmlFor="listing-field-3" className="gb-label block mb-2">Brand *</label>
+                      <input id="listing-field-3"
                         type="text"
                         placeholder="e.g. Honda, Porsche, Toyota"
                         value={brand}
@@ -179,8 +179,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     </div>
 
                     <div>
-                      <label className="gb-label block mb-2">Model *</label>
-                      <input
+                      <label htmlFor="listing-field-4" className="gb-label block mb-2">Model *</label>
+                      <input id="listing-field-4"
                         type="text"
                         placeholder="e.g. Civic RS, 911 Carrera"
                         value={model}
@@ -190,8 +190,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     </div>
 
                     <div>
-                      <label className="gb-label block mb-2">Year *</label>
-                      <input
+                      <label htmlFor="listing-field-5" className="gb-label block mb-2">Year *</label>
+                      <input id="listing-field-5"
                         type="number"
                         value={year}
                         onChange={(e) => setYear(Number(e.target.value))}
@@ -203,8 +203,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
-                      <label className="gb-label block mb-2">Price (₱) *</label>
-                      <input
+                      <label htmlFor="listing-field-6" className="gb-label block mb-2">Price (₱) *</label>
+                      <input id="listing-field-6"
                         type="number"
                         value={price}
                         onChange={(e) => setPrice(Number(e.target.value))}
@@ -214,8 +214,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     </div>
 
                     <div>
-                      <label className="gb-label block mb-2">Mileage (km)</label>
-                      <input
+                      <label htmlFor="listing-field-7" className="gb-label block mb-2">Mileage (km)</label>
+                      <input id="listing-field-7"
                         type="number"
                         value={mileage}
                         onChange={(e) => setMileage(Number(e.target.value))}
@@ -224,8 +224,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     </div>
 
                     <div>
-                      <label className="gb-label block mb-2">Condition</label>
-                      <select
+                      <label htmlFor="listing-field-8" className="gb-label block mb-2">Condition</label>
+                      <select id="listing-field-8"
                         value={condition}
                         onChange={(e) => setCondition(e.target.value as any)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
@@ -238,8 +238,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
-                      <label className="gb-label block mb-2">Transmission</label>
-                      <select
+                      <label htmlFor="listing-field-9" className="gb-label block mb-2">Transmission</label>
+                      <select id="listing-field-9"
                         value={transmission}
                         onChange={(e) => setTransmission(e.target.value as any)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
@@ -253,8 +253,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     </div>
 
                     <div>
-                      <label className="gb-label block mb-2">Fuel Type</label>
-                      <select
+                      <label htmlFor="listing-field-10" className="gb-label block mb-2">Fuel Type</label>
+                      <select id="listing-field-10"
                         value={fuel}
                         onChange={(e) => setFuel(e.target.value as any)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
@@ -267,8 +267,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     </div>
 
                     <div>
-                      <label className="gb-label block mb-2">Location <span className="normal-case tracking-normal font-normal">(optional)</span></label>
-                      <input
+                      <label htmlFor="listing-field-11" className="gb-label block mb-2">Location <span className="normal-case tracking-normal font-normal">(optional)</span></label>
+                      <input id="listing-field-11"
                         type="text"
                         value={location}
                         placeholder="e.g. Taguig City"
@@ -279,10 +279,10 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                   </div>
 
                   <div>
-                    <label className="gb-label block mb-2">
+                    <label htmlFor="listing-field-12" className="gb-label block mb-2">
                       Description <span className="normal-case tracking-normal font-normal">(optional)</span>
                     </label>
-                    <textarea
+                    <textarea id="listing-field-12"
                       rows={3}
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
@@ -335,8 +335,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
 
                   {isRequest ? (
                     <div>
-                      <label className="gb-label block mb-2">Note to the admin team</label>
-                      <textarea
+                      <label htmlFor="listing-field-13" className="gb-label block mb-2">Note to the admin team</label>
+                      <textarea id="listing-field-13"
                         rows={2}
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
@@ -359,7 +359,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                       className="w-4 h-4 accent-[#1D5FD1]"
                     />
                     <label htmlFor="sellerFinancing" className="text-xs font-semibold text-[#2A2E31] cursor-pointer">
-                      Offer low-downpayment partner financing on this vehicle
+                      Financing available for this vehicle
                     </label>
                   </div>
 

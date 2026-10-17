@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
-import { CREDIT_ACCOUNTS, CREDIT_CATEGORIES, EXPENSE_CATEGORIES, PAYMENT_ACCOUNTS } from '../../data/mockData.ts';
+import { CREDIT_CATEGORIES, EXPENSE_CATEGORIES } from '../../data/constants.ts';
 import { Expense } from '../../types.ts';
 import { uploadFile } from '../../api.ts';
 import { SectionHeader, EmptyState, Drawer, btn, shortDate, checkUpload } from '../admin/ui.tsx';
@@ -36,13 +36,13 @@ const fieldBorder = (bad: boolean) => (bad ? 'border-[#B42318]' : 'border-[#8C98
 
 // The expense and credit forms share one layout: who, from which account, when, how, then the lines.
 export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
-  const { expenses, credits, addExpense, showToast } = useApp();
+  const { expenses, credits, ledgerAccounts, addExpense, showToast, navigateTo } = useApp();
   const [saving, setSaving] = useState(false);
   const copy = COPY[kind];
   const records = kind === 'expense' ? expenses : credits;
-  const accounts = kind === 'expense' ? PAYMENT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name })) : CREDIT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name }));
+  const accounts = ledgerAccounts.filter((a) => a.kind === (kind === 'expense' ? 'payment' : 'credit'));
   const categories = kind === 'expense' ? EXPENSE_CATEGORIES : CREDIT_CATEGORIES;
-  const available = (id: string) => (kind === 'expense' ? accountBalance(id, expenses) : creditAvailable(id, credits));
+  const available = (id: string) => (kind === 'expense' ? accountBalance : creditAvailable)(accounts.find((a) => a.id === id), records);
 
   const [payee, setPayee] = useState('');
   const [accountId, setAccountId] = useState('');
@@ -62,8 +62,8 @@ export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
 
   const pickAccount = (id: string) => {
     setAccountId(id);
-    const acct = PAYMENT_ACCOUNTS.find((a) => a.id === id);
-    if (acct) setMethod(acct.method); // cash on hand is paid in cash; bank accounts by bank
+    const acct = accounts.find((a) => a.id === id);
+    if (acct?.method) setMethod(acct.method); // cash on hand is paid in cash; bank accounts by bank
   };
 
   const attach = (i: number, file?: File) => {
@@ -125,7 +125,7 @@ export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
 
   const err = (k: string) => errors[k] ? <p className="mt-1 text-[12px] text-[#B42318]">{errors[k]}</p> : null;
   const open = records.find((r) => r.id === openId);
-  const accountName = (id: string) => [...PAYMENT_ACCOUNTS, ...CREDIT_ACCOUNTS].find((a) => a.id === id)?.name || id;
+  const accountName = (id: string) => ledgerAccounts.find((a) => a.id === id)?.name || id;
 
   return (
     <div className="space-y-12">
@@ -145,9 +145,16 @@ export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
                 <option value="">{kind === 'expense' ? 'Cash and cash equivalents' : 'Choose a credit account'}</option>
                 {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
-              <span className="mt-1.5 block text-[12.5px] text-[#4E585E] tabular-nums">
-                {copy.balance}: <strong className="text-[#141517]">{money(balance ?? 0)}</strong>
-              </span>
+              {accounts.length ? (
+                <span className="mt-1.5 block text-[12.5px] text-[#4E585E] tabular-nums">
+                  {copy.balance}: <strong className="text-[#141517]">{money(balance ?? 0)}</strong>
+                </span>
+              ) : (
+                <span className="mt-1.5 block text-[12.5px] text-[#B42318]">
+                  No {kind === 'expense' ? 'cash or bank' : 'credit'} accounts yet.{' '}
+                  <button type="button" onClick={() => navigateTo('admin', { adminTab: 'accounting' })} className="font-semibold underline underline-offset-4 cursor-pointer">Add one in Accounting overview</button>
+                </span>
+              )}
               {err('account')}
             </label>
           </div>

@@ -78,8 +78,6 @@ export const GuideDetailView: React.FC = () => {
 
             <div className="pt-4 flex items-center gap-3 text-xs text-[#4E585E] border-t border-[#DDE3E6]">
               <span className="font-semibold text-[#141517]">{guide.author}</span>
-              <span className="text-[#8C989F]">·</span>
-              <span>Published {guide.publishDate}</span>
             </div>
           </div>
 

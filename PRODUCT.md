@@ -14,7 +14,7 @@ web
 
 ## Product Purpose
 
-A vehicle marketplace where browsing, comparing, applying and messaging happen in one place, so a buyer goes from search to an approved purchase application without leaving the site. This is a school/demo project running on mock data (`src/data/mockData.ts`).
+A vehicle marketplace where browsing, comparing, applying and messaging happen in one place, so a buyer goes from search to an approved purchase application without leaving the site. It is a real client project: the data comes from the API and MongoDB.
 
 ## Positioning
 
@@ -29,17 +29,17 @@ All vehicle types (cars through ATVs) across Philippine regions in one marketpla
 ## Capabilities and Constraints
 
 - Stack: Vite + React 19 + Tailwind CSS v4, `motion` and `lucide-react` installed.
-- All data is mock. Do not invent real customer counts, ratings, partners or financing rates beyond what the mock data holds.
+- All data is real and comes from the database (no demo or mock data). Never invent customer counts, ratings, partners, phone numbers or financing rates.
 
 ## Brand Commitments
 
-- Logo: `public/broom-broom-logo.png` (green "Broom" with motorcycle, blue "Broom" with sports car). The logo reads "Broom Broom"; site copy still says "Groom Broom" (unresolved).
+- Logo: `public/broom-broom-logo.png` (green "Broom" with motorcycle, blue "Broom" with sports car). The logo reads "Broom Broom"; site copy now says "Broom Broom" everywhere (2026-10-18).
 - The brand palette follows the new Broom Broom logo (`public/broom-broom-logo.png`): blue for actions, green for stamped states. The old orange `#E8541A` is retired.
 - The user asked for a minimalist, clean, professional look, with bold creativity inside that.
 
 ## Evidence on Hand
 
-- Vehicle photos: `public/vehicles/*.jpg` (6 photos). The other listings use the image URLs in the mock data.
+- Vehicle photos: uploaded by the admin with each listing (stored in MongoDB). Contact email: broombroombookingservices@gmail.com.
 - No real testimonials, press, partners or sales figures exist; none may be invented.
 
 ## Product Principles

@@ -32,9 +32,6 @@ export interface Vehicle {
   sellerId: string;
   sellerName: string;
   sellerLocation: string;
-  sellerRating: number;
-  sellerReviewCount: number;
-  sellerVerified: boolean;
   description: string;
   images: string[];
   videos?: string[]; // "idb:<id>" refs, see media.ts
@@ -98,6 +95,7 @@ export interface VehicleApplication {
   documents?: ApplicationDocument[];
   payments?: PaymentReceipt[];
   quotationNo?: string; // the client applied from this quotation
+  viaAgentLink?: string; // the agent whose apply link the client used
 }
 
 // A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).
@@ -109,6 +107,55 @@ export interface PaymentReceipt {
   receivedBy: string;
   attachment?: string; // payment screenshot, shrunk JPEG data URL
   attachmentName?: string;
+  remarks?: string;
+  editedAt?: string;
+}
+
+// One line on an acknowledgement receipt (DESCRIPTIONS / QTY / PRICE / AMOUNT).
+export interface ReceiptLine {
+  description: string;
+  qty: number;
+  price: number;
+}
+
+// An acknowledgement receipt the admin writes by hand (not from an application's partial payment).
+// It shares the running AR number with the payment receipts.
+export interface ManualReceipt {
+  id: string;
+  arNo: string;
+  date: string;
+  receivedFrom: string;
+  lines: ReceiptLine[];
+  remarks?: string;
+  receivedBy: string;
+  attachment?: string;
+  attachmentName?: string;
+  createdAt: string;
+  editedAt?: string;
+}
+
+// A company money account the accounting pages use: cash or a bank account expenses are paid from (amount =
+// opening balance), or a credit line purchases are charged to (amount = credit limit). The admin manages them.
+export interface LedgerAccount {
+  id: string;
+  kind: 'payment' | 'credit';
+  name: string;
+  method?: 'cash' | 'bank'; // payment accounts: how money leaves it
+  amount: number;
+  createdAt: string;
+}
+
+// A sale the admin enters by hand in the sales report (e.g. a sale made outside the site).
+export interface SalesEntry {
+  id: string;
+  date: string; // yyyy-mm-dd
+  vehicle: string;
+  client: string;
+  agent?: string;
+  amount: number;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface ChatMessage {
@@ -118,6 +165,11 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   isSeller: boolean;
+  // An agent's apply link: the client applies for this vehicle through their agent (and is then locked to them).
+  applyVehicleId?: string;
+  applyVehicleTitle?: string;
+  applyAgent?: string; // agent slug
+  byAdmin?: boolean; // sent by the admin during a takeover
 }
 
 export interface Conversation {
@@ -135,6 +187,8 @@ export interface Conversation {
   unreadBuyer: number;
   unreadSeller: number;
   messages: ChatMessage[];
+  // The admin took over after the client waited 2 days for a reply; the admin can then answer in this chat.
+  takenOverAt?: string;
 }
 
 export interface UserProfile {
@@ -156,6 +210,8 @@ export interface UserProfile {
   recentlyViewedIds: string[];
   memberSince: string;
   avatar?: string;
+  googleLinked?: boolean; // can sign in with Google
+  hasPassword?: boolean; // false for accounts made with Google (they may set one in Settings)
 }
 
 export interface Guide {
@@ -165,7 +221,6 @@ export interface Guide {
   subtitle: string;
   category: string;
   readTime: string;
-  publishDate: string;
   author: string;
   heroImage: string;
   excerpt: string;
@@ -191,6 +246,7 @@ export interface ApplicationDocument {
   label: string;
   fileName: string; // '' until the client or the admin supplies it
   addedByAdmin?: boolean; // the client handed it in and the admin uploaded it
+  resubmittedAt?: string; // the client uploaded a new copy after a rejection
   url?: string; // the uploaded file (private: the client and admins only)
   // Admin review (financing section); a rejection always carries a reason.
   status?: 'pending' | 'approved' | 'rejected';
@@ -330,4 +386,9 @@ export interface ClientLead {
   escalatedAt?: string; // admin was told it sat unclaimed
   history: { at: string; text: string }[];
   preview?: string; // the client's latest chat message, shown to agents in Open leads
+  // Locked: the client applied through their agent's apply link, so no one else can take them (and the
+  // 24-hour rule does not apply) until that application is completed, declined or withdrawn, or the admin unlocks.
+  lockedTo?: string;
+  lockedRef?: string;
+  lockedAt?: string;
 }

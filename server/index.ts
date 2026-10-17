@@ -10,8 +10,33 @@ import { createApp, startJobs } from './app.ts';
 const dist = path.resolve(process.cwd(), 'dist');
 if (!existsSync(dist)) throw new Error('dist/ is missing. Run "npm run build" first.');
 
-await boot({ production: process.env.NODE_ENV === 'production' || !!process.env.RENDER });
+const production = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
+await boot({ production });
+if (production && !process.env.APP_URL) console.warn('APP_URL is not set: links in emails use the address of the request instead.');
+if (production && !process.env.BREVO_API_KEY) console.warn('BREVO_API_KEY is not set: emails (document re-submission, help messages) are not sent.');
 const app = createApp();
+// Content-Security-Policy for the site: only this site's own scripts run (no inline or injected code), plus Google's
+// sign-in script. Styles may be inline (React style attributes); fonts come from Google Fonts; listing photos may be
+// any https address.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://accounts.google.com/gsi/client",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
+  "frame-src 'self' https://accounts.google.com/gsi/",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob:",
+  "connect-src 'self' https://accounts.google.com/gsi/",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+app.use((_req, res, next) => {
+  res.setHeader('Content-Security-Policy', CSP);
+  next();
+});
 app.use(express.static(dist, { index: false, maxAge: '1h' }));
 // Single-page app: every other path gets index.html.
 app.get(/^(?!\/(api|files)\/).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));

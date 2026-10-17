@@ -1,48 +1,62 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { HelpCircle, ChevronDown, Mail, Phone, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
+import { api, ApiError } from '../api.ts';
+import { CONTACT_EMAIL } from '../data/constants.ts';
+import { ChevronDown, Mail, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 
 export const HelpView: React.FC = () => {
-  const { showToast, navigateTo } = useApp();
+  const { showToast, currentUser } = useApp();
 
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   // Contact support form
-  const [supportName, setSupportName] = useState('');
-  const [supportEmail, setSupportEmail] = useState('');
+  const [supportName, setSupportName] = useState(currentUser?.name ?? '');
+  const [supportEmail, setSupportEmail] = useState(currentUser?.email ?? '');
+  const [sending, setSending] = useState(false);
   const [supportCategory, setSupportCategory] = useState('Buying & Applications');
   const [supportMessage, setSupportMessage] = useState('');
   const [ticketSent, setTicketSent] = useState(false);
 
   const faqs = [
     {
-      q: 'Does clicking "Apply Now" charge my credit card?',
-      a: 'No. Applying on Groom Broom signifies your purchase interest. There are zero automatic card charges or platform fees. After submitting an application, the agent will contact you to verify paperwork, schedule an on-site viewing or test drive, and arrange cash payment or bank financing terms directly with you.',
+      q: 'Does applying cost anything or charge my card?',
+      a: 'No. Applying is free and nothing is charged online. After you apply, the admin team reviews your application and documents, and your agent contacts you about the viewing, payment and paperwork.',
     },
     {
-      q: 'How are vehicles verified on Groom Broom?',
-      a: 'All listings submitted by verified dealers must pass documentation checks, including valid LTO Certificate of Registration (CR), Official Receipt (OR), and VIN engine/chassis alignment. We also host a proactive safety reporting system to combat fraudulent or duplicate listings.',
+      q: 'What documents do I need for financing?',
+      a: 'A valid ID for you and your co-makers, a proof of billing, and proof of income: a payslip and certificate of employment if you are employed, or your DTI registration, business permit and sales records if you own a business. Upload at least two when you apply; you can hand the rest to the admin team later.',
     },
     {
-      q: 'Can I apply for vehicle financing as a freelancer or OFW?',
-      a: 'Yes. Most Groom Broom partner dealerships offer flexible financing schemes tailored to non-traditional income earners, including freelancers, business owners, and Overseas Filipino Workers (OFWs) with remittance proof.',
+      q: 'One of my documents was rejected. What now?',
+      a: 'We email you the reason with a link. Open it (or go to My Applications), and upload a clearer copy of that document. The admin team reviews it again.',
     },
     {
-      q: 'What is the role of Groom Broom during vehicle handoff?',
-      a: 'Groom Broom acts as the discovery, messaging, and pre-application portal connecting verified clients and agents. Final transfer of ownership (Deed of Absolute Sale, PNP-HPG clearance, and LTO registration) is completed directly between client and agent with guidance from our automotive guides.',
+      q: 'Can I compare cash and financing before applying?',
+      a: 'Yes. Request a quotation from the listing. It shows the unit price, down payment, term and estimated monthly amortization. Financing is still subject to the bank or financing company’s approval.',
     },
     {
-      q: 'How can I become a verified agent on Groom Broom?',
-      a: 'Sign in to the Broom Broom agent portal to reach the agent dashboard. You can immediately post vehicle listings with full specifications, manage client inquiries, and update application statuses.',
+      q: 'How do I talk to an agent?',
+      a: 'Use Message on any listing. An agent answers in My Account under Messages, and you are notified when they reply.',
+    },
+    {
+      q: 'How do I become an agent?',
+      a: `Agent accounts are created by the Broom Broom admin team. Email ${CONTACT_EMAIL} to ask.`,
     },
   ];
 
-  const handleSupportSubmit = (e: React.FormEvent) => {
+  const handleSupportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supportName.trim() || !supportEmail.trim() || !supportMessage.trim()) return;
-
-    setTicketSent(true);
-    showToast('Inquiry Received', 'Our concierge desk will respond within 24 hours.');
+    if (sending || !supportName.trim() || !supportEmail.trim() || !supportMessage.trim()) return;
+    setSending(true);
+    try {
+      await api('/support', { body: { name: supportName.trim(), email: supportEmail.trim(), topic: supportCategory, message: supportMessage.trim() } });
+      setTicketSent(true);
+      setSupportMessage('');
+    } catch (err) {
+      showToast('Message not sent', err instanceof ApiError ? err.message : `Please email ${CONTACT_EMAIL} directly.`, 'error');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -54,7 +68,7 @@ export const HelpView: React.FC = () => {
             How can we help?
           </h1>
           <p className="mt-5 text-[16px] sm:text-[17px] text-[#4E585E] max-w-[52ch] leading-relaxed">
-            Instant answers regarding purchase applications, physical inspections, partner financing, and merchant partnerships.
+            Answers about applications, documents, quotations and financing, or send the team a message.
           </p>
         </div>
       </section>
@@ -64,7 +78,6 @@ export const HelpView: React.FC = () => {
         <div className="border-t-2 border-[#141517] pt-6 space-y-6">
           <div className="flex items-center justify-between pb-3 border-b border-[#DDE3E6]">
             <h2 className="font-display text-[22px] leading-tight text-[#141517]">Frequently Asked Questions</h2>
-            <span className="text-xs text-[#6B767D] tabular-nums">Help Desk Knowledgebase</span>
           </div>
 
           <div className="divide-y divide-[#DDE3E6]">
@@ -102,31 +115,21 @@ export const HelpView: React.FC = () => {
             <div className="p-6 bg-white rounded-[2px] border border-[#C9D1D6] space-y-5 text-xs">
               <div className="flex items-center gap-3.5">
                 <div className="w-10 h-10 rounded-[2px] bg-[#E8F0FC] text-[#1D5FD1] flex items-center justify-center shrink-0">
-                  <Phone className="w-4 h-4" />
+                  <Mail className="w-4 h-4" aria-hidden="true" />
                 </div>
-                <div>
-                  <p className="font-bold text-[#141517] text-sm">Customer Helpline</p>
-                  <p className="text-[#4E585E] tabular-nums mt-0.5">+63 (2) 8800-RIDE (7433)</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3.5 pt-4 border-t border-[#DDE3E6]">
-                <div className="w-10 h-10 rounded-[2px] bg-[#E8F0FC] text-[#1D5FD1] flex items-center justify-center shrink-0">
-                  <Mail className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="font-bold text-[#141517] text-sm">Email Concierge</p>
-                  <p className="text-[#4E585E] tabular-nums mt-0.5">concierge@groombroom.ph</p>
+                <div className="min-w-0">
+                  <p className="font-bold text-[#141517] text-sm">Email</p>
+                  <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#1D5FD1] underline underline-offset-4 mt-0.5 inline-block [overflow-wrap:anywhere]">{CONTACT_EMAIL}</a>
                 </div>
               </div>
 
               <div className="flex items-center gap-3.5 pt-4 border-t border-[#DDE3E6]">
                 <div className="w-10 h-10 rounded-[2px] bg-[#E8F0FC] text-[#1D5FD1] flex items-center justify-center shrink-0">
-                  <MessageSquare className="w-4 h-4" />
+                  <MessageSquare className="w-4 h-4" aria-hidden="true" />
                 </div>
                 <div>
-                  <p className="font-bold text-[#141517] text-sm">Live Agent Inquiries</p>
-                  <p className="text-[#4E585E] mt-0.5">Direct chat on every vehicle listing</p>
+                  <p className="font-bold text-[#141517] text-sm">Chat with an agent</p>
+                  <p className="text-[#4E585E] mt-0.5">Use Message on any vehicle listing</p>
                 </div>
               </div>
             </div>
@@ -134,30 +137,32 @@ export const HelpView: React.FC = () => {
 
           <div className="lg:col-span-7">
             <div className="border-t-2 border-[#141517] pt-6 space-y-5">
-              <h2 className="font-display text-[22px] leading-tight text-[#141517]">Send an Inquiry Ticket</h2>
+              <h2 className="font-display text-[22px] leading-tight text-[#141517]">Send us a message</h2>
 
               {ticketSent ? (
                 <div className="p-8 bg-white border border-[#8C989F] rounded-[2px] text-center space-y-3">
                   <CheckCircle2 className="w-10 h-10 text-[#141517] mx-auto" />
-                  <p className="font-bold text-[#141517] text-base">Inquiry Ticket Submitted</p>
+                  <p className="font-bold text-[#141517] text-base">Message sent</p>
                   <p className="text-xs text-[#141517] max-w-sm mx-auto">
-                    A specialist will review your request and reply to <strong>{supportEmail}</strong> within 24 hours.
+                    The Broom Broom team will reply to <strong>{supportEmail}</strong>.
                   </p>
                   <button
                     onClick={() => setTicketSent(false)}
                     className="mt-3 px-4 py-2 bg-[#141517] text-white rounded-[2px] text-xs font-semibold cursor-pointer hover:bg-[#141517] transition-colors"
                   >
-                    Submit Another Inquiry
+                    Send another message
                   </button>
                 </div>
               ) : (
                 <form onSubmit={handleSupportSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="gb-label block mb-2">Your Full Name</label>
+                      <label htmlFor="support-name" className="gb-label block mb-2">Your full name</label>
                       <input
+                        id="support-name"
                         type="text"
-                        placeholder="Andrei Mercado"
+                        maxLength={120}
+                        autoComplete="name"
                         value={supportName}
                         onChange={(e) => setSupportName(e.target.value)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
@@ -165,10 +170,12 @@ export const HelpView: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="gb-label block mb-2">Email Address</label>
+                      <label htmlFor="support-email" className="gb-label block mb-2">Email address</label>
                       <input
+                        id="support-email"
                         type="email"
-                        placeholder="you@domain.com"
+                        maxLength={200}
+                        autoComplete="email"
                         value={supportEmail}
                         onChange={(e) => setSupportEmail(e.target.value)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
@@ -178,25 +185,28 @@ export const HelpView: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="gb-label block mb-2">Category</label>
+                    <label htmlFor="support-topic" className="gb-label block mb-2">Topic</label>
                     <select
+                      id="support-topic"
                       value={supportCategory}
                       onChange={(e) => setSupportCategory(e.target.value)}
                       className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
                     >
                       <option value="Buying & Applications">Buying & Applications</option>
-                      <option value="Agent Listing Support">Agent Listing Support</option>
-                      <option value="Financing Inquiries">Financing Inquiries</option>
-                      <option value="LTO Transfer Assistance">LTO Transfer Assistance</option>
-                      <option value="Account & Security">Account & Security</option>
+                      <option value="Documents">Documents</option>
+                      <option value="Quotations & Financing">Quotations & Financing</option>
+                      <option value="Account & Sign-in">Account & Sign-in</option>
+                      <option value="Something else">Something else</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="gb-label block mb-2">Message / Details</label>
+                    <label htmlFor="support-message" className="gb-label block mb-2">Message</label>
                     <textarea
+                      id="support-message"
                       rows={4}
-                      placeholder="Please describe how our concierge can assist you..."
+                      maxLength={4000}
+                      placeholder="How can we help?"
                       value={supportMessage}
                       onChange={(e) => setSupportMessage(e.target.value)}
                       className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
@@ -206,10 +216,11 @@ export const HelpView: React.FC = () => {
 
                   <button
                     type="submit"
-                    className="py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] transition-colors cursor-pointer flex items-center gap-2"
+                    disabled={sending}
+                    className="py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:bg-[#8C989F] text-white font-bold text-xs rounded-[2px] transition-colors cursor-pointer flex items-center gap-2"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Submit Inquiry</span>
+                    <Send className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>{sending ? 'Sending…' : 'Send message'}</span>
                   </button>
                 </form>
               )}

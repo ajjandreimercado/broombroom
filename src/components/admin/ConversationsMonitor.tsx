@@ -1,11 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
-import { SectionHeader, EmptyState, shortDate } from './ui.tsx';
+import { SectionHeader, EmptyState, btn, shortDate } from './ui.tsx';
+import { canTakeOver, duration, unansweredSince } from '../leads.ts';
 import { Eye } from 'lucide-react';
 
-// Admin: read-only view of every agent-to-client conversation.
+// Admin: every agent-to-client conversation. Reading is silent (nothing is marked read, nobody is told). When a client
+// has waited 2 days for a reply, the admin can take the chat over and answer; the agent is told about a takeover.
 export const ConversationsMonitor: React.FC = () => {
-  const { conversations, agents } = useApp();
+  const { conversations, agents, sendMessage, takeOverConversation, endTakeover } = useApp();
+  const [reply, setReply] = useState('');
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
   const [agent, setAgent] = useState('all');
   const list = conversations
     .filter((c) => agent === 'all' || c.sellerName === agent)
@@ -15,7 +23,7 @@ export const ConversationsMonitor: React.FC = () => {
 
   return (
     <section className="space-y-5">
-      <SectionHeader title="Conversations" hint="Monitor what agents tell clients. This view is read-only; nothing you open here is marked as read.">
+      <SectionHeader title="Conversations" hint="Monitor what agents tell clients. Reading is silent: nothing you open here is marked as read. If a client waits 2 days for a reply, you can take the chat over.">
         <select
           value={agent}
           onChange={(e) => { setAgent(e.target.value); setOpenId(null); }}
@@ -46,6 +54,11 @@ export const ConversationsMonitor: React.FC = () => {
                     <span className={`block text-[11.5px] tabular-nums mt-0.5 ${active ? 'text-[#C9D1D6]' : 'text-[#6B767D]'}`}>
                       {c.messages.length} messages · {shortDate(c.updatedAt)}
                     </span>
+                    {c.takenOverAt ? (
+                      <span className={`block text-[11.5px] font-semibold mt-0.5 ${active ? 'text-white' : 'text-[#1D5FD1]'}`}>You are answering</span>
+                    ) : canTakeOver(c, now) ? (
+                      <span className={`block text-[11.5px] font-semibold mt-0.5 ${active ? 'text-white' : 'text-[#B42318]'}`}>No reply for 2+ days</span>
+                    ) : null}
                   </button>
                 </li>
               );
@@ -57,17 +70,48 @@ export const ConversationsMonitor: React.FC = () => {
                 <p className="text-[13px] text-[#141517]">
                   <strong>{open.buyerName}</strong> (client) and <strong>{open.sellerName}</strong> (agent) about {open.vehicleTitle}
                 </p>
-                <span className="flex items-center gap-1.5 text-[12px] text-[#4E585E]"><Eye className="w-3.5 h-3.5" aria-hidden="true" /> Monitoring</span>
+                {open.takenOverAt ? (
+                  <button className={btn.outline} onClick={() => endTakeover(open.id)}>Hand back to {open.sellerName}</button>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-[12px] text-[#4E585E]"><Eye className="w-3.5 h-3.5" aria-hidden="true" /> Only you can see this</span>
+                )}
               </div>
+              {canTakeOver(open, now) && (
+                <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-[#C9D1D6] bg-[#FDF3F2]">
+                  <p className="text-[13px] text-[#B42318]">
+                    {open.buyerName} has waited {duration(now - unansweredSince(open)!)} for a reply.
+                  </p>
+                  <button className={btn.primary} onClick={() => takeOverConversation(open.id)}>Take over chat</button>
+                </div>
+              )}
               <ol className="flex-1 p-5 space-y-3 overflow-y-auto max-h-[480px]">
                 {open.messages.map((m) => (
                   <li key={m.id} className={`flex flex-col ${m.isSeller ? 'items-end' : 'items-start'}`}>
-                    <span className="text-[11px] text-[#6B767D] mb-1">{m.isSeller ? `${open.sellerName} · agent` : `${open.buyerName} · client`}</span>
-                    <p className={`max-w-[70%] px-3.5 py-2.5 text-[13px] leading-relaxed ${m.isSeller ? 'bg-[#1D5FD1] text-white' : 'bg-[#EEF1F2] text-[#141517]'}`}>{m.text}</p>
+                    <span className="text-[11px] text-[#6B767D] mb-1">{m.byAdmin ? 'You · admin' : m.isSeller ? `${open.sellerName} · agent` : `${open.buyerName} · client`}</span>
+                    <p className={`max-w-[70%] px-3.5 py-2.5 text-[13px] leading-relaxed ${m.byAdmin ? 'bg-[#141517] text-white' : m.isSeller ? 'bg-[#1D5FD1] text-white' : 'bg-[#EEF1F2] text-[#141517]'}`}>{m.text}</p>
                     <span className="text-[11px] text-[#6B767D] mt-1 tabular-nums">{new Date(m.timestamp).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</span>
                   </li>
                 ))}
               </ol>
+              {open.takenOverAt && (
+                <form
+                  className="flex gap-2.5 p-3.5 border-t border-[#C9D1D6] bg-[#F7F8F8]"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!reply.trim()) return;
+                    if (await sendMessage(open.id, reply.trim())) setReply('');
+                  }}
+                >
+                  <input
+                    value={reply}
+                    onChange={(e) => setReply(e.target.value)}
+                    placeholder={`Reply to ${open.buyerName} as Broom Broom…`}
+                    aria-label={`Reply to ${open.buyerName}`}
+                    className="flex-1 px-3.5 py-2.5 text-[13px] bg-white border border-[#8C989F]"
+                  />
+                  <button type="submit" disabled={!reply.trim()} className={btn.primary}>Send</button>
+                </form>
+              )}
             </div>
           )}
         </div>

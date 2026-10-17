@@ -436,14 +436,9 @@ export const VehicleDetailView: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-semibold text-[#141517] truncate">{myAgent ?? vehicle.sellerName}</p>
                   <p className="text-[12px] text-[#4E585E] flex items-center gap-1 truncate">
-                    {myAgent ? 'Your agent' : <><MapPin className="w-3 h-3 shrink-0" aria-hidden="true" /> {vehicle.sellerLocation}</>}
+                    {myAgent ? 'Your agent' : <><MapPin className="w-3 h-3 shrink-0" aria-hidden="true" /> {vehicle.location}</>}
                   </p>
                 </div>
-                {vehicle.sellerVerified && (
-                  <span className="text-[12px] font-medium text-[#141517] flex items-center gap-1 shrink-0">
-                    <ShieldCheck className="w-4 h-4" aria-hidden="true" /> Verified
-                  </span>
-                )}
               </div>
             </div>
           </aside>

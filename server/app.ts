@@ -1,10 +1,13 @@
 /// <reference types="node" />
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { raw, files, ping } from './db.ts';
-import { HttpError, sessionUser, requireRole, startSession, endSession, portalOf, users, throttle, publicUser, validPassword, type User, type Portal } from './auth.ts';
+import { HttpError, sessionUser, requireRole, startSession, endSession, portalOf, users, throttle, publicUser, validPassword, PASSWORD_RULE, rateLimit, type User, type Portal } from './auth.ts';
 import { buildState } from './state.ts';
 import { eventStream, broadcastChange } from './events.ts';
 import * as svc from './services.ts';
+import { sendMail, resubmitEmail, supportEmail } from './mailer.ts';
+import { CONTACT_EMAIL } from '../src/data/constants.ts';
+import { verifyGoogleToken } from './google.ts';
 
 type Handler = (req: Request, res: Response) => unknown;
 // Runs a change, tells every open portal to refresh, and replies with the result.
@@ -22,7 +25,28 @@ const handle = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: 
   fn(req, res).catch(next);
 };
 const me = (req: Request) => req.user as User;
+// The client site's address for links in emails: APP_URL when set, otherwise this request's site without the
+// agent./admin. prefix (in single-address mode the client site is the same address).
+const clientSiteUrl = (req: Request) => {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
+  const host = String(req.get('host') || 'localhost').replace(/^(agent|admin)\./, '');
+  return `${req.protocol}://${host}`;
+};
 const body = (req: Request) => (req.body && typeof req.body === 'object' ? req.body : {});
+
+// Each upload must really be the type it claims: checked against the file's first bytes.
+const SIGNATURE: Record<string, (b: Buffer) => boolean> = {
+  'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/png': (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  'image/gif': (b) => b.subarray(0, 4).toString('latin1') === 'GIF8',
+  'image/webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
+  'image/heic': (b) => b.subarray(4, 8).toString('latin1') === 'ftyp',
+  'image/heif': (b) => b.subarray(4, 8).toString('latin1') === 'ftyp',
+  'application/pdf': (b) => b.subarray(0, 5).toString('latin1') === '%PDF-',
+  'video/mp4': (b) => b.subarray(4, 8).toString('latin1') === 'ftyp',
+  'video/quicktime': (b) => ['ftyp', 'moov', 'mdat', 'wide', 'free'].includes(b.subarray(4, 8).toString('latin1')),
+  'video/webm': (b) => b.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])),
+};
 
 const UPLOAD_TYPES: Record<string, number> = {
   'image/jpeg': 10, 'image/png': 10, 'image/webp': 10, 'image/gif': 10, 'image/heic': 10, 'image/heif': 10,
@@ -40,6 +64,9 @@ export const createApp = () => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'same-origin');
     res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups'); // the receipt and quotation tabs stay ours
+    if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     next();
   });
 
@@ -108,9 +135,11 @@ export const createApp = () => {
       const maxMb = UPLOAD_TYPES[mime];
       if (!maxMb) throw new HttpError(415, 'Use a photo (JPG, PNG, WebP), a PDF, or a video (MP4, MOV, WebM).');
       if (mime.startsWith('video/') && u.role === 'buyer') throw new HttpError(415, 'Upload a photo or a PDF.');
+      rateLimit(`upload|${u.id}`, 120, 60 * 60e3, 'Too many uploads in the last hour. Please try again later.');
       const buf = req.body as Buffer;
       if (!Buffer.isBuffer(buf) || !buf.length) throw new HttpError(400, 'The file is empty.');
       if (buf.length > maxMb * 1024 * 1024) throw new HttpError(413, `Files of this type can be up to ${maxMb} MB.`);
+      if (!SIGNATURE[mime](buf)) throw new HttpError(415, 'That file is damaged or is not the type its name says. Try another file.');
       const name = String(req.query.name || 'file').replace(/[\\/\r\n"]/g, '_').slice(0, 150);
       const id = svc.newId('f');
       await new Promise<void>((resolve, reject) => {
@@ -155,9 +184,25 @@ export const createApp = () => {
     '/auth/register',
     handle(async (req, res) => {
       if (portalOf(req) !== 'buyer') throw new HttpError(403, 'Agent and admin accounts are created by the admin team.');
+      rateLimit(`register|${req.ip}`, 5, 60 * 60e3, 'Too many new accounts from this connection. Please try again later.');
       const user = await svc.registerClient(body(req));
       await startSession(res, req, user, 'buyer');
       res.json({ ok: true, data: publicUser(user) });
+    })
+  );
+  // Sign in or sign up with Google (client site only). The token is checked on the server before anything else.
+  api.post(
+    '/auth/google',
+    handle(async (req, res) => {
+      if (portalOf(req) !== 'buyer') throw new HttpError(403, 'Google sign-in is for client accounts. Sign in with your password.');
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      if (!clientId) throw new HttpError(503, 'Google sign-in is not set up yet. Sign in with your email and password.');
+      rateLimit(`google|${req.ip}`, 30, 15 * 60e3, 'Too many sign-in attempts. Try again in a few minutes.');
+      const profile = await verifyGoogleToken(body(req).credential, clientId);
+      if (!profile) throw new HttpError(401, 'Google sign-in did not go through. Please try again.');
+      const { user, created } = await svc.googleSignIn(profile);
+      await startSession(res, req, user, 'buyer');
+      res.json({ ok: true, data: { ...publicUser(user), created } });
     })
   );
   api.post(
@@ -187,7 +232,39 @@ export const createApp = () => {
   api.delete('/vehicles/:id', requireRole('admin'), act((req) => svc.deleteVehicle(req.params.id)));
   api.post('/listing-requests', requireRole('seller'), act((req) => svc.submitListingRequest(me(req), body(req))));
   api.post('/listing-requests/:id/decide', requireRole('admin'), act((req) => svc.decideListingRequest(req.params.id, !!body(req).approve, body(req).reason)));
-  api.post('/reports', act((req) => svc.submitReport(req.user, body(req))));
+  api.post(
+    '/reports',
+    act((req) => {
+      rateLimit(`report|${req.ip}`, 10, 60 * 60e3, 'Too many reports from this connection. Please try again later.');
+      return svc.submitReport(req.user, body(req));
+    })
+  );
+
+  // ---------- help page ----------
+  // Anyone can write to the company inbox (SUPPORT_EMAIL, or the contact address); replying answers the sender.
+  api.post(
+    '/support',
+    handle(async (req, res) => {
+      const b = body(req);
+      const field = (v: unknown, name: string, max: number) => {
+        const t = typeof v === 'string' ? v.trim() : '';
+        if (!t) throw new HttpError(400, `${name} is required.`);
+        if (t.length > max) throw new HttpError(400, `${name} is too long (max ${max} characters).`);
+        return t;
+      };
+      const name = field(b.name, 'Your name', 120);
+      const email = field(b.email, 'Email', 200);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Enter a valid email so we can reply.');
+      const topic = field(b.topic, 'Topic', 80);
+      const message = field(b.message, 'Message', 4000);
+      rateLimit(`support|${req.ip}`, 5, 60 * 60e3, 'Too many messages from this connection. Please email us directly instead.');
+      const sent = await sendMail(supportEmail({ to: process.env.SUPPORT_EMAIL || CONTACT_EMAIL, name, email, topic, message }));
+      // In development without an email service the message is saved to server/data/outbox instead.
+      const production = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
+      if (!sent && (process.env.BREVO_API_KEY || production)) throw new HttpError(502, `Your message could not be sent. Please email ${CONTACT_EMAIL} directly.`);
+      res.json({ ok: true });
+    })
+  );
   api.post('/reports/:id/resolve', requireRole('admin'), act((req) => svc.resolveReport(req.params.id, body(req).action)));
 
   // ---------- applications ----------
@@ -198,9 +275,20 @@ export const createApp = () => {
   };
   api.post('/applications', requireRole('buyer'), act((req) => svc.createApplication(me(req), body(req))));
   api.post('/applications/:id/status', requireRole('buyer', 'admin'), act((req) => svc.setApplicationStatus(me(req), req.params.id, body(req).status, body(req).note)));
-  api.post('/applications/:id/documents/:i/review', requireRole('admin'), act((req) => svc.reviewDocument(req.params.id, idx(req), !!body(req).approve, body(req).reason)));
+  api.post(
+    '/applications/:id/documents/:i/review',
+    requireRole('admin'),
+    act(async (req) => {
+      const rejected = await svc.reviewDocument(req.params.id, idx(req), !!body(req).approve, body(req).reason);
+      // Sent after the change is saved; a failed email never undoes the rejection (the client also gets an in-app notice).
+      if (rejected) void sendMail(resubmitEmail({ ...rejected, link: `${clientSiteUrl(req)}/?resubmit=${encodeURIComponent(rejected.appId)}` }));
+    })
+  );
+  api.post('/applications/:id/documents/:i/resubmit', requireRole('buyer'), act((req) => svc.resubmitDocument(me(req), req.params.id, idx(req), body(req).fileId)));
   api.post('/applications/:id/documents/:i/file', requireRole('admin'), act((req) => svc.attachDocumentForClient(me(req), req.params.id, idx(req), body(req).fileId)));
   api.post('/applications/:id/payments', requireRole('admin'), act((req) => svc.addPayment(me(req), req.params.id, body(req))));
+  api.patch('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.updatePayment(me(req), req.params.id, req.params.arNo, body(req))));
+  api.delete('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.deletePayment(req.params.id, req.params.arNo)));
 
   // ---------- quotations ----------
   api.post('/quotations', requireRole('buyer'), act((req) => svc.requestQuotation(me(req), body(req))));
@@ -212,7 +300,7 @@ export const createApp = () => {
 
   // ---------- chat ----------
   api.post('/conversations', requireRole('buyer'), act((req) => svc.startConversation(me(req), body(req).vehicleId, body(req).ref)));
-  api.post('/conversations/:id/messages', requireRole('buyer', 'seller', 'admin'), act((req) => svc.sendMessage(me(req), req.params.id, body(req).text)));
+  api.post('/conversations/:id/messages', requireRole('buyer', 'seller', 'admin'), act((req) => svc.sendMessage(me(req), req.params.id, body(req))));
   api.post('/conversations/:id/read', requireRole('buyer', 'seller', 'admin'), act((req) => svc.markConversationRead(me(req), req.params.id)));
 
   // ---------- notifications ----------
@@ -221,6 +309,7 @@ export const createApp = () => {
 
   // ---------- leads ----------
   api.post('/leads/:clientId/claim', requireRole('seller'), act((req) => svc.claimLead(me(req), req.params.clientId)));
+  api.post('/leads/:clientId/unlock', requireRole('admin'), act((req) => svc.unlockLead(req.params.clientId)));
   api.post(
     '/leads/:clientId/assign',
     requireRole('admin'),
@@ -232,6 +321,16 @@ export const createApp = () => {
 
   // ---------- accounting ----------
   api.post('/vouchers', requireRole('admin'), act((req) => svc.addVoucher(me(req), body(req))));
+  api.post('/ledger-accounts', requireRole('admin'), act((req) => svc.saveLedgerAccount(null, body(req))));
+  api.patch('/ledger-accounts/:id', requireRole('admin'), act((req) => svc.saveLedgerAccount(req.params.id, body(req))));
+  api.delete('/ledger-accounts/:id', requireRole('admin'), act((req) => svc.deleteLedgerAccount(req.params.id)));
+  api.post('/receipts', requireRole('admin'), act((req) => svc.createReceipt(me(req), body(req))));
+  api.patch('/receipts/:id', requireRole('admin'), act((req) => svc.updateReceipt(me(req), req.params.id, body(req))));
+  api.delete('/receipts/:id', requireRole('admin'), act((req) => svc.deleteReceipt(req.params.id)));
+  api.post('/sales-entries', requireRole('admin'), act((req) => svc.addSalesEntry(me(req), body(req))));
+  api.delete('/sales-entries/:id', requireRole('admin'), act((req) => svc.deleteSalesEntry(req.params.id)));
+  api.post('/conversations/:id/takeover', requireRole('admin'), act((req) => svc.takeOverConversation(req.params.id)));
+  api.post('/conversations/:id/end-takeover', requireRole('admin'), act((req) => svc.endTakeover(req.params.id)));
 
   // ---------- accounts (admin) ----------
   api.post('/users', requireRole('admin'), act(async (req) => publicUser(await svc.createAccount(body(req)))));
@@ -241,7 +340,7 @@ export const createApp = () => {
     act(async (req) => {
       const target = await users.byId(String(req.params.id));
       if (!target) throw new HttpError(404, 'Account not found.');
-      if (!validPassword(body(req).password)) throw new HttpError(400, 'The password must be at least 8 characters.');
+      if (!validPassword(body(req).password)) throw new HttpError(400, PASSWORD_RULE);
       await users.setPassword(target.id, body(req).password);
     })
   );
@@ -271,13 +370,14 @@ export const createApp = () => {
   return app;
 };
 
-// The 2-hour and 24-hour lead rules, every minute.
+// The 2-hour and 24-hour lead rules and the upload clean-up, every minute.
 export const startJobs = () => {
   const run = () =>
     svc
       .runLeadRules()
       .then((changed) => changed && broadcastChange())
-      .catch((e) => console.error('lead rules failed', e));
+      .then(() => svc.removeAbandonedUploads())
+      .catch((e) => console.error('background jobs failed', e));
   run();
   return setInterval(run, 60_000);
 };

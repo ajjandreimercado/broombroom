@@ -17,14 +17,19 @@ import type {
   Quotation,
   ClientLead,
   VehicleStatus,
+  ManualReceipt,
+  ReceiptLine,
+  SalesEntry,
+  LedgerAccount,
 } from '../src/types.ts';
-import { TEAM_NAME, COMMISSION_RATE, PAYMENT_ACCOUNTS, CREDIT_ACCOUNTS, generateVehicleSvg } from '../src/data/mockData.ts';
-import { agentSlug, shouldAlertUnclaimed, shouldRelease } from '../src/components/leads.ts';
+import { TEAM_NAME, COMMISSION_RATE, generateVehicleSvg } from '../src/data/constants.ts';
+import { agentSlug, canTakeOver, shouldAlertUnclaimed, shouldRelease } from '../src/components/leads.ts';
 import { DEFAULT_RATE, DEFAULT_VALID_DAYS, QUOTE_TERMS, daysFromToday, isExpired } from '../src/components/quote.ts';
 import { DOCS, MIN_UPLOADS } from '../src/components/requirements.ts';
 import { accountBalance, creditAvailable } from '../src/components/accounting/ledger.ts';
-import { store, tx, nextNumber, raw, opts } from './db.ts';
-import { users, HttpError, validPassword, type User } from './auth.ts';
+import { store, tx, nextNumber, raw, opts, files } from './db.ts';
+import { users, HttpError, validPassword, PASSWORD_RULE, type User } from './auth.ts';
+import type { GoogleProfile } from './google.ts';
 
 // ---------- small helpers ----------
 const now = () => new Date().toISOString();
@@ -95,6 +100,15 @@ const attachUpload = async (fileId: unknown, me: User, ownerId: string, accept: 
 const IMG_OR_PDF = /^(image\/(png|jpeg|webp|gif|heic|heif)|application\/pdf)$/;
 const IMG = /^image\/(png|jpeg|webp|gif|heic|heif)$/;
 
+// Files uploaded but never attached to anything (a form left half-way) are deleted after a day.
+export const removeAbandonedUploads = async () => {
+  const old = await raw('uploads').find({ attached: false, createdAt: { $lt: new Date(Date.now() - 864e5) } }, { projection: { _id: 1 } }).limit(200).toArray();
+  for (const u of old) {
+    await files().delete(u._id as any).catch(() => {}); // already gone is fine
+    await raw('uploads').deleteOne({ _id: u._id });
+  }
+};
+
 // ---------- leads (who each client belongs to) ----------
 const agentBySlug = async (slug: unknown) =>
   typeof slug === 'string' && slug ? (await users.agents()).find((a) => agentSlug(a.name) === slug.toLowerCase())?.name : undefined;
@@ -160,6 +174,7 @@ export const claimLead = (me: User, clientId: string) =>
 export const assignLead = (clientId: string, agentName: string | null, reason?: string) =>
   tx(async () => {
     const lead = need(await store.get<ClientLead>('leads', idOf(clientId)), 'Lead');
+    if (lead.lockedTo) bad(`${lead.clientName} is locked to ${lead.lockedTo} (applied through their link). Unlock first if you really need to move them.`);
     if (agentName && !(await users.agents()).some((a) => a.name === agentName)) bad('Choose an active agent.');
     if ((lead.agentName ?? null) === agentName) return;
     const at = now();
@@ -178,6 +193,23 @@ export const assignLead = (clientId: string, agentName: string | null, reason?: 
     if (agentName) await notify('agent', 'New client assigned', `${lead.clientName} (${lead.interest}) is now your client.`, 'leads', agentName);
     else await notify('agent', 'New lead', `${lead.clientName} is back in Open leads (${lead.interest}).`, 'leads');
   });
+
+// Admin, as the top authority: remove an apply-link lock so the client can be reassigned.
+export const unlockLead = (clientId: string) =>
+  tx(async () => {
+    const lead = need(await store.get<ClientLead>('leads', idOf(clientId)), 'Lead');
+    if (!lead.lockedTo) return;
+    const at = now();
+    await store.put<ClientLead>('leads', { ...lead, lockedTo: undefined, lockedRef: undefined, lockedAt: undefined, history: [...lead.history, { at, text: `Unlocked from ${lead.lockedTo} by the admin` }] });
+    await notify('agent', 'Client unlocked', `The admin unlocked ${lead.clientName}; they can now be reassigned.`, 'leads', lead.lockedTo);
+  });
+
+// A finished application ends the lock it created.
+const releaseLock = async (app: VehicleApplication) => {
+  const lead = await store.get<ClientLead>('leads', app.applicantId);
+  if (lead?.lockedTo && lead.lockedRef === app.referenceNo)
+    await store.put<ClientLead>('leads', { ...lead, lockedTo: undefined, lockedRef: undefined, lockedAt: undefined, history: [...lead.history, { at: now(), text: `Lock ended (${app.referenceNo} ${app.status})` }] });
+};
 
 // The 2-hour and 24-hour rules. Runs every minute on the server.
 export const runLeadRules = async (): Promise<boolean> => {
@@ -244,14 +276,11 @@ const buildVehicle = (data: Partial<Vehicle>, status: VehicleStatus): Vehicle =>
     color: data.color || '',
     drivetrain: 'Front-Wheel Drive',
     location: data.location || 'Philippines',
-    province: 'Metro Manila',
-    region: 'NCR',
+    province: '',
+    region: '',
     sellerId: 'team',
     sellerName: TEAM_NAME,
-    sellerLocation: 'Metro Manila, Philippines',
-    sellerRating: 5,
-    sellerReviewCount: 1,
-    sellerVerified: true,
+    sellerLocation: data.location || 'Philippines',
     description: data.description || '',
     images: data.images?.length ? data.images : [generateVehicleSvg(category === 'motorcycles' ? 'bike' : 'car', '#111827', data.title!)],
     videos: data.videos?.length ? data.videos : undefined,
@@ -364,6 +393,7 @@ export const submitReport = (me: User | undefined, input: any) =>
     const v = need(await store.get<Vehicle>('vehicles', idOf(input?.vehicleId)), 'Listing');
     if (!REPORT_REASONS.includes(input.reason)) bad('Choose a reason.');
     const email = text(input.reportedEmail ?? me?.email, 'Email', 200, false);
+    if (email && !EMAIL.test(email)) bad('Enter a valid email, or leave it empty.');
     const r = await store.put<VehicleReport>('reports', {
       id: newId('rep'),
       vehicleId: v.id,
@@ -444,7 +474,15 @@ export const createApplication = (me: User, input: any) =>
     if (uploaded < Math.min(MIN_UPLOADS, required.length)) bad(`Upload at least ${Math.min(MIN_UPLOADS, required.length)} document${required.length > 1 ? 's' : ''}.`);
 
     const a = input.address || {};
-    const owner = await touchLead(me, v.title, false, input.ref);
+    // Through an agent's apply link: a new client becomes theirs, and the client is locked to that agent below.
+    const viaAgent = await agentBySlug(input.viaAgent);
+    let owner = await touchLead(me, v.title, false, input.ref || input.viaAgent);
+    // A client back in Open leads who applies through an agent's link goes to that agent.
+    if (viaAgent && !owner) {
+      await assignLead(me.id, viaAgent, `Applied through ${viaAgent}'s link`);
+      owner = viaAgent;
+    }
+    const locked = !!viaAgent && owner === viaAgent;
     const app = await store.put<VehicleApplication>('applications', {
       id: newId('app'),
       referenceNo: `GB-${year()}-${pad4(await nextNumber(`app-${year()}`))}`,
@@ -476,7 +514,14 @@ export const createApplication = (me: User, input: any) =>
       notes: text(input.notes, 'Notes', 2000, false),
       documents,
       quotationNo: quote?.quoteNo,
+      viaAgentLink: locked ? viaAgent : undefined,
     });
+    if (locked) {
+      const lead = (await store.get<ClientLead>('leads', me.id))!;
+      const at = now();
+      await store.put<ClientLead>('leads', { ...lead, lockedTo: viaAgent, lockedRef: app.referenceNo, lockedAt: at, history: [...lead.history, { at, text: `Locked to ${viaAgent}: applied through their link (${app.referenceNo})` }] });
+      await notify('agent', 'Client locked to you', `${me.name} applied for the ${v.title} through your link (${app.referenceNo}). They are locked to you.`, 'leads', viaAgent);
+    }
     if (quote) {
       await store.put('quotations', { ...quote, status: 'accepted', applicationRef: app.referenceNo });
       await notify('admin', 'Quotation accepted', `${me.name} applied for the ${v.title} using ${quote.quoteNo} (${app.referenceNo}).`, 'applications');
@@ -542,7 +587,9 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
     } else {
       await notify('client', 'Application update', `${app.referenceNo} is now ${status.replace('_', ' ')}.`, 'applications', app.applicantId);
     }
-    return store.put('applications', { ...app, status, sellerNotes: reason || app.sellerNotes });
+    const saved = await store.put('applications', { ...app, status, sellerNotes: reason || app.sellerNotes });
+    if (['completed', 'declined', 'withdrawn'].includes(status)) await releaseLock(saved);
+    return saved;
   });
 
 const docAt = (app: VehicleApplication, i: number) => {
@@ -559,8 +606,38 @@ export const reviewDocument = (appId: string, i: number, approve: boolean, reaso
     const why = approve ? undefined : text(reason, 'Reason', 500);
     const documents = app.documents!.map((x, k) => (k === i ? { ...x, status: approve ? ('approved' as const) : ('rejected' as const), reason: why } : x));
     await store.put('applications', { ...app, documents });
-    if (!approve) await notify('client', 'Document needs attention', `${d.label} for ${app.referenceNo} was not accepted: ${why}`, 'applications', app.applicantId);
-    else if (documents.every((x) => x.status === 'approved')) await notify('client', 'Documents approved', `All financing documents for ${app.referenceNo} were approved.`, 'applications', app.applicantId);
+    if (approve) {
+      if (documents.every((x) => x.status === 'approved')) await notify('client', 'Documents approved', `All financing documents for ${app.referenceNo} were approved.`, 'applications', app.applicantId);
+      return null;
+    }
+    await notify('client', 'Document needs attention', `${d.label} for ${app.referenceNo} was not accepted: ${why}. Upload a new copy from My Applications.`, 'applications', app.applicantId);
+    // The route emails the client (after this commits) with every document still waiting for a new copy.
+    const client = await users.byId(app.applicantId);
+    return {
+      to: client?.email ?? app.applicantEmail,
+      name: app.applicantName,
+      appId: app.id,
+      referenceNo: app.referenceNo,
+      vehicle: app.vehicleTitle,
+      docs: documents.filter((x) => x.status === 'rejected').map((x) => ({ label: x.label, reason: x.reason || 'Please upload a clearer copy.' })),
+    };
+  });
+
+// The client uploads a new copy of a rejected document (or one they had not submitted yet), e.g. from the
+// re-submission email. It goes back to the admin for review.
+export const resubmitDocument = (me: User, appId: string, i: number, fileId: unknown) =>
+  tx(async () => {
+    const app = need(await store.get<VehicleApplication>('applications', idOf(appId)), 'Application');
+    if (app.applicantId !== me.id) forbidden();
+    if (['declined', 'withdrawn', 'completed'].includes(app.status)) bad('This application is closed, so documents can no longer be changed.');
+    const d = docAt(app, i);
+    if (d.fileName && d.status !== 'rejected') bad('This document is already on file and does not need a new copy.');
+    const up = await attachUpload(fileId, me, me.id, IMG_OR_PDF);
+    const documents = app.documents!.map((x, k) =>
+      k === i ? { ...x, fileName: up.name, url: fileUrl(up._id), status: 'pending' as const, reason: undefined, addedByAdmin: false, resubmittedAt: now() } : x
+    );
+    await store.put('applications', { ...app, documents });
+    await notify('admin', 'Document re-submitted', `${app.applicantName} uploaded a new ${d.label} for ${app.referenceNo}.`, 'financing');
   });
 
 // The client handed a document to the admin, who files it on their application; it then waits for review like any other.
@@ -592,10 +669,115 @@ export const addPayment = (me: User, appId: string, input: any) =>
       receivedBy: me.name,
       attachment: shot ? fileUrl(shot._id) : undefined,
       attachmentName: shot?.name,
+      remarks: text(input?.remarks, 'Remarks', 500, false) || undefined,
     };
     await store.put('applications', { ...app, payments: [...(app.payments ?? []), receipt] });
     await notify('client', 'Payment received', `Your payment of ${peso(amount)} for ${app.referenceNo} was confirmed. Acknowledgement receipt ${receipt.arNo} is ready.`, 'applications', app.applicantId);
     return receipt;
+  });
+
+// Admin corrections to a released AR: amount, description, remarks, or a new screenshot. The AR number stays.
+export const updatePayment = (me: User, appId: string, arNo: string, input: any) =>
+  tx(async () => {
+    const app = need(await store.get<VehicleApplication>('applications', idOf(appId)), 'Application');
+    const old = need((app.payments ?? []).find((p) => p.arNo === arNo), 'Receipt');
+    const amount = money(input?.amount, 'Amount', { min: 0 });
+    const others = (app.payments ?? []).filter((p) => p.arNo !== arNo).reduce((s, p) => s + p.amount, 0);
+    if (others + amount > app.vehiclePrice) bad(`That is more than the balance of ${peso(app.vehiclePrice - others)}.`);
+    const shot = input?.fileId ? await attachUpload(input.fileId, me, app.applicantId, IMG) : undefined;
+    const p: PaymentReceipt = {
+      ...old,
+      amount,
+      description: text(input?.description, 'Description', 200),
+      remarks: text(input?.remarks, 'Remarks', 500, false) || undefined,
+      ...(shot ? { attachment: fileUrl(shot._id), attachmentName: shot.name } : {}),
+      editedAt: now(),
+    };
+    await store.put('applications', { ...app, payments: (app.payments ?? []).map((x) => (x.arNo === arNo ? p : x)) });
+    return p;
+  });
+
+export const deletePayment = (appId: string, arNo: string) =>
+  tx(async () => {
+    const app = need(await store.get<VehicleApplication>('applications', idOf(appId)), 'Application');
+    need((app.payments ?? []).find((p) => p.arNo === arNo), 'Receipt');
+    await store.put('applications', { ...app, payments: (app.payments ?? []).filter((p) => p.arNo !== arNo) });
+  });
+
+// ---------- acknowledgement receipts written by hand ----------
+const receiptInput = (input: any) => {
+  const lines: ReceiptLine[] = Array.isArray(input?.lines) ? input.lines : [];
+  if (!lines.length) bad('Add at least one line.');
+  if (lines.length > 8) bad('An acknowledgement receipt has room for 8 lines.');
+  const ymd = typeof input?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : bad('Pick the date.');
+  return {
+    date: new Date(`${ymd}T12:00:00`).toISOString(),
+    receivedFrom: text(input?.receivedFrom, 'Received from', 120),
+    lines: lines.map((l, i) => {
+      const qty = Number(l?.qty);
+      if (!Number.isInteger(qty) || qty < 1 || qty > 9999) bad(`Line ${i + 1}: quantity must be a whole number.`);
+      return { description: text(l?.description, `Line ${i + 1} description`, 200), qty, price: money(l?.price, `Line ${i + 1} price`) };
+    }),
+    remarks: text(input?.remarks, 'Remarks', 500, false) || undefined,
+  };
+};
+
+export const createReceipt = (me: User, input: any) =>
+  tx(async () => {
+    const shot = input?.fileId ? await attachUpload(input.fileId, me, me.id, IMG) : undefined;
+    const at = now();
+    const r: ManualReceipt = {
+      id: newId('ar'),
+      arNo: `${year()}-${pad4(await nextNumber(`ar-${year()}`))}`,
+      ...receiptInput(input),
+      receivedBy: me.name,
+      attachment: shot ? fileUrl(shot._id) : undefined,
+      attachmentName: shot?.name,
+      createdAt: at,
+    };
+    return store.put('receipts', r);
+  });
+
+export const updateReceipt = (me: User, id: string, input: any) =>
+  tx(async () => {
+    const old = need(await store.get<ManualReceipt>('receipts', idOf(id)), 'Receipt');
+    const shot = input?.fileId ? await attachUpload(input.fileId, me, me.id, IMG) : undefined;
+    return store.put<ManualReceipt>('receipts', {
+      ...old,
+      ...receiptInput(input),
+      ...(shot ? { attachment: fileUrl(shot._id), attachmentName: shot.name } : {}),
+      editedAt: now(),
+    });
+  });
+
+export const deleteReceipt = (id: string) =>
+  tx(async () => {
+    need(await store.get<ManualReceipt>('receipts', idOf(id)), 'Receipt');
+    await store.remove('receipts', idOf(id));
+  });
+
+// ---------- sales entered by hand in the sales report ----------
+export const addSalesEntry = (me: User, input: any) =>
+  tx(async () => {
+    const date = typeof input?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : bad('Pick the date of the sale.');
+    const e: SalesEntry = {
+      id: newId('sale'),
+      date,
+      vehicle: text(input?.vehicle, 'Vehicle', 160),
+      client: text(input?.client, 'Client', 120),
+      agent: text(input?.agent, 'Agent', 120, false) || undefined,
+      amount: money(input?.amount, 'Amount'),
+      notes: text(input?.notes, 'Notes', 500, false) || undefined,
+      createdBy: me.name,
+      createdAt: now(),
+    };
+    return store.put('sales_entries', e);
+  });
+
+export const deleteSalesEntry = (id: string) =>
+  tx(async () => {
+    need(await store.get<SalesEntry>('sales_entries', idOf(id)), 'Sale');
+    await store.remove('sales_entries', idOf(id));
   });
 
 // ---------- quotations ----------
@@ -748,28 +930,57 @@ export const startConversation = (me: User, vehicleId: unknown, ref: unknown) =>
     });
   });
 
-export const sendMessage = (me: User, convId: string, body: unknown) =>
+// input: { text } or, from the client's agent, { applyVehicleId, text? } for an apply link.
+export const sendMessage = (me: User, convId: string, input: any) =>
   tx(async () => {
     const conv = need(await store.get<Conversation>('conversations', idOf(convId)), 'Conversation');
     const isAgent = me.role === 'seller';
     if (me.role === 'buyer' && conv.buyerId !== me.id) forbidden();
     if (isAgent && conv.sellerName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
-    if (me.role === 'admin') forbidden('Admins can read conversations but not reply in them.');
-    const t = text(body, 'Message', 2000);
+    if (me.role === 'admin' && !conv.takenOverAt) forbidden('Admins can read conversations but not reply in them. Take over the chat first.');
+    let link: Pick<ChatMessage, 'applyVehicleId' | 'applyVehicleTitle' | 'applyAgent'> = {};
+    if (input?.applyVehicleId) {
+      if (!isAgent) forbidden('Only the agent can send an apply link.');
+      const v = need(await store.get<Vehicle>('vehicles', idOf(input.applyVehicleId)), 'Listing');
+      if (v.status !== 'available') bad('That vehicle is not available to apply for.');
+      link = { applyVehicleId: v.id, applyVehicleTitle: v.title, applyAgent: agentSlug(me.name) };
+    }
+    const t = link.applyVehicleId
+      ? text(input.text, 'Message', 2000, false) || `Here is the link to apply for the ${link.applyVehicleTitle}. Fill it in and I will take care of the rest.`
+      : text(input?.text, 'Message', 2000);
     const at = now();
-    const msg: ChatMessage = { id: newId('msg'), senderId: me.id, senderName: me.name, text: t, timestamp: at, isSeller: isAgent };
+    const isAdmin = me.role === 'admin';
+    const reply = isAgent || isAdmin;
+    const msg: ChatMessage = { id: newId('msg'), senderId: me.id, senderName: isAdmin ? 'Broom Broom' : me.name, text: t, timestamp: at, isSeller: reply, ...link, ...(isAdmin ? { byAdmin: true } : {}) };
     await store.put('conversations', {
       ...conv,
       lastMessage: t,
       updatedAt: at,
-      unreadBuyer: isAgent ? conv.unreadBuyer + 1 : 0,
+      unreadBuyer: reply ? conv.unreadBuyer + 1 : 0,
       unreadSeller: isAgent ? 0 : conv.unreadSeller + 1,
       messages: [...conv.messages, msg],
     });
     // Track who is waiting on whom for the 24-hour reply rule.
     const lead = await store.get<ClientLead>('leads', conv.buyerId);
-    if (lead) await store.put('leads', isAgent ? (lead.agentName === me.name ? { ...lead, lastAgentAt: at } : lead) : { ...lead, lastClientAt: at });
-    if (isAgent) await notify('client', 'New message', `${me.name} replied about the ${conv.vehicleTitle}.`, 'messages', conv.buyerId);
+    if (lead) await store.put('leads', reply ? (isAdmin || lead.agentName === me.name ? { ...lead, lastAgentAt: at } : lead) : { ...lead, lastClientAt: at });
+    if (reply) await notify('client', 'New message', `${msg.senderName} replied about the ${conv.vehicleTitle}.`, 'messages', conv.buyerId);
+  });
+
+// Admin: answer a client who has waited 2 days in a chat. Reading chats stays silent; a takeover is told to the agent.
+export const takeOverConversation = (convId: string) =>
+  tx(async () => {
+    const conv = need(await store.get<Conversation>('conversations', idOf(convId)), 'Conversation');
+    if (conv.takenOverAt) return conv;
+    if (!canTakeOver(conv, Date.now())) bad('You can take over once the client has waited 2 days for a reply.');
+    const saved = await store.put<Conversation>('conversations', { ...conv, takenOverAt: now() });
+    if (conv.sellerName !== TEAM_NAME) await notify('agent', 'Chat taken over', `The admin is now answering ${conv.buyerName} about the ${conv.vehicleTitle} (no reply for 2 days).`, 'messages', conv.sellerName);
+    return saved;
+  });
+
+export const endTakeover = (convId: string) =>
+  tx(async () => {
+    const conv = need(await store.get<Conversation>('conversations', idOf(convId)), 'Conversation');
+    return store.put<Conversation>('conversations', { ...conv, takenOverAt: undefined });
   });
 
 export const markConversationRead = (me: User, convId: string) =>
@@ -798,14 +1009,40 @@ export const markNotificationRead = (me: User, id: string) =>
 export const clearNotifications = (me: User) =>
   me.role === 'seller' ? store.removeWhere('notifications', { audience: 'agent', recipient: me.name }) : store.removeWhere('notifications', notificationScope(me));
 
+// ---------- money accounts (cash, bank, credit lines) ----------
+// Create: { kind, name, method?, amount }. Edit: { name, method?, amount } (the kind stays).
+export const saveLedgerAccount = (id: string | null, input: any) =>
+  tx(async () => {
+    const old = id ? need(await store.get<LedgerAccount>('ledger_accounts', idOf(id)), 'Account') : undefined;
+    const kind = old?.kind ?? input?.kind;
+    if (kind !== 'payment' && kind !== 'credit') bad('Choose cash/bank or credit.');
+    const name = text(input?.name, 'Account name', 80);
+    const others = await store.all<LedgerAccount>('ledger_accounts', {});
+    if (others.some((a) => a.id !== old?.id && a.name.toLowerCase() === name.toLowerCase())) bad('An account with that name already exists.');
+    return store.put<LedgerAccount>('ledger_accounts', {
+      id: old?.id ?? newId('acct'),
+      kind,
+      name,
+      method: kind === 'payment' ? (input?.method === 'cash' ? 'cash' : 'bank') : undefined,
+      amount: money(input?.amount, kind === 'credit' ? 'Credit limit' : 'Opening balance', { allowZero: true }),
+      createdAt: old?.createdAt ?? now(),
+    });
+  });
+
+export const deleteLedgerAccount = (id: string) =>
+  tx(async () => {
+    need(await store.get<LedgerAccount>('ledger_accounts', idOf(id)), 'Account');
+    if (await raw('vouchers').countDocuments({ accountId: idOf(id) }, opts())) bad('Vouchers were recorded on this account, so it cannot be deleted. Rename it instead.');
+    await store.remove('ledger_accounts', idOf(id));
+  });
+
 // ---------- accounting vouchers ----------
 export const addVoucher = (me: User, input: any) =>
   tx(async () => {
     const kind = input?.kind;
     if (kind !== 'expense' && kind !== 'credit') bad('Unknown voucher type.');
-    const accounts = kind === 'credit' ? CREDIT_ACCOUNTS : PAYMENT_ACCOUNTS;
-    const account = accounts.find((a) => a.id === input.accountId);
-    if (!account) bad('Choose an account.');
+    const account = await store.get<LedgerAccount>('ledger_accounts', idOf(input.accountId));
+    if (!account || account.kind !== (kind === 'credit' ? 'credit' : 'payment')) bad('Choose an account.');
     if (!Array.isArray(input.lines) || !input.lines.length || input.lines.length > 50) bad('Add at least one line.');
     const lines: ExpenseLine[] = [];
     for (const [i, l] of (input.lines as any[]).entries()) {
@@ -821,7 +1058,7 @@ export const addVoucher = (me: User, input: any) =>
     }
     const total = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
     const all = await store.all<Expense>('vouchers', { kind });
-    const room = kind === 'credit' ? creditAvailable(account!.id, all) : accountBalance(account!.id, all);
+    const room = kind === 'credit' ? creditAvailable(account!, all) : accountBalance(account!, all);
     if (total > room) bad(`The total ${peso(total)} is more than the ${kind === 'credit' ? 'available credit' : 'account balance'} of ${peso(room)}.`);
     const paymentDate = text(input.paymentDate, 'Payment date', 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) bad('Enter a valid payment date.');
@@ -873,12 +1110,45 @@ export const updateProfile = async (me: User, input: any) => {
 };
 
 export const changePassword = async (me: User, current: unknown, next: unknown) => {
-  if (typeof current !== 'string' || !(await users.checkPassword(me.id, current))) bad('Your current password is not correct.');
-  if (!validPassword(next)) bad('The new password must be at least 8 characters.');
+  // An account made with Google sets its first password without one (it is already signed in through Google).
+  if (me.hasPassword !== false && (typeof current !== 'string' || !(await users.checkPassword(me.id, current)))) bad('Your current password is not correct.');
+  if (!validPassword(next)) bad(PASSWORD_RULE);
   await users.setPassword(me.id, next as string);
 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Sign in (or sign up) a client with a verified Google profile. The same email as an existing client account signs
+// in to that account; agent and admin accounts keep signing in with their password on their own portal.
+export const googleSignIn = async (g: GoogleProfile): Promise<{ user: User; created: boolean }> => {
+  const existing = (await users.byGoogleId(g.sub)) ?? (await users.byEmail(g.email));
+  if (existing) {
+    if (existing.role !== 'buyer') bad('This email belongs to a staff account. Sign in on your portal with your password.');
+    if (!existing.active) forbidden('This account is disabled. Contact the admin team.');
+    if (!existing.googleLinked) await users.linkGoogle(existing.id, g.sub);
+    return { user: (await users.byId(existing.id))!, created: false };
+  }
+  try {
+    const user = await users.createWithGoogle(
+      {
+        id: newId('usr'),
+        email: g.email,
+        role: 'buyer',
+        name: g.name,
+        phone: '',
+        address: { street: '', barangay: '', city: '', province: '', region: '', postalCode: '', country: 'Philippines' },
+        savedVehicleIds: [],
+        recentlyViewedIds: [],
+        memberSince: new Date().toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }),
+      },
+      g.sub
+    );
+    return { user, created: true };
+  } catch (e: any) {
+    if (e?.code === 11000) return googleSignIn(g); // the same person signing in twice at once
+    throw e;
+  }
+};
 
 export const createAccount = async (input: any) => {
   const role = input?.role;
@@ -888,7 +1158,7 @@ export const createAccount = async (input: any) => {
   if (await users.byEmail(email)) bad('That email already has an account.');
   const name = text(input.name, 'Name', 120);
   if (role === 'seller' && (await users.all()).some((u) => u.role === 'seller' && u.name.toLowerCase() === name.toLowerCase())) bad('An agent with that name already exists.');
-  if (!validPassword(input.password)) bad('The password must be at least 8 characters.');
+  if (!validPassword(input.password)) bad(PASSWORD_RULE);
   return users.create({
     id: newId(role === 'seller' ? 'agent' : 'admin'),
     email,
@@ -907,7 +1177,7 @@ export const registerClient = async (input: any) => {
   const email = text(input?.email, 'Email', 200).toLowerCase();
   if (!EMAIL.test(email)) bad('Enter a valid email.');
   if (await users.byEmail(email)) bad('That email already has an account. Sign in instead.');
-  if (!validPassword(input.password)) bad('The password must be at least 8 characters.');
+  if (!validPassword(input.password)) bad(PASSWORD_RULE);
   try {
     return await users.create({
       id: newId('usr'),
@@ -916,7 +1186,7 @@ export const registerClient = async (input: any) => {
       name: text(input.name, 'Full name', 120),
       password: input.password,
       phone: text(input.phone, 'Phone', 40),
-      address: { street: '', barangay: '', city: '', province: 'Metro Manila', region: 'NCR', postalCode: '', country: 'Philippines' },
+      address: { street: '', barangay: '', city: '', province: '', region: '', postalCode: '', country: 'Philippines' },
       savedVehicleIds: [],
       recentlyViewedIds: [],
       memberSince: new Date().toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }),

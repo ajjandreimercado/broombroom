@@ -18,9 +18,12 @@ import {
   PaymentReceipt,
   Quotation,
   ClientLead,
+  ManualReceipt,
+  SalesEntry,
+  LedgerAccount,
 } from '../types.ts';
 import { api, uploadFile, ApiError } from '../api.ts';
-import { INITIAL_GUIDES } from '../data/mockData.ts';
+import { GUIDES } from '../data/guides.ts';
 
 export type CurrentView =
   | 'intro'
@@ -71,8 +74,8 @@ export type AdminTab =
   | 'accounting'
   | 'acc_expenses'
   | 'acc_credit'
-  | 'acc_savings'
   | 'acc_reports'
+  | 'acc_receipts'
   | 'quotations'
   | 'leads'
   | 'accounts';
@@ -114,6 +117,7 @@ export interface AccountSummary {
 interface ServerState {
   me: UserProfile | null;
   vehicles: Vehicle[];
+  googleClientId?: string | null;
   applications?: VehicleApplication[];
   conversations?: Conversation[];
   quotations?: Quotation[];
@@ -124,6 +128,9 @@ interface ServerState {
   leads?: ClientLead[];
   expenses?: Expense[];
   credits?: Expense[];
+  receipts?: ManualReceipt[];
+  salesEntries?: SalesEntry[];
+  ledgerAccounts?: LedgerAccount[];
   agents?: string[];
   users?: AccountSummary[];
   myAgent?: string | null;
@@ -142,6 +149,9 @@ export type ApplicationInput = {
   documents: Record<string, string>; // requirement key -> uploaded file id
   quotationId?: string;
 };
+
+export type ReceiptInput = Pick<ManualReceipt, 'receivedFrom' | 'lines' | 'remarks'> & { date: string }; // date yyyy-mm-dd
+export type PaymentEdit = { amount: number; description: string; remarks?: string };
 
 export type VoucherInput = Omit<Expense, 'id' | 'voucherNo' | 'createdAt' | 'total' | 'lines'> & {
   lines: { category: string; description: string; amount: number; party: string; fileId?: string }[];
@@ -164,9 +174,12 @@ interface AppContextType {
       sellerTab?: SellerTab;
       adminTab?: AdminTab;
       quotationId?: string | null;
+      applicationId?: string | null;
     }
   ) => void;
   selectedQuotationId: string | null;
+  // Opens one application's details in My Applications (e.g. from the re-submission email link).
+  selectedApplicationId: string | null;
 
   // Server connection
   ready: boolean;
@@ -197,6 +210,9 @@ interface AppContextType {
   expenses: Expense[];
   credits: Expense[];
   quotations: Quotation[];
+  receipts: ManualReceipt[];
+  salesEntries: SalesEntry[];
+  ledgerAccounts: LedgerAccount[];
   leads: ClientLead[];
   notifications: AppNotification[];
   agents: string[];
@@ -207,6 +223,8 @@ interface AppContextType {
   currentUser: UserProfile | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<string | null>;
+  googleClientId: string | null;
+  googleSignIn: (credential: string) => Promise<string | null>;
   register: (name: string, email: string, phone: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
   updateProfile: (changes: Partial<Pick<UserProfile, 'name' | 'phone' | 'address'>>) => Promise<boolean>;
@@ -244,7 +262,18 @@ interface AppContextType {
   withdrawApplication: (id: string) => Promise<boolean>;
   reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => Promise<boolean>;
   attachDocumentForClient: (appId: string, docIndex: number, file: File) => Promise<boolean>;
-  recordPartialPayment: (appId: string, amount: number, description: string, screenshot?: Blob & { name?: string }) => Promise<PaymentReceipt | undefined>;
+  resubmitDocument: (appId: string, docIndex: number, file: File) => Promise<boolean>;
+  recordPartialPayment: (appId: string, amount: number, description: string, screenshot?: Blob & { name?: string }, remarks?: string) => Promise<PaymentReceipt | undefined>;
+  updatePayment: (appId: string, arNo: string, changes: PaymentEdit, screenshot?: Blob & { name?: string }) => Promise<PaymentReceipt | undefined>;
+  deletePayment: (appId: string, arNo: string) => Promise<boolean>;
+  saveReceipt: (id: string | null, input: ReceiptInput, file?: File) => Promise<ManualReceipt | undefined>;
+  deleteReceipt: (id: string) => Promise<boolean>;
+  addSalesEntry: (input: Omit<SalesEntry, 'id' | 'createdBy' | 'createdAt'>) => Promise<boolean>;
+  deleteSalesEntry: (id: string) => Promise<boolean>;
+  saveLedgerAccount: (id: string | null, input: Pick<LedgerAccount, 'name' | 'amount'> & Partial<Pick<LedgerAccount, 'kind' | 'method'>>) => Promise<boolean>;
+  deleteLedgerAccount: (id: string) => Promise<boolean>;
+  takeOverConversation: (id: string) => Promise<boolean>;
+  endTakeover: (id: string) => Promise<boolean>;
 
   // Quotations
   requestQuotation: (vehicleId: string, req: { method: 'cash' | 'financing'; downPayment: number; termMonths: number; note: string }) => Promise<Quotation | undefined>;
@@ -257,6 +286,8 @@ interface AppContextType {
   // Messaging
   startOrOpenConversation: (vehicleId: string) => Promise<string>;
   sendMessage: (conversationId: string, text: string) => Promise<boolean>;
+  sendApplyLink: (conversationId: string, vehicleId: string) => Promise<boolean>;
+  applyThroughAgent: (vehicleId: string, agentSlug: string) => void;
   markConversationRead: (conversationId: string) => void;
 
   // Notifications
@@ -275,6 +306,7 @@ interface AppContextType {
   // Leads
   claimLead: (clientId: string) => Promise<boolean>;
   assignLead: (clientId: string, agentName: string | null) => Promise<boolean>;
+  unlockLead: (clientId: string) => Promise<boolean>;
 
   // Accounting
   addExpense: (v: VoucherInput) => Promise<Expense | undefined>;
@@ -325,7 +357,19 @@ const clearRef = () => {
     localStorage.removeItem(REF_KEY);
   } catch {}
 };
-const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedVehicleId ? 'vehicle_detail' : 'intro';
+// An agent's apply link in the chat: the application for that vehicle is sent as through that agent (it locks the client to them).
+const VIA_KEY = 'gb_apply_via';
+const takeVia = (vehicleId: string) => {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIA_KEY) || 'null');
+    return v?.vehicleId === vehicleId ? (v.agent as string) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+// The re-submission email links to /?resubmit=<application id>: open that application in My Applications.
+const linkedApplicationId = PORTAL === 'buyer' ? params.get('resubmit') : null;
+const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : 'intro';
 
 const EMPTY: ServerState = { me: null, vehicles: [] };
 
@@ -334,10 +378,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [currentView, setCurrentView] = useState<CurrentView>(startView);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(linkedVehicleId);
   const [selectedGuideSlug, setSelectedGuideSlug] = useState<string | null>(null);
-  const [accountTab, setAccountTab] = useState<AccountTab>('profile');
+  const [accountTab, setAccountTab] = useState<AccountTab>(linkedApplicationId ? 'applications' : 'profile');
   const [sellerTab, setSellerTab] = useState<SellerTab>('dashboard');
   const [adminTab, setAdminTab] = useState<AdminTab>('dashboard');
   const [selectedQuotationId, setSelectedQuotationId] = useState<string | null>(null);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(linkedApplicationId);
 
   // Modals
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
@@ -422,6 +467,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (params?.sellerTab) setSellerTab(params.sellerTab);
       if (params?.adminTab) setAdminTab(params.adminTab);
       if (params && 'quotationId' in params) setSelectedQuotationId(params.quotationId ?? null);
+      if (params && 'applicationId' in params) setSelectedApplicationId(params.applicationId ?? null);
       window.scrollTo({ top: 0, behavior: scroll });
     };
     // Switching tabs inside the same page swaps only the panel; a whole-page transition there reads as a blink.
@@ -461,6 +507,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return null;
     } catch (e) {
       return e instanceof Error ? e.message : 'Could not sign in.';
+    }
+  };
+
+  const googleSignIn = async (credential: string) => {
+    try {
+      const user = await api<UserProfile & { created: boolean }>('/auth/google', { body: { credential } });
+      await refresh();
+      afterSignIn(user.name, user.created ? 'Account created' : 'Signed in');
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : 'Could not sign in with Google.';
     }
   };
 
@@ -609,9 +666,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ----- Applications -----
   const createApplication: AppContextType['createApplication'] = async (input) => {
-    const app = await run(() => api<VehicleApplication>('/applications', { body: { ...input, ref: takeRef() } }), undefined, 'Could not send the application');
+    const app = await run(() => api<VehicleApplication>('/applications', { body: { ...input, ref: takeRef(), viaAgent: takeVia(input.vehicleId) } }), undefined, 'Could not send the application');
     if (app) {
       clearRef();
+      try {
+        localStorage.removeItem(VIA_KEY);
+      } catch {}
       showToast('Application submitted', `Reference no. ${app.referenceNo}`);
     }
     return app;
@@ -629,14 +689,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return api(`/applications/${appId}/documents/${i}/file`, { body: { fileId: up.id } });
       }, ['Document uploaded', 'It is now waiting for review.'], 'Could not upload')
     );
-  const recordPartialPayment: AppContextType['recordPartialPayment'] = (appId, amount, description, screenshot) =>
+  const resubmitDocument: AppContextType['resubmitDocument'] = async (appId, i, file) =>
+    done(
+      await run(async () => {
+        const up = await uploadFile(file, file.name, 'private');
+        return api(`/applications/${appId}/documents/${i}/resubmit`, { body: { fileId: up.id } });
+      }, ['New copy sent', 'The admin team will review it.'], 'Could not upload')
+    );
+  const recordPartialPayment: AppContextType['recordPartialPayment'] = (appId, amount, description, screenshot, remarks) =>
     run(async () => {
       const up = screenshot ? await uploadFile(screenshot, screenshot.name || 'payment.jpg', 'private') : undefined;
-      return api<PaymentReceipt>(`/applications/${appId}/payments`, { body: { amount, description, fileId: up?.id } });
+      return api<PaymentReceipt>(`/applications/${appId}/payments`, { body: { amount, description, remarks, fileId: up?.id } });
     }, undefined, 'Could not record the payment').then((r) => {
       if (r) showToast('Payment confirmed', `Acknowledgement receipt ${r.arNo} was released.`);
       return r;
     });
+
+  const updatePayment: AppContextType['updatePayment'] = (appId, arNo, changes, screenshot) =>
+    run(async () => {
+      const up = screenshot ? await uploadFile(screenshot, screenshot.name || 'payment.jpg', 'private') : undefined;
+      return api<PaymentReceipt>(`/applications/${appId}/payments/${encodeURIComponent(arNo)}`, { method: 'PATCH', body: { ...changes, fileId: up?.id } });
+    }, ['Receipt updated', `AR ${arNo} was saved.`], 'Could not save the receipt');
+  const deletePayment = async (appId: string, arNo: string) =>
+    done(await run(() => api(`/applications/${appId}/payments/${encodeURIComponent(arNo)}`, { method: 'DELETE' }), ['Receipt deleted', `AR ${arNo} was removed.`]));
+
+  // ----- Acknowledgement receipts written by hand, and sales entered by hand -----
+  const saveReceipt: AppContextType['saveReceipt'] = (id, input, file) =>
+    run(async () => {
+      const up = file ? await uploadFile(file, file.name, 'private') : undefined;
+      const body = { ...input, fileId: up?.id };
+      return id ? api<ManualReceipt>(`/receipts/${id}`, { method: 'PATCH', body }) : api<ManualReceipt>('/receipts', { body });
+    }, id ? ['Receipt updated'] : ['Receipt released', 'It has the next AR number.'], 'Could not save the receipt');
+  const deleteReceipt = async (id: string) => done(await run(() => api(`/receipts/${id}`, { method: 'DELETE' }), ['Receipt deleted']));
+  const addSalesEntry: AppContextType['addSalesEntry'] = async (input) => done(await run(() => api('/sales-entries', { body: input }), ['Sale added', 'It is now in the sales report.']));
+  const saveLedgerAccount: AppContextType['saveLedgerAccount'] = async (id, input) =>
+    done(await run(() => (id ? api(`/ledger-accounts/${id}`, { method: 'PATCH', body: input }) : api('/ledger-accounts', { body: input })), [id ? 'Account saved' : 'Account added']));
+  const deleteLedgerAccount = async (id: string) => done(await run(() => api(`/ledger-accounts/${id}`, { method: 'DELETE' }), ['Account deleted']));
+  const deleteSalesEntry = async (id: string) => done(await run(() => api(`/sales-entries/${id}`, { method: 'DELETE' }), ['Sale removed']));
 
   // ----- Quotations -----
   const requestQuotation: AppContextType['requestQuotation'] = async (vehicleId, req) => {
@@ -667,6 +756,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
   const sendMessage = async (conversationId: string, text: string) =>
     done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { text } }), undefined, 'Message not sent'));
+  const sendApplyLink = async (conversationId: string, vehicleId: string) =>
+    done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { applyVehicleId: vehicleId } }), ['Apply link sent', 'Once the client applies through it, they are locked to you.'], 'Link not sent'));
+  const applyThroughAgent = (vehicleId: string, agentSlug: string) => {
+    try {
+      localStorage.setItem(VIA_KEY, JSON.stringify({ vehicleId, agent: agentSlug }));
+    } catch {}
+    navigateTo('apply', { vehicleId });
+  };
+  const takeOverConversation = async (id: string) =>
+    done(await run(() => api(`/conversations/${id}/takeover`, { body: {} }), ['Chat taken over', 'You can now reply to the client.']));
+  const endTakeover = async (id: string) => done(await run(() => api(`/conversations/${id}/end-takeover`, { body: {} }), ['Handed back', 'The agent answers this chat again.']));
   const markConversationRead = (conversationId: string) => {
     api(`/conversations/${conversationId}/read`, { body: {} }).catch(() => {});
   };
@@ -700,6 +800,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // ----- Leads -----
   const claimLead = async (clientId: string) =>
     done(await run(() => api(`/leads/${encodeURIComponent(clientId)}/claim`, { body: {} }), ['Client claimed', 'Their chats are now in Client Chats.'], 'Could not claim'));
+  const unlockLead = async (clientId: string) =>
+    done(await run(() => api(`/leads/${clientId}/unlock`, { body: {} }), ['Client unlocked', 'You can now reassign them.']));
   const assignLead = async (clientId: string, agentName: string | null) =>
     done(await run(() => api(`/leads/${encodeURIComponent(clientId)}/assign`, { body: { agentName } }), agentName ? ['Client reassigned', `Now with ${agentName}.`] : ['Back in Open leads', 'Any agent can claim them.']));
 
@@ -729,6 +831,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         adminTab,
         navigateTo,
         selectedQuotationId,
+        selectedApplicationId,
 
         ready,
         serverError,
@@ -744,7 +847,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dismissToast,
 
         vehicles,
-        guides: INITIAL_GUIDES,
+        guides: GUIDES,
         applications: data.applications ?? [],
         conversations: data.conversations ?? [],
         activeConversationId,
@@ -755,6 +858,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         expenses: data.expenses ?? [],
         credits: data.credits ?? [],
         quotations: data.quotations ?? [],
+        receipts: data.receipts ?? [],
+        salesEntries: data.salesEntries ?? [],
+        ledgerAccounts: data.ledgerAccounts ?? [],
         leads: data.leads ?? [],
         notifications: data.notifications ?? [],
         agents: data.agents ?? [],
@@ -764,6 +870,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         currentUser,
         isAuthenticated: !!currentUser,
         login,
+        googleSignIn,
+        googleClientId: data.googleClientId ?? null,
         register,
         logout,
         updateProfile,
@@ -796,7 +904,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         withdrawApplication,
         reviewDocument,
         attachDocumentForClient,
+        resubmitDocument,
         recordPartialPayment,
+        updatePayment,
+        deletePayment,
+        saveReceipt,
+        deleteReceipt,
+        addSalesEntry,
+        deleteSalesEntry,
+        saveLedgerAccount,
+        deleteLedgerAccount,
+        takeOverConversation,
+        endTakeover,
 
         requestQuotation,
         saveQuotation,
@@ -806,6 +925,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         startOrOpenConversation,
         sendMessage,
+        sendApplyLink,
+        applyThroughAgent,
         markConversationRead,
 
         markNotificationRead,
@@ -821,6 +942,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         claimLead,
         assignLead,
+        unlockLead,
 
         addExpense,
 

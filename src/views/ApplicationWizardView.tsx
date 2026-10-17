@@ -34,6 +34,7 @@ export const ApplicationWizardView: React.FC = () => {
     navigateTo,
     quotations,
     selectedQuotationId,
+    myAgent,
   } = useApp();
 
   const vehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
@@ -237,14 +238,14 @@ export const ApplicationWizardView: React.FC = () => {
                 <div>
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">Contact & Address</h2>
                   <p className="text-xs text-[#4E585E] mt-1">
-                    The verified agent will use these credentials to coordinate vehicle viewing and test-drive scheduling.
+                    Your agent uses these details to arrange the viewing and test drive.
                   </p>
                 </div>
 
                 <form onSubmit={handleStep1Continue} className="space-y-4 text-xs">
                   <div>
                     <label className="gb-label block mb-2">Full Legal Name *</label>
-                    <input
+                    <input aria-label="Full Legal Name"
                       type="text"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
@@ -256,7 +257,7 @@ export const ApplicationWizardView: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="gb-label block mb-2">Email Address *</label>
-                      <input
+                      <input aria-label="Email Address"
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
@@ -266,7 +267,7 @@ export const ApplicationWizardView: React.FC = () => {
                     </div>
                     <div>
                       <label className="gb-label block mb-2">Mobile Phone *</label>
-                      <input
+                      <input aria-label="Mobile Phone"
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
@@ -283,7 +284,7 @@ export const ApplicationWizardView: React.FC = () => {
 
                     <div>
                       <label className="gb-label block mb-2">Street Address *</label>
-                      <input
+                      <input aria-label="Street Address"
                         type="text"
                         value={street}
                         onChange={(e) => setStreet(e.target.value)}
@@ -295,7 +296,7 @@ export const ApplicationWizardView: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="gb-label block mb-2">Barangay *</label>
-                        <input
+                        <input aria-label="Barangay"
                           type="text"
                           value={barangay}
                           onChange={(e) => setBarangay(e.target.value)}
@@ -305,7 +306,7 @@ export const ApplicationWizardView: React.FC = () => {
                       </div>
                       <div>
                         <label className="gb-label block mb-2">City / Municipality *</label>
-                        <input
+                        <input aria-label="City / Municipality"
                           type="text"
                           value={city}
                           onChange={(e) => setCity(e.target.value)}
@@ -318,7 +319,7 @@ export const ApplicationWizardView: React.FC = () => {
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       <div>
                         <label className="gb-label block mb-2">Province</label>
-                        <input
+                        <input aria-label="Province"
                           type="text"
                           value={province}
                           onChange={(e) => setProvince(e.target.value)}
@@ -327,7 +328,7 @@ export const ApplicationWizardView: React.FC = () => {
                       </div>
                       <div>
                         <label className="gb-label block mb-2">Region</label>
-                        <input
+                        <input aria-label="Region"
                           type="text"
                           value={region}
                           onChange={(e) => setRegion(e.target.value)}
@@ -336,7 +337,7 @@ export const ApplicationWizardView: React.FC = () => {
                       </div>
                       <div>
                         <label className="gb-label block mb-2">Postal Code</label>
-                        <input
+                        <input aria-label="Postal Code"
                           type="text"
                           value={postalCode}
                           onChange={(e) => setPostalCode(e.target.value)}
@@ -566,7 +567,7 @@ export const ApplicationWizardView: React.FC = () => {
                   <label className="gb-label block mb-2">
                     Viewing Schedule / Special Instructions
                   </label>
-                  <textarea
+                  <textarea aria-label="Viewing Schedule / Special Instructions"
                     rows={3}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -672,7 +673,7 @@ export const ApplicationWizardView: React.FC = () => {
               <div className="pt-3 border-t border-[#DDE3E6] space-y-2 text-[#4E585E]">
                 <div className="flex justify-between">
                   <span className="text-[#6B767D]">Agent:</span>
-                  <span className="font-semibold text-[#141517]">{vehicle.sellerName}</span>
+                  <span className="font-semibold text-[#141517]">{myAgent ?? vehicle.sellerName}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#6B767D]">Mileage:</span>
@@ -684,12 +685,6 @@ export const ApplicationWizardView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[#DDE3E6]">
-                <div className="flex items-center gap-1.5 text-[#141517] text-[11px] font-semibold">
-                  <ShieldCheck className="w-4 h-4 text-[#141517]" />
-                  <span>Verified Clean Documentation</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>

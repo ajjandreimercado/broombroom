@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { COMMISSION_RATE } from '../data/mockData.ts';
+import { COMMISSION_RATE } from '../data/constants.ts';
 import { Commission } from '../types.ts';
 import { openCommissionReceipt } from './receipt.ts';
 import { photoDataUrl } from '../media.ts';
@@ -73,7 +73,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
     <section className="space-y-5">
       <SectionHeader
         title={mode === 'admin' ? 'Agent commissions' : 'Commissions'}
-        hint={compact ? undefined : `Commission is ${COMMISSION_RATE * 100}% of the sale price (demo rate). Each one moves Receivable → Payable → Paid.`}
+        hint={compact ? undefined : `Commission is ${COMMISSION_RATE * 100}% of the sale price. Each one moves Receivable → Payable → Paid.`}
       >
         {compact && (
           <button

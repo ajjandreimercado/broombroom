@@ -1,9 +1,21 @@
-import type { ClientLead } from '../types.ts';
+import type { ClientLead, Conversation } from '../types.ts';
 
 // Shared by the site and the API server: keep this file free of browser-only code.
 
 export const UNCLAIMED_ALERT_MS = 2 * 60 * 60 * 1000; // admin is told after 2 hours in the pool
 export const REPLY_RELEASE_MS = 24 * 60 * 60 * 1000; // an owned client waiting 24 hours for a reply goes back to the pool
+
+export const TAKEOVER_MS = 48 * 60 * 60 * 1000; // the admin may take over a chat the client has waited 2 days in
+
+// When the client's unanswered message in this chat was sent (null = the last word was a reply).
+export const unansweredSince = (c: Conversation): number | null => {
+  const last = c.messages[c.messages.length - 1];
+  return last && !last.isSeller ? t(last.timestamp) : null;
+};
+export const canTakeOver = (c: Conversation, now: number) => {
+  const since = unansweredSince(c);
+  return !c.takenOverAt && since !== null && now - since >= TAKEOVER_MS;
+};
 
 export const agentSlug = (name: string) => name.toLowerCase().trim().replace(/\s+/g, '-');
 
@@ -18,6 +30,7 @@ export const waitingSince = (lead: ClientLead): number | null => {
 };
 
 export const shouldRelease = (lead: ClientLead, now: number) => {
+  if (lead.lockedTo) return false; // locked to the agent whose apply link the client used
   const since = waitingSince(lead);
   return since !== null && now - since >= REPLY_RELEASE_MS;
 };

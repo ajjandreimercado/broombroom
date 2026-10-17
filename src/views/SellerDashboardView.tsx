@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
 import { portalUrl } from '../portals.ts';
 import { SellerTab } from '../context/AppContext.tsx';
-import { SellerSalesReport } from '../components/SellerSalesReport.tsx';
+import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { Commissions } from '../components/Commissions.tsx';
 import { AgentListings } from '../components/agent/AgentListings.tsx';
 import { AgentLeads } from '../components/agent/AgentLeads.tsx';
@@ -30,7 +30,9 @@ export const SellerDashboardView: React.FC = () => {
     activeConversationId,
     setActiveConversationId,
     sendMessage,
+    sendApplyLink,
     leads,
+    applications,
   } = useApp();
 
   // Every agent can sell every listing; chats and commissions are only for the agent's own clients.
@@ -42,10 +44,32 @@ export const SellerDashboardView: React.FC = () => {
   const pendingCommissions = commissions.filter((c) => c.status !== 'paid');
   const paidTotal = commissions.filter((c) => c.status === 'paid').reduce((sum, c) => sum + c.amount, 0);
   const pendingTotal = pendingCommissions.reduce((sum, c) => sum + c.amount, 0);
+  const inProgress = applications.filter((a) => a.sellerName === me && ['submitted', 'under_review', 'contacted', 'approved'].includes(a.status)).length;
+  // Closed sales = completed transactions on the agent's commissions, by when they were completed.
+  const closedByPeriod = useMemo(() => {
+    const now = new Date();
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const week = new Date(day);
+    week.setDate(day.getDate() - ((day.getDay() + 6) % 7)); // Monday
+    const done = commissions.filter((c) => c.transactionCompleted).map((c) => ({ at: new Date(c.completedAt ?? c.createdAt), price: c.salePrice }));
+    return ([
+      ['Today', day],
+      ['This week', week],
+      ['Month to date', new Date(now.getFullYear(), now.getMonth(), 1)],
+      ['Year to date', new Date(now.getFullYear(), 0, 1)],
+    ] as const).map(([label, from]) => {
+      const inside = done.filter((s) => s.at >= from);
+      return [label, inside.reduce((t, s) => t + s.price, 0), inside.length] as const;
+    });
+  }, [commissions]);
 
   // Seller Chat
   const [sellerChatText, setSellerChatText] = useState('');
   const selectedConv = conversations.find((c) => c.id === activeConversationId) || conversations[0];
+
+  const available = vehicles.filter((v) => v.status === 'available');
+  const [linkVehicleId, setLinkVehicleId] = useState('');
+  const linkVehicle = available.find((v) => v.id === linkVehicleId) ? linkVehicleId : available.find((v) => v.id === selectedConv?.vehicleId)?.id || available[0]?.id || '';
 
   const handleSendSellerReply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,18 +179,17 @@ export const SellerDashboardView: React.FC = () => {
                 <section aria-labelledby="ledger-heading">
                   <div className="flex items-end justify-between gap-4 pb-3 border-b-2 border-[#141517]">
                     <h2 id="ledger-heading" className="font-display text-[22px] leading-none text-[#141517]">Ledger</h2>
-                    <span className="text-[12px] text-[#4E585E]">Demo data</span>
                   </div>
                   <dl className="grid grid-cols-2 md:grid-cols-4 border-b border-[#C9D1D6]">
                     {[
-                      { label: 'Open leads', value: openLeads.toLocaleString(), note: `${leads.filter((l) => l.agentName === me).length} clients are yours` },
+                      { label: 'Open leads', value: openLeads.toLocaleString(), note: (() => { const n = leads.filter((l) => l.agentName === me).length; return `${n} client${n === 1 ? ' is' : 's are'} yours`; })() },
                       { label: 'Commission paid', value: `₱${paidTotal.toLocaleString()}`, note: `₱${pendingTotal.toLocaleString()} receivable or payable` },
                       { label: 'Client chats', value: conversations.length.toLocaleString(), note: 'Active conversations' },
-                      { label: 'Listing views', value: '12,480', note: 'This month' },
+                      { label: 'Applications', value: inProgress.toLocaleString(), note: 'In progress for your clients' },
                     ].map((m, i) => (
                       <div key={m.label} className={`py-5 pr-4 ${i % 2 === 1 ? 'pl-4 border-l' : ''} ${i === 2 ? 'md:pl-4 md:border-l' : ''} ${i === 3 ? 'pl-4' : ''} ${i < 2 ? 'border-b md:border-b-0' : ''} border-[#C9D1D6]`}>
                         <dt className="gb-label">{m.label}</dt>
-                        <dd className="mt-2 font-display text-[26px] sm:text-[32px] leading-none tabular-nums text-[#141517]">{m.value}</dd>
+                        <dd className="mt-2 font-display text-[clamp(20px,2.4vw,32px)] leading-none tabular-nums text-[#141517] [overflow-wrap:anywhere]">{m.value}</dd>
                         <dd className="mt-2 text-[12.5px] text-[#4E585E]">{m.note}</dd>
                       </div>
                     ))}
@@ -186,27 +209,20 @@ export const SellerDashboardView: React.FC = () => {
                     </button>
                   </div>
                   <table className="w-full text-[14px]">
-                    <caption className="sr-only">Closed sales by period, demo data</caption>
+                    <caption className="sr-only">Your closed sales by period</caption>
                     <thead>
                       <tr className="text-left">
                         <th className="gb-label py-3 font-semibold">Period</th>
                         <th className="gb-label py-3 font-semibold text-right">Revenue</th>
-                        <th className="gb-label py-3 font-semibold text-right hidden sm:table-cell">Units</th>
-                        <th className="gb-label py-3 font-semibold text-right">Change</th>
+                        <th className="gb-label py-3 font-semibold text-right">Units</th>
                       </tr>
                     </thead>
                     <tbody className="tabular-nums">
-                      {[
-                        ['Today', '₱3,750,000', '2', '+53%'],
-                        ['This week', '₱14,820,000', '8', '+22%'],
-                        ['Month to date', '₱28,450,000', '16', '+14%'],
-                        ['Year to date', '₱184,650,000', '98', '+29%'],
-                      ].map(([period, revenue, units, change]) => (
+                      {closedByPeriod.map(([period, revenue, units]) => (
                         <tr key={period} className="border-t border-[#C9D1D6]">
                           <td className="py-3.5 text-[#141517]">{period}</td>
-                          <td className="py-3.5 text-right font-semibold text-[#141517]">{revenue}</td>
-                          <td className="py-3.5 text-right text-[#4E585E] hidden sm:table-cell">{units}</td>
-                          <td className="py-3.5 text-right text-[#141517]">{change}</td>
+                          <td className="py-3.5 text-right font-semibold text-[#141517]">₱{revenue.toLocaleString()}</td>
+                          <td className="py-3.5 text-right text-[#4E585E]">{units}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -218,7 +234,7 @@ export const SellerDashboardView: React.FC = () => {
             )}
 
             {/* 2. SALES REPORT */}
-            {sellerTab === 'sales_report' && <SellerSalesReport />}
+            {sellerTab === 'sales_report' && <SalesReport mode="agent" />}
 
             {/* 3. VEHICLES MANAGEMENT */}
             {sellerTab === 'vehicles' && <AgentListings vehicles={sellerVehicles} />}
@@ -269,6 +285,8 @@ export const SellerDashboardView: React.FC = () => {
                               }`}
                             >
                               {m.text}
+                              {m.byAdmin && <span className="block mb-1 text-[10px] font-semibold opacity-80">Admin</span>}
+                              {m.applyVehicleId && <span className="block mt-1.5 text-[10px] font-semibold opacity-80">Apply link: {m.applyVehicleTitle}</span>}
                             </div>
                             <span className="text-[10px] text-[#6B767D] mt-1 tabular-nums">
                               {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -291,6 +309,29 @@ export const SellerDashboardView: React.FC = () => {
                           Send
                         </button>
                       </form>
+                      {available.length > 0 && (
+                        <div className="px-3.5 pb-3.5 flex gap-2.5 items-center bg-[#F7F8F8]/30">
+                          <label htmlFor="apply-link-vehicle" className="text-[11px] text-[#4E585E] shrink-0">Apply link for</label>
+                          <select
+                            id="apply-link-vehicle"
+                            value={linkVehicle}
+                            onChange={(e) => setLinkVehicleId(e.target.value)}
+                            className="flex-1 min-w-0 px-2.5 py-2 text-xs bg-white border border-[#C9D1D6] rounded-[2px] focus:border-[#1D5FD1]"
+                          >
+                            {available.map((v) => (
+                              <option key={v.id} value={v.id}>{v.title}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => selectedConv && linkVehicle && sendApplyLink(selectedConv.id, linkVehicle)}
+                            title="The client applies through this link and is then locked to you"
+                            className="px-3.5 py-2 border border-[#1D5FD1] text-[#1D5FD1] hover:bg-[#1D5FD1] hover:text-white rounded-[2px] text-xs font-bold cursor-pointer transition-colors shrink-0"
+                          >
+                            Send apply link
+                          </button>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <div className="p-6 text-center text-xs text-[#6B767D]">No conversation selected.</div>

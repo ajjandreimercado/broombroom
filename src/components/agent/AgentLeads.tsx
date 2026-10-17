@@ -84,7 +84,9 @@ export const AgentLeads: React.FC = () => {
                   <div className="min-w-0">
                     <p className="font-semibold text-[15px] text-[#141517]">{l.clientName}</p>
                     <p className="text-[13px] text-[#2A2E31]">Interested in {l.interest} · {SOURCE[l.source]}</p>
-                    {left === null ? (
+                    {l.lockedTo ? (
+                      <p className="text-[12.5px] font-medium text-[#1D5FD1]">Locked to you · applied through your link ({l.lockedRef})</p>
+                    ) : left === null ? (
                       <p className="text-[12.5px] text-[#1B7F35]">Up to date</p>
                     ) : (
                       <p className={`text-[12.5px] font-medium ${left < 4 * 3600e3 ? 'text-[#B42318]' : 'text-[#B4690E]'}`}>

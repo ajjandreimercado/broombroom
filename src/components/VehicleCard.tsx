@@ -136,12 +136,6 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
         <p className="mt-2 flex items-center gap-1 text-[12px] text-[#4E585E] min-w-0">
           <MapPin className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
           <span className="truncate">{vehicle.location}</span>
-          {vehicle.sellerVerified && (
-            <span className="ml-auto pl-2 flex items-center gap-1 shrink-0 text-[#141517]">
-              <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-              Verified agent
-            </span>
-          )}
         </p>
 
         {/* Price + actions */}

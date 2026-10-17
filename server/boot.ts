@@ -10,7 +10,9 @@ export const boot = async ({ production = false } = {}) => {
   if (!uri) {
     if (production) throw new Error('Set MONGODB_URI (your MongoDB Atlas connection string) before starting the server.');
     const { startDevMongo } = await import('./devdb.ts');
-    uri = (await startDevMongo(path.join(process.cwd(), 'server', 'data', 'mongo'))).uri;
+    // Vite restarts its server (and boots again) when a server file changes: reuse the database already running.
+    const g = globalThis as { __bbDevMongoUri?: Promise<string> };
+    uri = await (g.__bbDevMongoUri ||= startDevMongo(path.join(process.cwd(), 'server', 'data', 'mongo')).then((m) => m.uri));
     console.log('Using the local development database in server/data/mongo');
   }
   await connectDb(uri);

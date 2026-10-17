@@ -9,8 +9,17 @@ import { connectDb, closeDb, store } from './db.ts';
 import { seedIfEmpty } from './seed.ts';
 import { createApp } from './app.ts';
 import * as svc from './services.ts';
+import { outbox } from './mailer.ts';
 
-process.env.SEED_DEMO = 'true';
+process.env.NODE_ENV = 'test'; // emails stay in the outbox (no BREVO_API_KEY in tests)
+delete process.env.BREVO_API_KEY;
+// Test-only accounts. The database starts empty, like production: the admin comes from these settings, and the
+// agents, clients, listings and money accounts below are made through the API.
+const ADMIN = { email: 'admin@test.local', password: 'Admin-test-2026' };
+const AGENT_PASSWORD = 'Agent-test-2026';
+const CLIENT_PASSWORD = 'Client-test-2026';
+process.env.ADMIN_EMAIL = ADMIN.email;
+process.env.ADMIN_PASSWORD = ADMIN.password;
 
 let server: Server;
 let base = '';
@@ -23,6 +32,15 @@ before(async () => {
   server = createApp().listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${(server.address() as any).port}`;
+  const ad = await admin();
+  for (const [name, email] of [['Carlo Santos', 'carlo.santos@test.local'], ['Bea Villanueva', 'bea.villanueva@test.local']]) {
+    const r = await ad.post('/api/users', { role: 'seller', name, email, password: AGENT_PASSWORD });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+  }
+  for (const [name, email] of [['Andrei Mercado', 'andrei@test.local'], ['Jessa Ramos', 'jessa@test.local']]) {
+    const r = await client('buyer').post('/api/auth/register', { name, email, phone: '0917 000 0000', password: CLIENT_PASSWORD });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+  }
 });
 after(async () => {
   server?.closeAllConnections();
@@ -31,13 +49,15 @@ after(async () => {
   await mongo?.stop();
 });
 
-// A tiny client that keeps its own cookies, like one browser on one portal.
-const client = (portal: 'buyer' | 'seller' | 'admin') => {
+// A tiny client that keeps its own cookies, like one browser on one portal. Each one has its own address (sent the
+// way Render's proxy sends it), so per-address limits apply per client.
+let clients = 0;
+const client = (portal: 'buyer' | 'seller' | 'admin', ip = `10.0.${Math.floor(++clients / 250)}.${clients % 250}`) => {
   let cookie = '';
   const call = async (method: string, url: string, body?: unknown, headers: Record<string, string> = {}) => {
     const res = await fetch(base + url, {
       method,
-      headers: { 'X-Portal': portal, ...(cookie ? { Cookie: cookie } : {}), ...(body !== undefined && !(body instanceof Uint8Array) ? { 'Content-Type': 'application/json' } : {}), ...headers },
+      headers: { 'X-Portal': portal, 'X-Forwarded-For': ip, ...(cookie ? { Cookie: cookie } : {}), ...(body !== undefined && !(body instanceof Uint8Array) ? { 'Content-Type': 'application/json' } : {}), ...headers },
       body: body === undefined ? undefined : body instanceof Uint8Array ? new Blob([body as BlobPart]) : JSON.stringify(body),
     });
     const set = res.headers.getSetCookie?.() ?? [];
@@ -67,14 +87,14 @@ const signedIn = async (portal: 'buyer' | 'seller' | 'admin', email: string, pas
   assert.equal(r.status, 200, `login ${email}: ${JSON.stringify(r.json)}`);
   return c;
 };
-const admin = () => signedIn('admin', 'admin@broombroom.ph', 'Admin#2026');
-const carlo = () => signedIn('seller', 'carlo.santos@broombroom.ph', 'Agent#2026');
-const bea = () => signedIn('seller', 'bea.villanueva@broombroom.ph', 'Agent#2026');
+const admin = () => signedIn('admin', ADMIN.email, ADMIN.password);
+const carlo = () => signedIn('seller', 'carlo.santos@test.local', AGENT_PASSWORD);
+const bea = () => signedIn('seller', 'bea.villanueva@test.local', AGENT_PASSWORD);
 let n = 0;
 const newClient = async () => {
   const c = client('buyer');
   const email = `client${++n}@example.com`;
-  const r = await c.post('/api/auth/register', { name: `Client ${n}`, email, phone: '0917 000 0000', password: 'Password1!' });
+  const r = await c.post('/api/auth/register', { name: `Client ${n}`, email, phone: '0917 000 0000', password: CLIENT_PASSWORD });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   return Object.assign(c, { email, id: r.data.id as string });
 };
@@ -86,18 +106,21 @@ const docs = async (c: Awaited<ReturnType<typeof newClient>>, keys: string[]) =>
 const address = { street: '1 Test St', city: 'Taguig', province: 'Metro Manila', region: 'NCR', postalCode: '1634' };
 const apply = async (c: Awaited<ReturnType<typeof newClient>>, vehicleId: string, extra: any = {}) =>
   c.post('/api/applications', { vehicleId, purchaseMethod: 'cash', documents: await docs(c, ['id-signature']), address, ...extra });
+// A new listing for each test that needs one (no application can hold it yet).
+let units = 0;
 const freeVehicle = async () => {
-  const s = await (await admin()).state();
-  return s.vehicles.find((v: any) => v.status === 'available' && !s.applications.some((a: any) => a.vehicleId === v.id && ['submitted', 'under_review', 'contacted', 'approved'].includes(a.status)));
+  const r = await (await admin()).post('/api/vehicles', { title: `Test Unit ${++units}`, brand: 'Toyota', model: 'Vios', year: 2024, price: 950000, category: 'cars', condition: 'Surplus / 2nd hand', mileage: 12000, location: 'Taguig City' });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  return r.data;
 };
 
 // ---------------- auth ----------------
 test('sign-in: wrong password, wrong portal, and agents cannot sign up', async () => {
   const c = client('buyer');
-  assert.equal((await c.login('ajjandreimercado@gmail.com', 'nope')).status, 401);
-  assert.equal((await c.login('carlo.santos@broombroom.ph', 'Agent#2026')).status, 403);
+  assert.equal((await c.login('andrei@test.local', 'nope')).status, 401);
+  assert.equal((await c.login('carlo.santos@test.local', AGENT_PASSWORD)).status, 403);
   assert.equal((await client('seller').post('/api/auth/register', { name: 'X', email: 'x@y.z', phone: '1', password: 'Password1!' })).status, 403);
-  const ok = await c.login('ajjandreimercado@gmail.com', 'Client#2026');
+  const ok = await c.login('andrei@test.local', CLIENT_PASSWORD);
   assert.equal(ok.status, 200);
   assert.equal(ok.data.password_hash, undefined);
   assert.equal((await c.state()).me.name, 'Andrei Mercado');
@@ -105,8 +128,8 @@ test('sign-in: wrong password, wrong portal, and agents cannot sign up', async (
 
 test('sign-in is throttled after 10 failed tries', async () => {
   const c = client('buyer');
-  for (let i = 0; i < 10; i++) await c.login('jessa.ramos@example.com', 'wrong');
-  assert.equal((await c.login('jessa.ramos@example.com', 'Client#2026')).status, 429);
+  for (let i = 0; i < 10; i++) await c.login('jessa@test.local', 'wrong');
+  assert.equal((await c.login('jessa@test.local', CLIENT_PASSWORD)).status, 429);
 });
 
 test('a session only works on its own portal', async () => {
@@ -298,11 +321,11 @@ test('reassigning moves unearned commissions; 24-hour rule returns a waiting cli
   assert.equal(app.sellerName, 'Carlo Santos');
   await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' });
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Nobody Here' })).status, 400);
-  assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Joy Mendoza' })).status, 200);
+  assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Bea Villanueva' })).status, 200);
   let s = await ad.state();
-  assert.equal(s.commissions.find((x: any) => x.applicationRef === app.referenceNo).agentName, 'Joy Mendoza');
+  assert.equal(s.commissions.find((x: any) => x.applicationRef === app.referenceNo).agentName, 'Bea Villanueva');
 
-  // the client writes, Joy does not reply for 25 hours
+  // the client writes, Bea does not reply for 25 hours
   await c.post('/api/conversations', { vehicleId: v.id });
   const lead = await store.get<any>('leads', c.id);
   const t = new Date(Date.now() - 25 * 3600e3).toISOString();
@@ -311,7 +334,7 @@ test('reassigning moves unearned commissions; 24-hour rule returns a waiting cli
   s = await ad.state();
   const after = s.leads.find((l: any) => l.clientId === c.id);
   assert.equal(after.agentName, undefined);
-  assert.match(after.history.at(-1).text, /No reply from Joy Mendoza within 24 hours/);
+  assert.match(after.history.at(-1).text, /No reply from Bea Villanueva within 24 hours/);
   assert.equal(await svc.runLeadRules(), false, 'fires once');
 });
 
@@ -341,13 +364,14 @@ test('quotations: numbered when sent; applying with one fixes the price and mark
 test('vouchers: server total, balance check, running numbers', async () => {
   const ad = await admin();
   const line = { category: 'Utilities', description: 'Power', amount: 1234.5, party: 'Meralco' };
-  const r1 = await ad.post('/api/vouchers', { kind: 'expense', payee: 'Meralco', accountId: 'cash-on-hand', paymentDate: '2026-10-10', method: 'cash', lines: [line, line] });
+  const cash = (await ad.post('/api/ledger-accounts', { kind: 'payment', name: 'Cash on hand', method: 'cash', amount: 850000 })).data;
+  const r1 = await ad.post('/api/vouchers', { kind: 'expense', payee: 'Meralco', accountId: cash.id, paymentDate: '2026-10-10', method: 'cash', lines: [line, line] });
   assert.equal(r1.status, 200, JSON.stringify(r1.json));
   assert.equal(r1.data.total, 2469);
-  const r2 = await ad.post('/api/vouchers', { kind: 'expense', payee: 'X', accountId: 'cash-on-hand', paymentDate: '2026-10-10', lines: [line] });
+  const r2 = await ad.post('/api/vouchers', { kind: 'expense', payee: 'X', accountId: cash.id, paymentDate: '2026-10-10', lines: [line] });
   assert.equal(Number(r2.data.voucherNo.slice(-4)), Number(r1.data.voucherNo.slice(-4)) + 1);
-  assert.equal((await ad.post('/api/vouchers', { kind: 'expense', payee: 'Big', accountId: 'cash-on-hand', paymentDate: '2026-10-10', lines: [{ ...line, amount: 1e9 }] })).status, 400);
-  assert.equal((await ad.post('/api/vouchers', { kind: 'credit', payee: 'X', accountId: 'cash-on-hand', paymentDate: '2026-10-10', lines: [line] })).status, 400, 'credit needs a credit account');
+  assert.equal((await ad.post('/api/vouchers', { kind: 'expense', payee: 'Big', accountId: cash.id, paymentDate: '2026-10-10', lines: [{ ...line, amount: 1e9 }] })).status, 400);
+  assert.equal((await ad.post('/api/vouchers', { kind: 'credit', payee: 'X', accountId: cash.id, paymentDate: '2026-10-10', lines: [line] })).status, 400, 'credit needs a credit account');
 });
 
 test('listings: unsafe media URLs refused; "save hidden" stays hidden; agent requests apply on approval', async () => {
@@ -367,22 +391,282 @@ test('listings: unsafe media URLs refused; "save hidden" stays hidden; agent req
 
 test('accounts: admin creates an agent who can then sign in; disabling signs them out', async () => {
   const ad = await admin();
-  assert.equal((await ad.post('/api/users', { name: 'New Agent', email: 'new.agent@broombroom.ph', role: 'buyer', password: 'Password1!' })).status, 400);
-  const made = await ad.post('/api/users', { name: 'New Agent', email: 'new.agent@broombroom.ph', role: 'seller', password: 'Password1!' });
+  assert.equal((await ad.post('/api/users', { name: 'New Agent', email: 'new.agent@test.local', role: 'buyer', password: 'Password1!' })).status, 400);
+  const made = await ad.post('/api/users', { name: 'New Agent', email: 'new.agent@test.local', role: 'seller', password: 'Password1!' });
   assert.equal(made.status, 200);
-  const agent = await signedIn('seller', 'new.agent@broombroom.ph', 'Password1!');
+  const agent = await signedIn('seller', 'new.agent@test.local', 'Password1!');
   assert.ok((await ad.state()).agents.includes('New Agent'));
   await ad.post(`/api/users/${made.data.id}/active`, { active: false });
   assert.equal((await agent.state()).me, null);
-  assert.equal((await client('seller').login('new.agent@broombroom.ph', 'Password1!')).status, 401);
+  assert.equal((await client('seller').login('new.agent@test.local', 'Password1!')).status, 401);
 });
 
 test('password change needs the current password and signs out other sessions', async () => {
   const c = await newClient();
   const other = client('buyer');
-  await other.login(c.email, 'Password1!');
+  await other.login(c.email, CLIENT_PASSWORD);
   assert.equal((await c.post('/api/me/password', { current: 'wrong', next: 'NewPassword1!' })).status, 400);
-  assert.equal((await c.post('/api/me/password', { current: 'Password1!', next: 'NewPassword1!' })).status, 200);
+  assert.equal((await c.post('/api/me/password', { current: CLIENT_PASSWORD, next: 'NewPassword1!' })).status, 200);
   assert.ok((await c.state()).me, 'the session that changed it stays signed in');
   assert.equal((await other.state()).me, null);
+});
+
+// ---------- re-submitting rejected documents ----------
+test('rejecting a document emails the client a re-upload link; only they can send a new copy, and only for rejected or missing ones', async () => {
+  const c = await newClient();
+  const other = await newClient();
+  const ad = await admin();
+  const v = await freeVehicle();
+  const app = (await c.post('/api/applications', {
+    vehicleId: v.id, purchaseMethod: 'financing', downPayment: Math.round(v.price / 3), financingTermMonths: 36,
+    documents: await docs(c, ['id-applicant', 'payslip']), address,
+  })).data;
+  const sent = outbox.length;
+  assert.equal((await ad.post(`/api/applications/${app.id}/documents/0/review`, { approve: false })).status, 400, 'a rejection needs a reason');
+  assert.equal((await ad.post(`/api/applications/${app.id}/documents/0/review`, { approve: false, reason: 'Blurry photo, the ID number cannot be read' })).status, 200);
+  await new Promise((r) => setTimeout(r, 50)); // the email is sent right after the reply
+  const mail = outbox[sent];
+  assert.ok(mail, 'an email was sent');
+  assert.equal(mail.to, c.email);
+  assert.match(mail.subject, new RegExp(app.referenceNo));
+  assert.match(mail.html, /Blurry photo, the ID number cannot be read/);
+  assert.ok(mail.html.includes(`/?resubmit=${app.id}`), 'the email links to the application');
+  assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Document needs attention'), 'and an in-app notice');
+  // approving does not email
+  // documents: 0 = applicant ID, 1 = co-maker 1 (not uploaded), 4 = payslip
+  assert.equal((await ad.post(`/api/applications/${app.id}/documents/4/review`, { approve: true })).status, 200);
+  assert.equal(outbox.length, sent + 1);
+
+  const newCopy = async (who: any, i: number) => who.post(`/api/applications/${app.id}/documents/${i}/resubmit`, { fileId: (await who.upload(PDF, 'application/pdf', `copy-${i}.pdf`)).data.id });
+  assert.equal((await newCopy(other, 0)).status, 403, 'not their application');
+  assert.equal((await ad.post(`/api/applications/${app.id}/documents/0/resubmit`, {})).status, 403, 'clients only');
+  assert.equal((await newCopy(c, 4)).status, 400, 'an approved document does not need a new copy');
+  assert.equal((await newCopy(c, 0)).status, 200);
+  assert.equal((await newCopy(c, 1)).status, 200, 'a missing document can be added too');
+  const after = (await c.state()).applications.find((a: any) => a.id === app.id);
+  assert.equal(after.documents[0].status, 'pending');
+  assert.equal(after.documents[0].reason, undefined);
+  assert.ok(after.documents[0].resubmittedAt);
+  assert.ok(after.documents[1].fileName);
+  assert.ok((await ad.state()).notifications.some((n: any) => n.title === 'Document re-submitted'));
+});
+
+test("agent apply link: applying through it locks the client to that agent until the application ends or the admin unlocks", async () => {
+  const c = await newClient();
+  const [ca, ad] = [await carlo(), await admin()];
+  const v = await freeVehicle();
+  const conv = (await c.post('/api/conversations', { vehicleId: v.id })).data;
+  assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
+  assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { applyVehicleId: v.id })).status, 403, 'only the agent sends apply links');
+  const sent = await ca.post(`/api/conversations/${conv.id}/messages`, { applyVehicleId: v.id });
+  assert.equal(sent.status, 200, JSON.stringify(sent.json));
+  const msg = (await c.state()).conversations.find((x: any) => x.id === conv.id).messages.at(-1);
+  assert.equal(msg.applyVehicleId, v.id);
+  assert.equal(msg.applyAgent, 'carlo-santos');
+
+  const lead = async () => (await ad.state()).leads.find((l: any) => l.clientId === c.id);
+  const app = (await apply(c, v.id, { viaAgent: 'carlo-santos' })).data;
+  assert.equal((await lead()).lockedTo, 'Carlo Santos');
+  assert.equal((await lead()).lockedRef, app.referenceNo);
+  assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Bea Villanueva' })).status, 400, 'admin must unlock first');
+  // the 24-hour no-reply rule does not release a locked client
+  const l = await store.get<any>('leads', c.id);
+  await store.put('leads', { ...l, lastClientAt: new Date(Date.now() - 48 * 3600e3).toISOString(), lastAgentAt: undefined });
+  await svc.runLeadRules();
+  assert.equal((await lead()).agentName, 'Carlo Santos');
+  // the lock ends with its application
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'declined', note: 'test' })).status, 200);
+  assert.equal((await lead()).lockedTo, undefined);
+
+  // a second application through the link locks again; the admin can unlock and then reassign
+  const v2 = await freeVehicle();
+  await apply(c, v2.id, { viaAgent: 'carlo-santos' });
+  assert.equal((await lead()).lockedTo, 'Carlo Santos');
+  assert.equal((await ad.post(`/api/leads/${c.id}/unlock`)).status, 200);
+  assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Bea Villanueva' })).status, 200);
+  // a link from an agent who is not theirs does not lock or move them
+  await apply(c, (await freeVehicle()).id, { viaAgent: 'carlo-santos' });
+  assert.equal((await lead()).agentName, 'Bea Villanueva');
+  assert.equal((await lead()).lockedTo, undefined);
+});
+
+test('ARs: payment receipts take remarks and can be edited or deleted; hand-written ARs share the running number', async () => {
+  const c = await newClient();
+  const ad = await admin();
+  const v = await freeVehicle();
+  const app = (await apply(c, v.id)).data;
+  const pay = await ad.post(`/api/applications/${app.id}/payments`, { amount: 1000, description: 'Reservation fee', remarks: 'GCash ref 123' });
+  assert.equal(pay.status, 200, JSON.stringify(pay.json));
+  assert.equal(pay.data.remarks, 'GCash ref 123');
+  const ar = pay.data.arNo;
+  const edited = await ad.patch(`/api/applications/${app.id}/payments/${ar}`, { amount: 1500, description: 'Reservation fee (corrected)', remarks: '' });
+  assert.equal(edited.status, 200, JSON.stringify(edited.json));
+  assert.equal(edited.data.arNo, ar, 'the AR number stays');
+  assert.equal(edited.data.amount, 1500);
+  assert.equal(edited.data.remarks, undefined);
+  assert.equal((await ad.patch(`/api/applications/${app.id}/payments/${ar}`, { amount: v.price + 1, description: 'x' })).status, 400, 'balance still checked');
+  assert.equal((await c.patch(`/api/applications/${app.id}/payments/${ar}`, { amount: 1, description: 'x' })).status, 403);
+
+  const lines = [{ description: 'Detailing package', qty: 2, price: 2500 }, { description: 'Tint', qty: 1, price: 4000 }];
+  assert.equal((await ad.post('/api/receipts', { date: '2026-10-17', receivedFrom: 'Walk-in', lines: [] })).status, 400, 'needs a line');
+  assert.equal((await ad.post('/api/receipts', { date: '2026-10-17', receivedFrom: 'Walk-in', lines: [{ description: 'x', qty: 1.5, price: 1 }] })).status, 400, 'whole quantities');
+  assert.equal((await c.post('/api/receipts', { date: '2026-10-17', receivedFrom: 'Walk-in', lines })).status, 403);
+  const r = await ad.post('/api/receipts', { date: '2026-10-17', receivedFrom: 'Walk-in', lines, remarks: 'Paid cash' });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const [y, n] = ar.split('-');
+  assert.equal(r.data.arNo, `${y}-${String(Number(n) + 1).padStart(4, '0')}`, 'next AR number after the payment one');
+  const r2 = await ad.patch(`/api/receipts/${r.data.id}`, { date: '2026-10-18', receivedFrom: 'Walk-in client', lines: lines.slice(0, 1) });
+  assert.equal(r2.status, 200);
+  assert.equal(r2.data.arNo, r.data.arNo);
+  assert.equal(r2.data.lines.length, 1);
+  assert.ok((await ad.state()).receipts.some((x: any) => x.id === r.data.id));
+  assert.equal((await ad.raw('DELETE', `/api/receipts/${r.data.id}`)).status, 200);
+  assert.equal((await ad.raw('DELETE', `/api/applications/${app.id}/payments/${ar}`)).status, 200);
+  assert.equal((await ad.state()).applications.find((a: any) => a.id === app.id).payments.length, 0);
+});
+
+test('sales report: the admin can add and remove a sale entered by hand', async () => {
+  const ad = await admin();
+  assert.equal((await ad.post('/api/sales-entries', { date: '10/17/2026', vehicle: 'X', client: 'Y', amount: 1 })).status, 400, 'yyyy-mm-dd only');
+  assert.equal((await (await carlo()).post('/api/sales-entries', { date: '2026-10-17', vehicle: 'X', client: 'Y', amount: 1 })).status, 403);
+  const e = await ad.post('/api/sales-entries', { date: '2026-10-17', vehicle: '2022 Ford Ranger', client: 'Walk-in', agent: 'Carlo Santos', amount: 1250000 });
+  assert.equal(e.status, 200, JSON.stringify(e.json));
+  assert.ok((await ad.state()).salesEntries.some((x: any) => x.id === e.data.id));
+  assert.equal((await ad.raw('DELETE', `/api/sales-entries/${e.data.id}`)).status, 200);
+  assert.ok(!(await ad.state()).salesEntries.some((x: any) => x.id === e.data.id));
+});
+
+test('takeover: the admin reads silently, and can answer only after the client waited 2 days and the chat is taken over', async () => {
+  const c = await newClient();
+  const [ca, ad] = [await carlo(), await admin()];
+  const v = (await ad.state()).vehicles.find((x: any) => x.status === 'available'); // a chat needs any listed car
+  const conv = (await c.post('/api/conversations', { vehicleId: v.id, ref: 'carlo-santos' })).data;
+  assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { text: 'Is it still available?' })).status, 200);
+  const unread = async () => (await ca.state()).conversations.find((x: any) => x.id === conv.id).unreadSeller;
+  const before = await unread();
+  assert.ok(before > 0);
+  await ad.post(`/api/conversations/${conv.id}/read`);
+  assert.equal(await unread(), before, 'the admin reading does not mark it read');
+  assert.equal((await ad.post(`/api/conversations/${conv.id}/takeover`)).status, 400, 'too early');
+  assert.equal((await ad.post(`/api/conversations/${conv.id}/messages`, { text: 'Hi' })).status, 403);
+  // the client has now waited 3 days
+  const row = await store.get<any>('conversations', conv.id);
+  row.messages.at(-1).timestamp = new Date(Date.now() - 72 * 3600e3).toISOString();
+  await store.put('conversations', row);
+  assert.equal((await ca.post(`/api/conversations/${conv.id}/takeover`)).status, 403, 'admins only');
+  assert.equal((await ad.post(`/api/conversations/${conv.id}/takeover`)).status, 200);
+  assert.ok((await ca.state()).notifications.some((n: any) => n.title === 'Chat taken over'), 'the agent is told');
+  assert.equal((await ad.post(`/api/conversations/${conv.id}/messages`, { text: 'Yes it is! How can we help?' })).status, 200);
+  const msg = (await c.state()).conversations.find((x: any) => x.id === conv.id).messages.at(-1);
+  assert.equal(msg.senderName, 'Broom Broom');
+  assert.equal(msg.isSeller, true);
+  assert.equal(msg.byAdmin, true);
+  assert.equal((await ad.post(`/api/conversations/${conv.id}/end-takeover`)).status, 200);
+  assert.equal((await ad.post(`/api/conversations/${conv.id}/messages`, { text: 'again' })).status, 403);
+});
+
+test('money accounts: the admin adds, edits and deletes them; expenses are checked against the real balance', async () => {
+  const ad = await admin();
+  assert.equal((await (await carlo()).post('/api/ledger-accounts', { kind: 'payment', name: 'X', amount: 1 })).status, 403);
+  assert.equal((await ad.post('/api/ledger-accounts', { kind: 'other', name: 'X', amount: 1 })).status, 400);
+  const acct = await ad.post('/api/ledger-accounts', { kind: 'payment', name: 'Metrobank payroll', method: 'bank', amount: 5000 });
+  assert.equal(acct.status, 200, JSON.stringify(acct.json));
+  assert.equal((await ad.post('/api/ledger-accounts', { kind: 'payment', name: 'metrobank PAYROLL', amount: 1 })).status, 400, 'names are unique');
+  const voucher = (amount: number) => ad.post('/api/vouchers', { kind: 'expense', payee: 'Meralco', accountId: acct.data.id, paymentDate: '2026-10-18', method: 'bank', lines: [{ category: 'Utilities', description: 'Electric bill', amount }] });
+  assert.equal((await voucher(6000)).status, 400, 'more than the opening balance');
+  assert.equal((await ad.post('/api/vouchers', { kind: 'credit', payee: 'X', accountId: acct.data.id, paymentDate: '2026-10-18', lines: [{ category: 'Other', description: 'x', amount: 1 }] })).status, 400, 'a cash/bank account is not a credit line');
+  assert.equal((await voucher(4000)).status, 200);
+  const edited = await ad.patch(`/api/ledger-accounts/${acct.data.id}`, { name: 'Metrobank payroll account', amount: 8000, kind: 'credit' });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.data.kind, 'payment', 'the kind cannot change');
+  assert.equal(edited.data.amount, 8000);
+  assert.equal((await ad.raw('DELETE', `/api/ledger-accounts/${acct.data.id}`)).status, 400, 'in use');
+  const spare = await ad.post('/api/ledger-accounts', { kind: 'credit', name: 'Spare card', amount: 0 });
+  assert.equal((await ad.raw('DELETE', `/api/ledger-accounts/${spare.data.id}`)).status, 200);
+  const s = await ad.state();
+  assert.ok(s.ledgerAccounts.some((a: any) => a.id === acct.data.id));
+});
+
+test('limits: sign-ups, help messages and listing reports per address; uploads must be the type they claim', async () => {
+  const from = '10.9.9.9';
+  const statuses = [];
+  for (let i = 0; i < 6; i++) statuses.push((await client('buyer', from).post('/api/auth/register', { name: `Spam ${i}`, email: `spam${i}@test.local`, phone: '1', password: CLIENT_PASSWORD })).status);
+  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 429]);
+  assert.equal((await client('buyer').post('/api/auth/register', { name: 'Weak', email: 'weak@test.local', phone: '1', password: 'abcdefgh' })).status, 400, 'needs a number');
+
+  const help = client('buyer', '10.9.9.10');
+  assert.equal((await help.post('/api/support', { name: 'Ana', email: 'not-an-email', topic: 'Documents', message: 'Hi' })).status, 400);
+  const sent = outbox.length;
+  assert.equal((await help.post('/api/support', { name: 'Ana <b>', email: 'ana@test.local', topic: 'Documents', message: 'Where do I upload my ID?' })).status, 200);
+  const mail = outbox[sent];
+  assert.equal(mail.to, 'broombroombookingservices@gmail.com');
+  assert.equal(mail.replyTo, 'ana@test.local');
+  assert.ok(mail.html.includes('Ana &lt;b&gt;') && !mail.html.includes('<b>'), 'escaped');
+  for (let i = 0; i < 4; i++) await help.post('/api/support', { name: 'Ana', email: 'ana@test.local', topic: 'Documents', message: 'again' });
+  assert.equal((await help.post('/api/support', { name: 'Ana', email: 'ana@test.local', topic: 'Documents', message: 'again' })).status, 429);
+
+  const c = await newClient();
+  assert.equal((await c.upload(new TextEncoder().encode('<script>alert(1)</script>'), 'image/png', 'x.png')).status, 415, 'not really a PNG');
+  assert.equal((await c.upload(new TextEncoder().encode('<html>'), 'application/pdf', 'x.pdf')).status, 415, 'not really a PDF');
+});
+
+// ---------- Google sign-in ----------
+test('Google tokens: only a genuine, unexpired token for this site with a verified email is accepted', async () => {
+  const { generateKeyPairSync, sign } = await import('node:crypto');
+  const { verifyGoogleToken } = await import('./google.ts');
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const other = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey;
+  const keys = async () => [{ ...(publicKey.export({ format: 'jwk' }) as any), kid: 'k1' }];
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const now = Date.now();
+  const claims = { iss: 'https://accounts.google.com', aud: 'my-client', sub: 'g-123', email: 'Juan@Gmail.com', email_verified: true, name: 'Juan dela Cruz', exp: Math.floor(now / 1000) + 3600 };
+  const token = (c: object, key = privateKey, alg = 'RS256') => {
+    const head = `${b64({ alg, kid: 'k1', typ: 'JWT' })}.${b64(c)}`;
+    return `${head}.${sign('RSA-SHA256', Buffer.from(head), key).toString('base64url')}`;
+  };
+  const check = (t: string) => verifyGoogleToken(t, 'my-client', keys, now);
+  assert.deepEqual(await check(token(claims)), { sub: 'g-123', email: 'juan@gmail.com', name: 'Juan dela Cruz', picture: undefined });
+  assert.equal(await check(token({ ...claims, aud: 'someone-else' })), undefined, 'another site');
+  assert.equal(await check(token({ ...claims, iss: 'https://evil.example' })), undefined, 'not Google');
+  assert.equal(await check(token({ ...claims, exp: Math.floor(now / 1000) - 3600 })), undefined, 'expired');
+  assert.equal(await check(token({ ...claims, email_verified: false })), undefined, 'unverified email');
+  assert.equal(await check(token(claims, other)), undefined, 'forged signature');
+  assert.equal(await check(token(claims, privateKey, 'none')), undefined, 'alg none');
+  const t = token(claims);
+  assert.equal(await check(`${t.split('.')[0]}.${b64({ ...claims, email: 'admin@test.local' })}.${t.split('.')[2]}`), undefined, 'changed claims');
+  assert.equal(await check('not-a-token'), undefined);
+});
+
+test('Google sign-in: new clients are created, existing clients are linked, staff and disabled accounts are refused', async () => {
+  // the route: client site only, and off until GOOGLE_CLIENT_ID is set
+  assert.equal((await client('buyer').post('/api/auth/google', { credential: 'x.y.z' })).status, 503);
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  assert.equal((await client('seller').post('/api/auth/google', { credential: 'x.y.z' })).status, 403);
+  assert.equal((await client('buyer').post('/api/auth/google', { credential: 'x.y.z' })).status, 401, 'a bad token is refused');
+  delete process.env.GOOGLE_CLIENT_ID;
+
+  const fresh = await svc.googleSignIn({ sub: 'g-new', email: 'newgoogle@test.local', name: 'New Google User' });
+  assert.equal(fresh.created, true);
+  assert.equal(fresh.user.role, 'buyer');
+  assert.equal(fresh.user.hasPassword, false);
+  assert.equal(fresh.user.googleLinked, true);
+  const again = await svc.googleSignIn({ sub: 'g-new', email: 'newgoogle@test.local', name: 'New Google User' });
+  assert.equal(again.created, false);
+  assert.equal(again.user.id, fresh.user.id, 'same account the second time');
+
+  const c = await newClient();
+  const linked = await svc.googleSignIn({ sub: 'g-existing', email: c.email, name: 'Whatever' });
+  assert.equal(linked.user.id, c.id, 'the existing client account');
+  assert.equal(linked.user.hasPassword, true, 'keeps its password');
+  assert.equal((await client('buyer').login(c.email, CLIENT_PASSWORD)).status, 200, 'password still works');
+
+  await assert.rejects(svc.googleSignIn({ sub: 'g-staff', email: 'carlo.santos@test.local', name: 'X' }), /staff account/);
+  const ad = await admin();
+  await ad.post(`/api/users/${c.id}/active`, { active: false });
+  await assert.rejects(svc.googleSignIn({ sub: 'g-existing', email: c.email, name: 'X' }), /disabled/);
+  await ad.post(`/api/users/${c.id}/active`, { active: true });
+
+  // an account made with Google can set its first password without a current one
+  await assert.doesNotReject(svc.changePassword(fresh.user, undefined, 'FirstPass123'));
+  assert.ok(await (await import('./auth.ts')).users.verify('newgoogle@test.local', 'FirstPass123'));
 });

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { goodPassword, PASSWORD_RULE } from '../components/password.ts';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts';
 import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
@@ -43,6 +44,7 @@ export const AccountView: React.FC = () => {
     activeConversationId,
     setActiveConversationId,
     sendMessage,
+    applyThroughAgent,
     notifications: allNotifications,
     markNotificationRead,
     clearAllNotifications,
@@ -55,6 +57,8 @@ export const AccountView: React.FC = () => {
     updateProfile,
     changePassword,
     setAuthModalOpen,
+    selectedApplicationId,
+    resubmitDocument,
   } = useApp();
   // Clients only see notifications meant for them.
   const notifications = allNotifications.filter((n) => (n.audience ?? 'client') === 'client');
@@ -69,13 +73,16 @@ export const AccountView: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
 
   // Settings State
-  const [emailAlerts, setEmailAlerts] = useState(true);
-  const [smsAlerts, setSmsAlerts] = useState(true);
   const [currentPass, setCurrentPass] = useState('');
   const [newPass, setNewPass] = useState('');
 
   // Application detail modal
   const [viewingAppId, setViewingAppId] = useState<string | null>(null);
+  const [uploadingDoc, setUploadingDoc] = useState<number | null>(null);
+  // Arriving from the re-submission email (or a notification): open that application once it has loaded.
+  useEffect(() => {
+    if (selectedApplicationId && applications.some((a) => a.id === selectedApplicationId)) setViewingAppId(selectedApplicationId);
+  }, [selectedApplicationId, applications]);
 
   if (!currentUser) {
     return (
@@ -133,8 +140,9 @@ export const AccountView: React.FC = () => {
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentPass) return showToast('Enter your current password', undefined, 'error');
-    if (!newPass || newPass.length < 8) return showToast('Password too short', 'The new password must be at least 8 characters.', 'error');
+    const setting = currentUser.hasPassword === false; // made with Google: the first password needs no current one
+    if (!setting && !currentPass) return showToast('Enter your current password', undefined, 'error');
+    if (!goodPassword(newPass)) return showToast('Choose a stronger password', PASSWORD_RULE, 'error');
     if (await changePassword(currentPass, newPass)) {
       setCurrentPass('');
       setNewPass('');
@@ -241,7 +249,7 @@ export const AccountView: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="gb-label block mb-2">Full Legal Name</label>
-                      <input
+                      <input aria-label="Full Legal Name"
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
@@ -250,7 +258,7 @@ export const AccountView: React.FC = () => {
                     </div>
                     <div>
                       <label className="gb-label block mb-2">Email Address</label>
-                      <input
+                      <input aria-label="Email Address"
                         type="email"
                         value={currentUser.email}
                         readOnly
@@ -264,7 +272,7 @@ export const AccountView: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="gb-label block mb-2">Mobile Phone</label>
-                      <input
+                      <input aria-label="Mobile Phone"
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
@@ -273,7 +281,7 @@ export const AccountView: React.FC = () => {
                     </div>
                     <div>
                       <label className="gb-label block mb-2">City / Municipality</label>
-                      <input
+                      <input aria-label="City / Municipality"
                         type="text"
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
@@ -284,7 +292,7 @@ export const AccountView: React.FC = () => {
 
                   <div>
                     <label className="gb-label block mb-2">Street Address</label>
-                    <input
+                    <input aria-label="Street Address"
                       type="text"
                       value={street}
                       onChange={(e) => setStreet(e.target.value)}
@@ -408,7 +416,7 @@ export const AccountView: React.FC = () => {
                         <div>
                           <p className="text-sm font-bold text-white">Ready to compare which car is better overall?</p>
                           <p className="text-xs text-[#6B767D]">
-                            Evaluate price, mileage, powertrain, and verified trust side-by-side with automated scoring.
+                            Compare price, mileage, year, condition and fuel side by side.
                           </p>
                         </div>
                       </div>
@@ -602,6 +610,15 @@ export const AccountView: React.FC = () => {
                               }`}
                             >
                               <p>{msg.text}</p>
+                              {msg.applyVehicleId && msg.applyAgent && (
+                                <button
+                                  type="button"
+                                  onClick={() => applyThroughAgent(msg.applyVehicleId!, msg.applyAgent!)}
+                                  className="mt-2 w-full bg-[#1D5FD1] hover:bg-[#174DB0] text-white text-xs font-semibold px-3 py-2 rounded-[2px]"
+                                >
+                                  Apply for the {msg.applyVehicleTitle}
+                                </button>
+                              )}
                             </div>
                             <span className="text-[10px] text-[#6B767D] mt-1 px-1 tabular-nums">
                               {new Date(msg.timestamp).toLocaleTimeString([], {
@@ -724,67 +741,38 @@ export const AccountView: React.FC = () => {
             {accountTab === 'settings' && (
               <div className="border-t-2 border-[#141517] pt-6 space-y-6">
                 <div>
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Account Preferences & Security</h2>
+                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">Password & security</h2>
                   <p className="text-xs text-[#4E585E] mt-1">
-                    Manage alert channels, update credentials, and security settings.
+                    {currentUser.hasPassword === false
+                      ? 'You sign in with Google. You can also set a password to sign in with your email.'
+                      : `Changing your password signs you out on your other devices.${currentUser.googleLinked ? ' You can also sign in with Google.' : ''}`}
                   </p>
                 </div>
 
-                <div className="space-y-4">
+                <form onSubmit={handlePasswordUpdate} className="space-y-4">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#2A2E31] tabular-nums">
-                    Notification Preferences
-                  </h3>
-                  <div className="space-y-3">
-                    <label className="flex items-center justify-between p-4 bg-[#F7F8F8] border border-[#C9D1D6] rounded-[2px] cursor-pointer">
-                      <span className="text-xs font-semibold text-[#202426]">
-                        Email alerts for agent replies and application status changes
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={emailAlerts}
-                        onChange={(e) => setEmailAlerts(e.target.checked)}
-                        className="w-4 h-4 accent-[#1D5FD1]"
-                      />
-                    </label>
-
-                    <label className="flex items-center justify-between p-4 bg-[#F7F8F8] border border-[#C9D1D6] rounded-[2px] cursor-pointer">
-                      <span className="text-xs font-semibold text-[#202426]">
-                        SMS notifications for price drops and verified deal alerts
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={smsAlerts}
-                        onChange={(e) => setSmsAlerts(e.target.checked)}
-                        className="w-4 h-4 accent-[#1D5FD1]"
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <form onSubmit={handlePasswordUpdate} className="pt-5 border-t border-[#DDE3E6] space-y-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#2A2E31] tabular-nums">
-                    Update Password
+                    {currentUser.hasPassword === false ? 'Set a password' : 'Update Password'}
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
+                    {currentUser.hasPassword !== false && <div>
                       <label className="gb-label block mb-2">
                         Current Password
                       </label>
-                      <input
+                      <input aria-label="Current Password"
                         type="password"
                         placeholder="••••••••"
                         value={currentPass}
                         onChange={(e) => setCurrentPass(e.target.value)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                       />
-                    </div>
+                    </div>}
                     <div>
                       <label className="gb-label block mb-2">
                         New Password
                       </label>
-                      <input
+                      <input aria-label="New Password"
                         type="password"
-                        placeholder="Min 6 characters"
+                        placeholder="8+ characters, letters and numbers"
                         value={newPass}
                         onChange={(e) => setNewPass(e.target.value)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
@@ -808,7 +796,7 @@ export const AccountView: React.FC = () => {
       {/* Application Detail Modal */}
       {viewingApplication && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-[#141517]/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white border border-[#141517] p-6 sm:p-8 space-y-5 animate-modal-in">
+          <div role="dialog" aria-modal="true" aria-label="Application details" className="w-full max-w-lg bg-white border border-[#141517] p-6 sm:p-8 space-y-5 animate-modal-in">
             <div className="flex items-center justify-between pb-3 border-b border-[#DDE3E6]">
               <div>
                 <span className="text-[11px] tabular-nums font-bold text-[#6B767D]">
@@ -872,17 +860,46 @@ export const AccountView: React.FC = () => {
                 <div className="pt-3">
                   <p className="gb-label mb-2">Documents</p>
                   <ul className="border-t border-[#C9D1D6]">
-                    {viewingApplication.documents!.map((d) => (
-                      <li key={d.label} className="py-2 border-b border-[#DDE3E6]">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[#141517]">
-                            {d.url ? <a href={d.url} target="_blank" rel="noopener" className="underline underline-offset-2">{d.label}</a> : d.label}
-                          </span>
-                          <StatusMark status={!d.fileName ? 'Hand to admin' : d.status === 'approved' ? 'Approved' : d.status === 'rejected' ? 'Rejected' : 'In review'} />
-                        </div>
-                        {d.status === 'rejected' && d.reason && <p className="text-[#B42318] mt-1">Reason: {d.reason}</p>}
-                      </li>
-                    ))}
+                    {viewingApplication.documents!.map((d, i) => {
+                      const open = !['declined', 'withdrawn', 'completed'].includes(viewingApplication.status);
+                      const canUpload = open && (!d.fileName || d.status === 'rejected');
+                      return (
+                        <li key={d.label} className={`py-2 border-b border-[#DDE3E6] ${d.status === 'rejected' ? 'bg-[#FDF3F2] -mx-2 px-2' : ''}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[#141517]">
+                              {d.url ? <a href={d.url} target="_blank" rel="noopener" className="underline underline-offset-2">{d.label}</a> : d.label}
+                            </span>
+                            <StatusMark status={!d.fileName ? 'Hand to admin' : d.status === 'approved' ? 'Approved' : d.status === 'rejected' ? 'Rejected' : 'In review'} />
+                          </div>
+                          {d.status === 'rejected' && d.reason && <p className="text-[#B42318] mt-1">Reason: {d.reason}</p>}
+                          {canUpload && (
+                            <label
+                              className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold border cursor-pointer transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1] ${
+                                d.status === 'rejected' ? 'bg-[#1D5FD1] border-[#1D5FD1] text-white hover:bg-[#174CA8]' : 'border-[#141517] text-[#141517] hover:bg-[#EEF1F2]'
+                              } ${uploadingDoc === i ? 'opacity-60 pointer-events-none' : ''}`}
+                            >
+                              {uploadingDoc === i ? 'Uploading…' : d.status === 'rejected' ? 'Upload a new copy' : 'Upload it here'}
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                className="sr-only"
+                                aria-label={`Upload ${d.label}`}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (!file) return;
+                                  if (!/^(image\/|application\/pdf$)/.test(file.type)) return showToast('Use a photo or PDF', `${file.name} is not a photo or PDF.`, 'error');
+                                  if (file.size > 10 * 1024 * 1024) return showToast('File too large', `${file.name} is over 10 MB.`, 'error');
+                                  setUploadingDoc(i);
+                                  await resubmitDocument(viewingApplication.id, i, file);
+                                  setUploadingDoc(null);
+                                }}
+                              />
+                            </label>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}

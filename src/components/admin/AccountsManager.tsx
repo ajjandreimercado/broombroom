@@ -3,6 +3,7 @@ import { useApp, AccountSummary } from '../../context/AppContext.tsx';
 import { StatusMark } from '../StatusMark.tsx';
 import { EmptyState, FilterTabs, SectionHeader, btn } from './ui.tsx';
 import { KeyRound, UserPlus } from 'lucide-react';
+import { goodPassword, PASSWORD_RULE } from '../password.ts';
 
 type Filter = 'seller' | 'admin' | 'buyer' | 'all';
 const ROLE: Record<AccountSummary['role'], string> = { buyer: 'Client', seller: 'Agent', admin: 'Admin' };
@@ -11,8 +12,10 @@ const input = 'w-full px-3 py-2 text-[14px] bg-white border border-[#8C989F] tex
 // A short random password the admin hands over privately; the person changes it in Settings.
 const tempPassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
-  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+  for (;;) {
+    const p = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => chars[b % chars.length]).join('');
+    if (goodPassword(p)) return p; // needs a letter and a number
+  }
 };
 
 const ResetPassword: React.FC<{ account: AccountSummary }> = ({ account }) => {
@@ -34,7 +37,7 @@ const ResetPassword: React.FC<{ account: AccountSummary }> = ({ account }) => {
       }}
     >
       <input value={password} onChange={(e) => setPassword(e.target.value)} aria-label={`New password for ${account.name}`} className={`${input} flex-1 min-w-[180px] font-mono`} minLength={8} required />
-      <button type="submit" className={btn.primary} disabled={password.length < 8}>Set password</button>
+      <button type="submit" className={btn.primary} disabled={!goodPassword(password)} title={PASSWORD_RULE}>Set password</button>
       <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
       <p className="w-full text-[12px] text-[#4E585E]">Copy it now and give it to {account.name} privately. They are signed out everywhere and can change it in Settings.</p>
     </form>

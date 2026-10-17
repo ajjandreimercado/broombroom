@@ -11,7 +11,7 @@ const POOL = '__pool__';
 
 // Admin: who every client belongs to, what is overdue, and reassigning when needed.
 export const LeadsManager: React.FC = () => {
-  const { leads, assignLead, agents } = useApp();
+  const { leads, assignLead, unlockLead, agents } = useApp();
   const [filter, setFilter] = useState<Filter>('all');
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -25,6 +25,7 @@ export const LeadsManager: React.FC = () => {
       const waited = now - new Date(l.pooledAt ?? l.createdAt).getTime();
       return { text: `Unclaimed for ${duration(waited)}`, tone: waited >= UNCLAIMED_ALERT_MS ? 'text-[#B42318]' : 'text-[#4E585E]' };
     }
+    if (l.lockedTo) return { text: `Locked to ${l.lockedTo} until ${l.lockedRef} is completed, declined or withdrawn`, tone: 'text-[#1D5FD1]' };
     const since = waitingSince(l);
     if (since === null) return { text: 'Up to date', tone: 'text-[#1B7F35]' };
     return { text: `Waiting for a reply · released in ${duration(REPLY_RELEASE_MS - (now - since))}`, tone: 'text-[#B4690E]' };
@@ -64,6 +65,11 @@ export const LeadsManager: React.FC = () => {
                   <p className={`text-[12.5px] font-medium ${st.tone}`}>{st.text}</p>
                   {last && <p className="text-[12px] text-[#6B767D]">{last.text} · {shortDate(last.at)}</p>}
                 </div>
+                {l.lockedTo ? (
+                  <button className="self-start md:self-center px-3 py-2 text-[13px] font-semibold border border-[#8C989F] text-[#141517] hover:bg-[#EEF1F2] cursor-pointer" onClick={() => unlockLead(l.clientId)}>
+                    Unlock {l.clientName}
+                  </button>
+                ) : (
                 <label className="flex items-center gap-2 shrink-0">
                   <span className="gb-label">Agent</span>
                   <select
@@ -76,6 +82,7 @@ export const LeadsManager: React.FC = () => {
                     {agents.map((a) => <option key={a} value={a}>{a}</option>)}
                   </select>
                 </label>
+                )}
               </li>
             );
           })}

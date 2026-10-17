@@ -99,7 +99,7 @@ export const FinancingReview: React.FC = () => {
                                     ) : (
                                       d.fileName
                                     )}
-                                    {d.addedByAdmin ? ' · uploaded by admin' : ''}
+                                    {d.addedByAdmin ? ' · uploaded by admin' : d.resubmittedAt ? ' · new copy from the client' : ''}
                                   </>
                                 ) : (
                                   'Not submitted yet. Upload it when the client hands it in.'

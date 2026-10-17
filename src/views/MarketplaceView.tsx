@@ -59,7 +59,7 @@ export const MarketplaceView: React.FC = () => {
       {/* Brand */}
       <div>
         <label className={labelClass}>Make / Brand</label>
-        <select
+        <select aria-label="Make / Brand"
           value={filters.brand}
           onChange={(e) => updateFilter('brand', e.target.value)}
           className={selectClass}
@@ -90,7 +90,7 @@ export const MarketplaceView: React.FC = () => {
       {/* Transmission */}
       <div>
         <label className={labelClass}>Transmission</label>
-        <select
+        <select aria-label="Transmission"
           value={filters.transmission}
           onChange={(e) => updateFilter('transmission', e.target.value)}
           className={selectClass}
@@ -123,7 +123,7 @@ export const MarketplaceView: React.FC = () => {
       {/* Location */}
       <div>
         <label className={labelClass}>Location</label>
-        <select
+        <select aria-label="Location"
           value={filters.location}
           onChange={(e) => updateFilter('location', e.target.value)}
           className={selectClass}
@@ -145,7 +145,7 @@ export const MarketplaceView: React.FC = () => {
             ₱{(filters.maxPrice / 1000000).toFixed(1)}M
           </span>
         </div>
-        <input
+        <input aria-label="Max Price"
           type="range"
           min="200000"
           max="20000000"
@@ -313,7 +313,7 @@ export const MarketplaceView: React.FC = () => {
           className="fixed inset-0 z-50 flex items-end justify-center bg-[#141517]/50"
           onClick={(e) => { if (e.target === e.currentTarget) setMobileFilterOpen(false); }}
         >
-          <motion.div {...sheetMotion} className="w-full max-w-lg bg-[#F7F8F8] border-t-2 border-[#141517] max-h-[85vh] flex flex-col overflow-hidden">
+          <motion.div {...sheetMotion} role="dialog" aria-modal="true" aria-label="Filters" className="w-full max-w-lg bg-[#F7F8F8] border-t-2 border-[#141517] max-h-[85vh] flex flex-col overflow-hidden">
             {/* Drawer header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-[#DDE3E6] shrink-0">
               <h3 className="font-display text-[18px] text-[#141517]">Filters</h3>

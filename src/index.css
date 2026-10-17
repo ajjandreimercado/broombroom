@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 
-/* Groom Broom: the service booklet.
+/* Broom Broom: the service booklet.
    Bond paper, carbon ink, blue-grey ruling; logo blue for actions, logo green for stamps. */
 
 @custom-variant dark (&:where(.dark, .dark *));

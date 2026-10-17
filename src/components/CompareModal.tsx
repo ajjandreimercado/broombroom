@@ -22,7 +22,7 @@ import {
   Search,
 } from 'lucide-react';
 
-type QuickTag = 'overall' | 'price' | 'model' | 'mileage' | 'efficiency' | 'trust';
+type QuickTag = 'overall' | 'price' | 'model' | 'mileage' | 'efficiency';
 
 interface MetricEvaluation {
   winnerId: string;
@@ -98,7 +98,6 @@ export const CompareModal: React.FC = () => {
       const ecoScore =
         v.fuel === 'Electric' ? 100 : v.fuel === 'Hybrid' ? 94 : v.fuel === 'Diesel' ? 80 : 75;
 
-      const sellerScore = (v.sellerRating / 5) * 80 + (v.sellerVerified ? 20 : 0);
 
       let totalScore = 0;
       if (activeTag === 'price') {
@@ -106,11 +105,9 @@ export const CompareModal: React.FC = () => {
       } else if (activeTag === 'mileage') {
         totalScore = mileageScore * 0.7 + conditionScore * 0.15 + yearScore * 0.15;
       } else if (activeTag === 'model') {
-        totalScore = yearScore * 0.7 + priceScore * 0.15 + sellerScore * 0.15;
+        totalScore = yearScore * 0.7 + priceScore * 0.15 + conditionScore * 0.15;
       } else if (activeTag === 'efficiency') {
         totalScore = ecoScore * 0.7 + yearScore * 0.15 + priceScore * 0.15;
-      } else if (activeTag === 'trust') {
-        totalScore = sellerScore * 0.5 + conditionScore * 0.35 + yearScore * 0.15;
       } else {
         // Overall: balanced composite score
         totalScore =
@@ -169,9 +166,6 @@ export const CompareModal: React.FC = () => {
       } else if (activeTag === 'efficiency') {
         verdictTitle = `Eco Efficiency Pick: ${winner.title}`;
         verdictDescription = `Engineered with high-efficiency ${winner.fuel} powertrain, ensuring reduced fuel expenses and modern emissions.`;
-      } else if (activeTag === 'trust') {
-        verdictTitle = `Top Reliability & Trust: ${winner.title}`;
-        verdictDescription = `Listed by the Broom Broom sales team (rated ${winner.sellerRating} of 5) with ${winner.condition} certification.`;
       } else {
         verdictTitle = `Best Overall Value: ${winner.title} (${scores[winner.id]}/100 Score)`;
         verdictDescription = `Combines the most favorable balance of purchase price, low mileage (${winner.mileage.toLocaleString()} km), ${winner.year} model year, and ${winner.condition} condition.`;
@@ -221,7 +215,6 @@ export const CompareModal: React.FC = () => {
     { id: 'model', label: 'By Model & Year', icon: <Calendar className="w-3.5 h-3.5 text-[#141517]" /> },
     { id: 'mileage', label: 'By Mileage & Low Wear', icon: <Gauge className="w-3.5 h-3.5 text-[#141517]" /> },
     { id: 'efficiency', label: 'By Fuel & Efficiency', icon: <Fuel className="w-3.5 h-3.5 text-[#141517]" /> },
-    { id: 'trust', label: 'By Certified & Trust', icon: <ShieldCheck className="w-3.5 h-3.5 text-[#141517]" /> },
   ];
 
 
@@ -655,28 +648,6 @@ export const CompareModal: React.FC = () => {
                     {comparedVehicles.length < 4 && <td className="bg-[#F7F8F8]" />}
                   </tr>
 
-                  {/* Seller Trust & Rating */}
-                  <tr className="divide-x divide-[#C9D1D6]">
-                    <td className="p-3.5 font-bold text-[#5A646A] text-[11px] tabular-nums uppercase bg-[#F7F8F8]">
-                      Agent Rating
-                    </td>
-                    {comparedVehicles.map((v) => (
-                      <td key={v.id} className="p-3.5 font-medium text-[#141517]">
-                        <div className="flex items-center gap-1 font-bold">
-                          <span className="tabular-nums">{v.sellerRating} / 5</span>
-                          <span className="text-[11px] font-normal text-[#4E585E]">
-                            ({v.sellerReviewCount} reviews)
-                          </span>
-                        </div>
-                        {v.sellerVerified && (
-                          <span className="text-[10px] text-[#141517] font-bold flex items-center gap-1 mt-0.5">
-                            <ShieldCheck className="w-3 h-3" /> Verified Dealer
-                          </span>
-                        )}
-                      </td>
-                    ))}
-                    {comparedVehicles.length < 4 && <td className="bg-[#F7F8F8]" />}
-                  </tr>
 
                   {/* Location */}
                   <tr className="divide-x divide-[#C9D1D6]">

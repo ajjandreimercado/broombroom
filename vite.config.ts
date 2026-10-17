@@ -8,8 +8,9 @@ import {defineConfig, loadEnv, type Plugin} from 'vite';
 const api = (): Plugin => ({
   name: 'broombroom-api',
   async configureServer(server) {
-    // MONGODB_URI may come from .env.local; without it a local development database starts.
-    process.env.MONGODB_URI ||= loadEnv('development', process.cwd(), '').MONGODB_URI || '';
+    // Server settings (ADMIN_EMAIL, ADMIN_PASSWORD, MONGODB_URI, BREVO_API_KEY...) may come from .env.local.
+    // Without MONGODB_URI a local development database starts.
+    for (const [k, v] of Object.entries(loadEnv('development', process.cwd(), ''))) process.env[k] ??= v;
     const {boot} = await import('./server/boot.ts');
     const {createApp, startJobs} = await import('./server/app.ts');
     await boot();
@@ -30,11 +31,10 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
+      // DISABLE_HMR=true turns off live reload and file watching.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // server/data holds the dev database and saved emails; changes there are not code changes.
+      watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/server/data/**'] },
     },
   };
 });

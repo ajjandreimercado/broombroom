@@ -1,5 +1,5 @@
 {
-  "name": "Groom Broom - A Happy Ride",
+  "name": "Broom Broom · A Happy Ride",
   "description": "The premier automotive marketplace for cars, motorcycles, trucks, e-bikes, and scooters. Browse, apply, message sellers, and drive home happy.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

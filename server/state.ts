@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead } from '../src/types.ts';
+import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount } from '../src/types.ts';
 import { store } from './db.ts';
 import { users, publicUser, type User } from './auth.ts';
 import { notificationScope, ownerOf } from './services.ts';
@@ -11,7 +11,8 @@ const NEWEST = (field: string) => ({ [field]: -1 as const });
 export const buildState = async (me?: User) => {
   const role = me?.role;
   const vehicles = await store.all<Vehicle>('vehicles', role === 'admin' || role === 'seller' ? {} : { status: { $in: ['available', 'reserved'] } }, NEWEST('createdAt'));
-  const base = { me: me ? publicUser(me) : null, vehicles };
+  // The Google client ID is public (it is in every Google button); the site shows the button only when it is set.
+  const base = { me: me ? publicUser(me) : null, vehicles, googleClientId: process.env.GOOGLE_CLIENT_ID || null };
   if (!me) return base;
 
   const notifications = (await store.all<AppNotification>('notifications', notificationScope(me), NEWEST('createdAt'))).slice(0, 200);
@@ -50,7 +51,7 @@ export const buildState = async (me?: User) => {
   }
 
   // Admin: everything, plus the account list (never password hashes).
-  const [accounts, applications, conversations, leads, commissions, listingRequests, reports, quotations, expenses, credits] = await Promise.all([
+  const [accounts, applications, conversations, leads, commissions, listingRequests, reports, quotations, expenses, credits, receipts, salesEntries, ledgerAccounts] = await Promise.all([
     users.all(),
     store.all<VehicleApplication>('applications', {}, NEWEST('submittedAt')),
     store.all<Conversation>('conversations', {}, NEWEST('updatedAt')),
@@ -61,6 +62,9 @@ export const buildState = async (me?: User) => {
     store.all<Quotation>('quotations', {}, NEWEST('requestedAt')),
     store.all<Expense>('vouchers', { kind: 'expense' }, NEWEST('paymentDate')),
     store.all<Expense>('vouchers', { kind: 'credit' }, NEWEST('paymentDate')),
+    store.all<ManualReceipt>('receipts', {}, NEWEST('date')),
+    store.all<SalesEntry>('sales_entries', {}, NEWEST('date')),
+    store.all<LedgerAccount>('ledger_accounts', {}, { createdAt: 1 }),
   ]);
   return {
     ...base,
@@ -76,5 +80,8 @@ export const buildState = async (me?: User) => {
     quotations,
     expenses,
     credits,
+    receipts,
+    salesEntries,
+    ledgerAccounts,
   };
 };

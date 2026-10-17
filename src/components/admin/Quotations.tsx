@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
 import { StatusMark } from '../StatusMark.tsx';
 import { Quotation } from '../../types.ts';
-import { openQuotation, reserveWindow } from '../receipt.ts';
+import { downloadQuotationPdf, openQuotation, reserveWindow } from '../receipt.ts';
+import { downloadQuotationXlsx } from '../quoteExcel.ts';
 import { QUOTE_TERMS, daysFromToday, DEFAULT_VALID_DAYS, quoteFigures, quoteLabel, isExpired } from '../quote.ts';
 import { money } from '../accounting/ledger.ts';
 import { Drawer, EmptyState, FilterTabs, SectionHeader, btn, shortDate } from './ui.tsx';
-import { FileText, Send } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Send } from 'lucide-react';
 
 type Filter = 'requested' | 'sent' | 'accepted' | 'all';
 
@@ -175,7 +176,7 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
 
 // Admin: quotation requests from clients, and the quotations already sent.
 export const Quotations: React.FC = () => {
-  const { quotations } = useApp();
+  const { quotations, showToast } = useApp();
   const [filter, setFilter] = useState<Filter>('requested');
   const [openId, setOpenId] = useState<string | null>(null);
   const rows = filter === 'all' ? quotations : quotations.filter((q) => q.status === filter);
@@ -228,6 +229,17 @@ export const Quotations: React.FC = () => {
                     {q.method === 'financing' && <span className="block text-[12.5px] text-[#4E585E]">{money(f.monthly)} / mo</span>}
                   </span>
                 </button>
+                <div className="flex gap-5 pb-3.5 -mt-1">
+                  <button onClick={() => downloadQuotationPdf(q)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer">
+                    <Download className="w-3.5 h-3.5" aria-hidden="true" /> PDF
+                  </button>
+                  <button
+                    onClick={() => downloadQuotationXlsx(q).catch(() => showToast('Could not make the Excel file', 'Try again in a moment.', 'error'))}
+                    className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" aria-hidden="true" /> Excel
+                  </button>
+                </div>
               </li>
             );
           })}

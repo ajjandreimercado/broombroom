@@ -12,9 +12,9 @@ const PREFIX: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'agent.', adm
 const detect = (hostname: string): Portal =>
   hostname.startsWith(PREFIX.seller) ? 'seller' : hostname.startsWith(PREFIX.admin) ? 'admin' : 'buyer';
 
-// On GitHub Pages and locally the portals share one address and pick the portal with ?portal=agent|admin,
-// so all three read the same browser storage (the demo has no backend). Real domains use subdomains.
-const QUERY_MODE = /(^|\.)github\.io$|^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+// Locally, on GitHub Pages and on Render's own address (*.onrender.com) the portals share one address and pick the
+// portal with ?portal=agent|admin. Real domains use subdomains (agent., admin.).
+const QUERY_MODE = /(^|\.)(github\.io|onrender\.com)$|^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
 const QUERY_KEY: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'agent', admin: 'admin' };
 const fromQuery = (): Portal => {
   const q = new URLSearchParams(window.location.search).get('portal');

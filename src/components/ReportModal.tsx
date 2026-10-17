@@ -21,7 +21,7 @@ export const ReportModal: React.FC = () => {
       vehicleId: reportModalVehicle.id,
       vehicleTitle: reportModalVehicle.title,
       reportedBy: currentUser?.name || 'Anonymous User',
-      reportedEmail: reporterEmail.trim() || 'user@groombroom.ph',
+      reportedEmail: reporterEmail.trim(),
       reason,
       details: details.trim(),
     });
@@ -39,7 +39,7 @@ export const ReportModal: React.FC = () => {
       className="fixed inset-0 z-50 bg-[#141517]/50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) setReportModalVehicle(null); }}
     >
-      <motion.div {...modalMotion} className="w-full max-w-[480px] bg-[#F7F8F8] border border-[#141517] overflow-hidden">
+      <motion.div {...modalMotion} role="dialog" aria-modal="true" aria-label="Report this listing" className="w-full max-w-[480px] bg-[#F7F8F8] border border-[#141517] overflow-hidden">
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#DDE3E6] flex items-center justify-between">
@@ -75,7 +75,7 @@ export const ReportModal: React.FC = () => {
 
           <div>
             <label className={labelClass}>Reason</label>
-            <select
+            <select aria-label="Reason"
               value={reason}
               onChange={(e) => setReason(e.target.value as VehicleReport['reason'])}
               className={inputClass}
@@ -92,7 +92,7 @@ export const ReportModal: React.FC = () => {
 
           <div>
             <label className={labelClass}>Details</label>
-            <textarea
+            <textarea aria-label="Details"
               rows={3}
               value={details}
               onChange={(e) => setDetails(e.target.value)}
@@ -104,7 +104,7 @@ export const ReportModal: React.FC = () => {
 
           <div>
             <label className={labelClass}>Your email (for updates)</label>
-            <input
+            <input aria-label="Your email (for updates)"
               type="email"
               value={reporterEmail}
               onChange={(e) => setReporterEmail(e.target.value)}
