@@ -53,7 +53,7 @@ export const AgentLeads: React.FC = () => {
         ) : (
           <ul key="open" className="animate-view-fade border-b border-[#C9D1D6]">
             {open.map((l) => {
-              const line = lastClientLine(l.clientId);
+              const line = l.preview ?? lastClientLine(l.clientId);
               return (
                 <li key={l.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4 border-t border-[#C9D1D6]">
                   <div className="min-w-0">

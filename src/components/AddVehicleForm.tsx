@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { VehicleCategory, VehicleCondition, TransmissionType, FuelType, Vehicle } from '../types.ts';
-import { MAX_PHOTOS, MAX_VIDEOS, MAX_VIDEO_BYTES, photoDataUrl, saveMedia } from '../media.ts';
+import { MAX_PHOTOS, MAX_VIDEOS, MAX_VIDEO_BYTES, photoDataUrl } from '../media.ts';
+import { uploadFile, dataUrlToBlob } from '../api.ts';
 import { StoredVideo } from './StoredVideo.tsx';
 import { ImagePlus, X } from 'lucide-react';
 
@@ -33,7 +34,9 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState('');
 
-  // Photos are shrunk into the listing; videos go to browser storage (see media.ts).
+  const [saving, setSaving] = useState(false);
+
+  // Photos are shrunk, then both photos and videos upload to the server as public listing media.
   const addMedia = async (files: FileList | null) => {
     if (!files?.length) return;
     setMediaBusy(true);
@@ -44,20 +47,21 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
       try {
         if (file.type.startsWith('image/')) {
           if (nPhotos >= MAX_PHOTOS) { problems.push(`Up to ${MAX_PHOTOS} photos. ${file.name} was skipped.`); continue; }
-          const url = await photoDataUrl(file);
           nPhotos++;
-          setPhotos((p) => [...p, url]);
+          const blob = await dataUrlToBlob(await photoDataUrl(file));
+          const up = await uploadFile(blob, file.name.replace(/\.\w+$/, '.jpg'), 'public');
+          setPhotos((p) => [...p, up.url]);
         } else if (file.type.startsWith('video/')) {
           if (nVideos >= MAX_VIDEOS) { problems.push(`Up to ${MAX_VIDEOS} videos. ${file.name} was skipped.`); continue; }
           if (file.size > MAX_VIDEO_BYTES) { problems.push(`${file.name} is over 100 MB. Use a shorter or smaller video.`); continue; }
-          const ref = await saveMedia(file);
           nVideos++;
-          setVideos((v) => [...v, ref]);
+          const up = await uploadFile(file, file.name, 'public');
+          setVideos((v) => [...v, up.url]);
         } else {
           problems.push(`${file.name} is not a photo or video.`);
         }
-      } catch {
-        problems.push(`${file.name} could not be read. Try another file.`);
+      } catch (e) {
+        problems.push(e instanceof Error && e.message ? `${file.name}: ${e.message}` : `${file.name} could not be uploaded. Try another file.`);
       }
     }
     setMediaError(problems.join(' '));
@@ -65,8 +69,9 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
   };
 
 
-  const handleCreateVehicle = (e: React.FormEvent, isDraft = false) => {
+  const handleCreateVehicle = async (e: React.FormEvent, isDraft = false) => {
     e.preventDefault();
+    if (saving || mediaBusy) return;
     if (!title.trim() || !brand.trim()) {
       showToast('Validation Error', 'Vehicle title and brand are required.', 'error');
       return;
@@ -93,12 +98,16 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
       status: isDraft ? 'unpublished' : 'available',
     };
 
+    setSaving(true);
     if (isRequest) {
-      submitListingRequest({ type: 'add', vehicleTitle: data.title!, changes: data, note: note.trim() });
-      onDone?.();
+      const sent = await submitListingRequest({ type: 'add', vehicleTitle: data.title!, changes: data, note: note.trim() });
+      setSaving(false);
+      if (sent) onDone?.();
       return;
     }
-    createVehicleListing(data);
+    const created = await createVehicleListing(data);
+    setSaving(false);
+    if (!created) return;
 
     // Reset and route to vehicles list
     setTitle('');
@@ -308,7 +317,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                       {(photos.length < MAX_PHOTOS || videos.length < MAX_VIDEOS) && (
                         <label className={`aspect-[4/3] flex flex-col items-center justify-center gap-1 border border-dashed border-[#8C989F] text-[12px] font-semibold text-[#141517] transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1] ${mediaBusy ? 'opacity-60' : 'hover:bg-[#EEF1F2] cursor-pointer'}`}>
                           <ImagePlus className="w-5 h-5" aria-hidden="true" />
-                          {mediaBusy ? 'Adding…' : 'Add files'}
+                          {mediaBusy ? 'Uploading…' : 'Add files'}
                           <input
                             type="file"
                             accept="image/*,video/*"
@@ -366,7 +375,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                     )}
                     <button
                       type="submit"
-                      disabled={mediaBusy}
+                      disabled={mediaBusy || saving}
                       className="disabled:opacity-60 py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[13px] transition-colors cursor-pointer"
                     >
                       {isRequest ? 'Send request' : 'Publish listing'}

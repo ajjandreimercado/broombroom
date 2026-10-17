@@ -1,19 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
-import { AGENTS } from '../../data/mockData.ts';
 import { SectionHeader, Drawer, FilterTabs, peso } from './ui.tsx';
 
 type SortKey = 'revenue' | 'units' | 'commission';
 
 // Admin: how each agent is doing: completed sales and their commission at each stage.
 export const AgentReports: React.FC = () => {
-  const { commissions } = useApp();
+  const { commissions, agents } = useApp();
   const [sort, setSort] = useState<SortKey>('revenue');
   const [openAgent, setOpenAgent] = useState<string | null>(null);
 
   const rows = useMemo(
     () =>
-      AGENTS.map((name) => {
+      // Active agents, plus anyone who still has commissions on record.
+      [...new Set([...agents, ...commissions.map((c) => c.agentName)])].map((name) => {
         const coms = commissions.filter((c) => c.agentName === name);
         const sold = coms.filter((c) => c.transactionCompleted);
         const revenue = sold.reduce((s, c) => s + c.salePrice, 0);
@@ -28,7 +28,7 @@ export const AgentReports: React.FC = () => {
           paid: sum('paid'),
         };
       }),
-    [commissions]
+    [commissions, agents]
   );
 
   const sorted = [...rows].sort((a, b) =>

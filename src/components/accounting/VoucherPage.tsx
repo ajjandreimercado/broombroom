@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
 import { CREDIT_ACCOUNTS, CREDIT_CATEGORIES, EXPENSE_CATEGORIES, PAYMENT_ACCOUNTS } from '../../data/mockData.ts';
-import { Expense, ExpenseLine } from '../../types.ts';
+import { Expense } from '../../types.ts';
+import { uploadFile } from '../../api.ts';
 import { SectionHeader, EmptyState, Drawer, btn, shortDate, checkUpload } from '../admin/ui.tsx';
 import { accountBalance, creditAvailable, money } from './ledger.ts';
 import { Paperclip, Plus, Trash2, X } from 'lucide-react';
 
 type Kind = Expense['kind'];
-type Draft = { category: string; description: string; amount: string; party: string; attachment?: string };
+type Draft = { category: string; description: string; amount: string; party: string; attachment?: string; file?: File };
 
 const COPY: Record<Kind, { title: string; hint: string; account: string; party: string; balance: string; list: string }> = {
   expense: {
@@ -35,7 +36,8 @@ const fieldBorder = (bad: boolean) => (bad ? 'border-[#B42318]' : 'border-[#8C98
 
 // The expense and credit forms share one layout: who, from which account, when, how, then the lines.
 export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
-  const { expenses, credits, addExpense } = useApp();
+  const { expenses, credits, addExpense, showToast } = useApp();
+  const [saving, setSaving] = useState(false);
   const copy = COPY[kind];
   const records = kind === 'expense' ? expenses : credits;
   const accounts = kind === 'expense' ? PAYMENT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name })) : CREDIT_ACCOUNTS.map((a) => ({ id: a.id, name: a.name }));
@@ -68,7 +70,7 @@ export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
     if (!file) return;
     const problem = checkUpload(file);
     setErrors((e) => ({ ...e, [`attach-${i}`]: problem || '' }));
-    if (!problem) setLine(i, { attachment: file.name });
+    if (!problem) setLine(i, { attachment: file.name, file });
   };
 
   const validate = () => {
@@ -90,16 +92,35 @@ export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
     return e;
   };
 
-  const save = (ev: React.FormEvent) => {
+  const save = async (ev: React.FormEvent) => {
     ev.preventDefault();
+    if (saving) return;
     const e = validate();
     setErrors(e);
     if (Object.values(e).some(Boolean)) return;
-    const used: ExpenseLine[] = lines
-      .filter((l) => l.category && Number(l.amount) > 0)
-      .map((l) => ({ category: l.category, description: l.description.trim(), amount: Number(l.amount), party: l.party.trim(), attachment: l.attachment }));
-    addExpense({ kind, payee: payee.trim(), accountId, paymentDate: date, method, refNo: refNo.trim(), lines: used, remarks: remarks.trim(), total: used.reduce((s, l) => s + l.amount, 0) });
-    setPayee(''); setAccountId(''); setDate(today()); setRefNo(''); setLines([blankLine()]); setRemarks(''); setErrors({});
+    setSaving(true);
+    try {
+      // Line attachments are uploaded first; the voucher then refers to them. The server recomputes the total.
+      const used = await Promise.all(
+        lines
+          .filter((l) => l.category && Number(l.amount) > 0)
+          .map(async (l) => ({
+            category: l.category,
+            description: l.description.trim() || l.category,
+            amount: Number(l.amount),
+            party: l.party.trim(),
+            fileId: l.file ? (await uploadFile(l.file, l.file.name, 'private')).id : undefined,
+          }))
+      );
+      const saved = await addExpense({ kind, payee: payee.trim(), accountId, paymentDate: date, method, refNo: refNo.trim(), lines: used, remarks: remarks.trim() });
+      if (saved) {
+        setPayee(''); setAccountId(''); setDate(today()); setRefNo(''); setLines([blankLine()]); setRemarks(''); setErrors({});
+      }
+    } catch (err) {
+      showToast('Could not save', err instanceof Error ? err.message : 'Please try again.', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const err = (k: string) => errors[k] ? <p className="mt-1 text-[12px] text-[#B42318]">{errors[k]}</p> : null;
@@ -219,8 +240,8 @@ export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
               <span className="gb-label block mb-2">Remarks</span>
               <textarea rows={3} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Anything worth noting for this voucher" className={`${field} border-[#8C989F]`} />
             </label>
-            <button type="submit" className="px-8 py-3.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[14px] font-semibold cursor-pointer transition-colors">
-              Save
+            <button type="submit" disabled={saving} className="px-8 py-3.5 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:opacity-60 text-white text-[14px] font-semibold cursor-pointer transition-colors">
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </form>
@@ -281,7 +302,12 @@ export const VoucherPage: React.FC<{ kind: Kind }> = ({ kind }) => {
                     <span className="tabular-nums font-semibold text-[#141517]">{money(l.amount)}</span>
                   </div>
                   <p className="text-[#4E585E]">{[l.description, l.party].filter(Boolean).join(' · ')}</p>
-                  {l.attachment && <p className="mt-1 flex items-center gap-1 text-[#141517]"><Paperclip className="w-3.5 h-3.5" aria-hidden="true" />{l.attachment}</p>}
+                  {l.attachment && (
+                    <p className="mt-1 flex items-center gap-1 text-[#141517]">
+                      <Paperclip className="w-3.5 h-3.5" aria-hidden="true" />
+                      {l.attachmentUrl ? <a href={l.attachmentUrl} target="_blank" rel="noopener" className="underline underline-offset-2">{l.attachment}</a> : l.attachment}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>

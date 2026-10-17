@@ -13,6 +13,7 @@ export const QuoteRequest: React.FC<{ vehicle: Vehicle }> = ({ vehicle }) => {
   const [term, setTerm] = useState(36);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const existing = quotations.find(
     (q) => q.vehicleId === vehicle.id && q.clientId === currentUser?.id && (q.status === 'requested' || (q.status === 'sent' && !isExpired(q)))
@@ -30,12 +31,15 @@ export const QuoteRequest: React.FC<{ vehicle: Vehicle }> = ({ vehicle }) => {
     );
   }
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const dp = Number(down);
     if (method === 'financing' && !(dp > 0 && dp < vehicle.price)) return setError('Enter a down payment above zero and below the price.');
     setError('');
-    if (requestQuotation(vehicle.id, { method, downPayment: dp, termMonths: term, note })) setOpen(false);
+    setBusy(true);
+    const q = await requestQuotation(vehicle.id, { method, downPayment: dp, termMonths: term, note });
+    setBusy(false);
+    if (q) setOpen(false);
   };
 
   if (!open) {
@@ -91,8 +95,8 @@ export const QuoteRequest: React.FC<{ vehicle: Vehicle }> = ({ vehicle }) => {
       </label>
       {error && <p role="alert" className="text-[12.5px] text-[#B42318]">{error}</p>}
       <div className="flex gap-2">
-        <button type="submit" className="px-4 py-2.5 bg-[#141517] hover:bg-[#2A2E31] text-white text-[13px] font-semibold cursor-pointer transition-colors">
-          Send request
+        <button type="submit" disabled={busy} className="px-4 py-2.5 bg-[#141517] hover:bg-[#2A2E31] disabled:opacity-60 text-white text-[13px] font-semibold cursor-pointer transition-colors">
+          {busy ? 'Sending…' : 'Send request'}
         </button>
         <button type="button" onClick={() => setOpen(false)} className="px-3 py-2.5 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">
           Cancel

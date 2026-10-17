@@ -191,6 +191,7 @@ export interface ApplicationDocument {
   label: string;
   fileName: string; // '' until the client or the admin supplies it
   addedByAdmin?: boolean; // the client handed it in and the admin uploaded it
+  url?: string; // the uploaded file (private: the client and admins only)
   // Admin review (financing section); a rejection always carries a reason.
   status?: 'pending' | 'approved' | 'rejected';
   reason?: string;
@@ -256,6 +257,7 @@ export interface ExpenseLine {
   amount: number;
   party: string; // vendor for expenses, creditor for credit
   attachment?: string;
+  attachmentUrl?: string; // the uploaded file
 }
 
 export interface Expense {
@@ -327,4 +329,5 @@ export interface ClientLead {
   lastAgentAt?: string; // owning agent's latest reply
   escalatedAt?: string; // admin was told it sat unclaimed
   history: { at: string; text: string }[];
+  preview?: string; // the client's latest chat message, shown to agents in Open leads
 }

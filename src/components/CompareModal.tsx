@@ -187,13 +187,14 @@ export const CompareModal: React.FC = () => {
     };
   }, [comparedVehicles, activeTag]);
 
-  const handleInquire = (vehicleId: string) => {
+  const handleInquire = async (vehicleId: string) => {
     if (!isAuthenticated) {
       setPendingAction({ type: 'message', vehicleId });
       setAuthModalOpen(true);
       return;
     }
-    const convId = startOrOpenConversation(vehicleId);
+    const convId = await startOrOpenConversation(vehicleId);
+    if (!convId) return;
     setActiveConversationId(convId);
     setCompareModalOpen(false);
     navigateTo('account', { accountTab: 'messages' });

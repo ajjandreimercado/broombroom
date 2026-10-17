@@ -22,35 +22,8 @@ import {
 
 const MAX_DOC_BYTES = 10 * 1024 * 1024;
 
-// What each settlement method needs from the client, grouped as the form shows them.
-type Doc = { key: string; label: string; hint: string };
-const DOCS: Record<'cash' | 'financing', { title: string; items: Doc[] }[]> = {
-  cash: [{ title: 'Valid ID', items: [{ key: 'id-signature', label: 'Valid ID with signature', hint: '' }] }],
-  financing: [
-    {
-      title: 'Valid IDs',
-      items: [
-        { key: 'id-applicant', label: 'Valid ID: applicant', hint: '' },
-        { key: 'id-comaker-1', label: 'Valid ID: co-maker 1', hint: '' },
-        { key: 'id-comaker-2', label: 'Valid ID: co-maker 2', hint: '' },
-      ],
-    },
-    { title: 'Proof of billing', items: [{ key: 'billing', label: 'Proof of billing', hint: 'Water, electric or internet bill' }] },
-    {
-      title: 'Proof of income',
-      items: [
-        { key: 'payslip', label: 'Payslip', hint: 'If employed' },
-        { key: 'coe', label: 'Certificate of Employment (COE)', hint: 'If employed' },
-        { key: 'dti', label: 'DTI registration', hint: 'If a business owner' },
-        { key: 'permit', label: 'Business permit', hint: 'If a business owner' },
-        { key: 'sales', label: 'Daily sales record', hint: 'If a business owner' },
-        { key: 'business-photo', label: 'Photo of the business', hint: 'If a business owner' },
-      ],
-    },
-  ],
-};
-// Clients may send the rest straight to the admin, who files it for them.
-const MIN_UPLOADS = 2;
+import { DOCS, MIN_UPLOADS } from '../components/requirements.ts';
+import { uploadFile } from '../api.ts';
 
 export const ApplicationWizardView: React.FC = () => {
   const {
@@ -61,7 +34,6 @@ export const ApplicationWizardView: React.FC = () => {
     navigateTo,
     quotations,
     selectedQuotationId,
-    markQuotationAccepted,
   } = useApp();
 
   const vehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
@@ -73,31 +45,33 @@ export const ApplicationWizardView: React.FC = () => {
   const [confirmedApp, setConfirmedApp] = useState<VehicleApplication | null>(null);
 
   // Form Fields
-  const [fullName, setFullName] = useState(currentUser?.name || 'Andrei Mercado');
-  const [email, setEmail] = useState(currentUser?.email || 'ajjandreimercado@gmail.com');
-  const [phone, setPhone] = useState(currentUser?.phone || '+63 917 842 9918');
+  const [fullName, setFullName] = useState(currentUser?.name || '');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
 
   // Address
-  const [street, setStreet] = useState(currentUser?.address?.street || '28th Street, High Street South Block');
-  const [barangay, setBarangay] = useState(currentUser?.address?.barangay || 'Fort Bonifacio');
-  const [city, setCity] = useState(currentUser?.address?.city || 'Taguig City');
-  const [province, setProvince] = useState(currentUser?.address?.province || 'Metro Manila');
-  const [region, setRegion] = useState(currentUser?.address?.region || 'NCR');
-  const [postalCode, setPostalCode] = useState(currentUser?.address?.postalCode || '1634');
+  const [street, setStreet] = useState(currentUser?.address?.street || '');
+  const [barangay, setBarangay] = useState(currentUser?.address?.barangay || '');
+  const [city, setCity] = useState(currentUser?.address?.city || '');
+  const [province, setProvince] = useState(currentUser?.address?.province || '');
+  const [region, setRegion] = useState(currentUser?.address?.region || '');
+  const [postalCode, setPostalCode] = useState(currentUser?.address?.postalCode || '');
   const country = 'Philippines';
 
   // Purchase Method
   const [purchaseMethod, setPurchaseMethod] = useState<'cash' | 'financing'>(quote?.method ?? 'financing');
   const [financingTerm, setFinancingTerm] = useState(quote?.termMonths ?? 36);
   const [downPayment, setDownPayment] = useState(quote?.method === 'financing' ? quote.downPayment : Math.round(price * 0.25));
-  const [notes, setNotes] = useState('Interested in viewing this weekend. Documents ready.');
+  const [notes, setNotes] = useState('');
 
-  // Required documents: file names keyed by requirement (no upload backend yet).
-  const [docs, setDocs] = useState<Record<string, string>>({});
+  // Required documents, keyed by requirement. Each file uploads (privately) as soon as it is chosen.
+  const [docs, setDocs] = useState<Record<string, { name: string; fileId?: string; uploading?: boolean }>>({});
+  const [submitting, setSubmitting] = useState(false);
   const [docError, setDocError] = useState('');
   const docGroups = DOCS[purchaseMethod];
   const requiredDocs = docGroups.flatMap((g) => g.items);
-  const attachedCount = requiredDocs.filter((d) => docs[d.key]).length;
+  const attachedCount = requiredDocs.filter((d) => docs[d.key]?.fileId).length;
+  const uploadingDocs = requiredDocs.some((d) => docs[d.key]?.uploading);
   const minUploads = Math.min(MIN_UPLOADS, requiredDocs.length);
 
   const attachDoc = (key: string, file: File | undefined) => {
@@ -111,7 +85,16 @@ export const ApplicationWizardView: React.FC = () => {
       return;
     }
     setDocError('');
-    setDocs((prev) => ({ ...prev, [key]: file.name }));
+    setDocs((prev) => ({ ...prev, [key]: { name: file.name, uploading: true } }));
+    uploadFile(file, file.name, 'private')
+      .then((up) => setDocs((prev) => ({ ...prev, [key]: { name: up.name, fileId: up.id } })))
+      .catch((e) => {
+        setDocs((prev) => {
+          const { [key]: _, ...rest } = prev;
+          return rest;
+        });
+        setDocError(e instanceof Error ? e.message : `${file.name} could not be uploaded.`);
+      });
   };
 
   const [error, setError] = useState('');
@@ -149,20 +132,19 @@ export const ApplicationWizardView: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSubmitApplication = () => {
+  const handleSubmitApplication = async () => {
+    if (submitting) return;
+    if (uploadingDocs) {
+      setDocError('Wait for the documents to finish uploading.');
+      return;
+    }
     if (attachedCount < minUploads) {
       setDocError(`Upload at least ${minUploads} document${minUploads > 1 ? 's' : ''} to send the application. You can hand the rest to the admin team.`);
       return;
     }
-    const created = createApplication({
+    setSubmitting(true);
+    const created = await createApplication({
       vehicleId: vehicle.id,
-      vehicleTitle: vehicle.title,
-      vehiclePrice: price,
-      vehicleImage: vehicle.images[0],
-      vehicleLocation: vehicle.location,
-      sellerId: vehicle.sellerId,
-      sellerName: vehicle.sellerName,
-      applicantId: currentUser?.id || 'usr-guest',
       applicantName: fullName.trim(),
       applicantEmail: email.trim(),
       applicantPhone: phone.trim(),
@@ -179,11 +161,11 @@ export const ApplicationWizardView: React.FC = () => {
       financingTermMonths: purchaseMethod === 'financing' ? financingTerm : undefined,
       downPayment: purchaseMethod === 'financing' ? downPayment : undefined,
       notes: notes.trim(),
-      documents: requiredDocs.map((d) => ({ label: d.label, fileName: docs[d.key] || '' })),
-      quotationNo: quote?.quoteNo,
+      documents: Object.fromEntries(requiredDocs.filter((d) => docs[d.key]?.fileId).map((d) => [d.key, docs[d.key].fileId!])),
+      quotationId: quote?.id,
     });
-    if (quote) markQuotationAccepted(quote.id, created.referenceNo);
-
+    setSubmitting(false);
+    if (!created) return;
     setConfirmedApp(created);
     setStep(4);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -540,7 +522,7 @@ export const ApplicationWizardView: React.FC = () => {
                   <p className="gb-label">{g.title}</p>
                   <ul>
                     {g.items.map((d) => {
-                      const fileName = docs[d.key];
+                      const fileName = docs[d.key]?.uploading ? `Uploading ${docs[d.key].name}…` : docs[d.key]?.fileId ? docs[d.key].name : undefined;
                       return (
                         <li key={d.key} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 border-b border-[#C9D1D6]">
                           <div className="min-w-0 flex-1">
@@ -548,7 +530,7 @@ export const ApplicationWizardView: React.FC = () => {
                             <p className="text-[12px] text-[#4E585E] truncate">{fileName || d.hint || 'Photo or PDF, up to 10 MB'}</p>
                           </div>
                           <div className="w-[88px] h-8 grid place-items-center">
-                            <Stamp label="Attached" show={!!fileName} size="sm" />
+                            <Stamp label="Attached" show={!!docs[d.key]?.fileId} size="sm" />
                           </div>
                           <label className="shrink-0 px-3.5 py-2 border border-[#141517] text-[13px] font-semibold text-[#141517] hover:bg-[#EEF1F2] cursor-pointer transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1]">
                             {fileName ? 'Replace' : 'Upload'}
@@ -604,9 +586,10 @@ export const ApplicationWizardView: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleSubmitApplication}
-                    className="w-2/3 py-3 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-bold text-xs rounded-[2px] transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    disabled={submitting}
+                    className="w-2/3 py-3 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:opacity-60 text-white font-bold text-xs rounded-[2px] transition-colors cursor-pointer flex items-center justify-center gap-2"
                   >
-                    <span>Submit Application</span>
+                    <span>{submitting ? 'Sending…' : 'Submit Application'}</span>
                     <CheckCircle2 className="w-4 h-4" />
                   </button>
                 </div>

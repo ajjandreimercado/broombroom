@@ -1,12 +1,9 @@
 import { PORTAL } from '../portals.ts';
 import { flushSync } from 'react-dom';
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, ReactNode } from 'react';
 import {
   Vehicle,
   VehicleCategory,
-  VehicleCondition,
-  TransmissionType,
-  FuelType,
   VehicleStatus,
   VehicleApplication,
   ApplicationStatus,
@@ -17,35 +14,13 @@ import {
   AppNotification,
   Commission,
   ListingRequest,
-  ApplicationDocument,
   Expense,
   PaymentReceipt,
   Quotation,
   ClientLead,
 } from '../types.ts';
-import { nextArNo } from '../components/ar.ts';
-import { DEFAULT_RATE, DEFAULT_VALID_DAYS, daysFromToday, nextQuoteNo } from '../components/quote.ts';
-import { agentFromSlug, agentSlug, shouldAlertUnclaimed, shouldRelease } from '../components/leads.ts';
-import {
-  INITIAL_VEHICLES,
-  INITIAL_GUIDES,
-  INITIAL_USER,
-  INITIAL_APPLICATIONS,
-  INITIAL_CONVERSATIONS,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_REPORTS,
-  INITIAL_COMMISSIONS,
-  INITIAL_LISTING_REQUESTS,
-  INITIAL_EXPENSES,
-  INITIAL_CREDITS,
-  INITIAL_QUOTATIONS,
-  INITIAL_LEADS,
-  TEAM_NAME,
-  AGENTS,
-  COMMISSION_RATE,
-  DEMO_AGENT,
-  generateVehicleSvg,
-} from '../data/mockData.ts';
+import { api, uploadFile, ApiError } from '../api.ts';
+import { INITIAL_GUIDES } from '../data/mockData.ts';
 
 export type CurrentView =
   | 'intro'
@@ -99,7 +74,8 @@ export type AdminTab =
   | 'acc_savings'
   | 'acc_reports'
   | 'quotations'
-  | 'leads';
+  | 'leads'
+  | 'accounts';
 
 export interface FilterState {
   searchQuery: string;
@@ -123,6 +99,54 @@ interface ToastMessage {
   message?: string;
 }
 
+// An account as the admin sees it in Accounts.
+export interface AccountSummary {
+  id: string;
+  name: string;
+  email: string;
+  role: 'buyer' | 'seller' | 'admin';
+  active: boolean;
+  phone?: string;
+  memberSince?: string;
+}
+
+// Everything the server lets this person see (server/state.ts).
+interface ServerState {
+  me: UserProfile | null;
+  vehicles: Vehicle[];
+  applications?: VehicleApplication[];
+  conversations?: Conversation[];
+  quotations?: Quotation[];
+  notifications?: AppNotification[];
+  commissions?: Commission[];
+  listingRequests?: ListingRequest[];
+  reports?: VehicleReport[];
+  leads?: ClientLead[];
+  expenses?: Expense[];
+  credits?: Expense[];
+  agents?: string[];
+  users?: AccountSummary[];
+  myAgent?: string | null;
+}
+
+export type ApplicationInput = {
+  vehicleId: string;
+  applicantName: string;
+  applicantEmail: string;
+  applicantPhone: string;
+  address: VehicleApplication['address'];
+  purchaseMethod: 'cash' | 'financing';
+  financingTermMonths?: number;
+  downPayment?: number;
+  notes: string;
+  documents: Record<string, string>; // requirement key -> uploaded file id
+  quotationId?: string;
+};
+
+export type VoucherInput = Omit<Expense, 'id' | 'voucherNo' | 'createdAt' | 'total' | 'lines'> & {
+  lines: { category: string; description: string; amount: number; party: string; fileId?: string }[];
+};
+
 interface AppContextType {
   // Navigation & Views
   currentView: CurrentView;
@@ -144,6 +168,11 @@ interface AppContextType {
   ) => void;
   selectedQuotationId: string | null;
 
+  // Server connection
+  ready: boolean;
+  serverError: string | null;
+  refresh: () => Promise<void>;
+
   // Modals
   authModalOpen: boolean;
   setAuthModalOpen: (open: boolean) => void;
@@ -155,7 +184,7 @@ interface AppContextType {
   showToast: (title: string, message?: string, type?: 'success' | 'info' | 'error') => void;
   dismissToast: (id: string) => void;
 
-  // Data State
+  // Data
   vehicles: Vehicle[];
   guides: Guide[];
   applications: VehicleApplication[];
@@ -164,39 +193,28 @@ interface AppContextType {
   setActiveConversationId: (id: string | null) => void;
   reports: VehicleReport[];
   commissions: Commission[];
-  approveCommission: (id: string) => void;
-  payCommission: (id: string, proofFileName: string, proofImage?: string) => void;
-  recordPartialPayment: (appId: string, amount: number, description: string, attachment?: { image: string; name: string }) => PaymentReceipt | undefined;
-  attachDocumentForClient: (appId: string, docIndex: number, fileName: string) => void;
   listingRequests: ListingRequest[];
   expenses: Expense[];
-  quotations: Quotation[];
-  requestQuotation: (vehicleId: string, req: { method: 'cash' | 'financing'; downPayment: number; termMonths: number; note: string }) => Quotation | undefined;
-  saveQuotation: (id: string, changes: Partial<Quotation>, send: boolean) => Quotation | undefined;
-  markQuotationAccepted: (id: string, applicationRef: string) => void;
-  addExpense: (e: Omit<Expense, 'id' | 'voucherNo' | 'createdAt'>) => Expense;
   credits: Expense[];
-  submitListingRequest: (req: Pick<ListingRequest, 'type' | 'vehicleId' | 'vehicleTitle' | 'changes' | 'note'>) => void;
-  decideListingRequest: (id: string, approve: boolean, reason?: string) => void;
-  reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => void;
-  setVehicleStatus: (id: string, status: VehicleStatus) => void;
+  quotations: Quotation[];
+  leads: ClientLead[];
   notifications: AppNotification[];
+  agents: string[];
+  accounts: AccountSummary[];
+  myAgent: string | null;
 
   // User & Auth
   currentUser: UserProfile | null;
   isAuthenticated: boolean;
-  login: (email: string, role?: 'buyer' | 'seller' | 'admin') => void;
-  register: (name: string, email: string, phone: string) => void;
-  logout: () => void;
-  switchRole: (role: 'buyer' | 'seller' | 'admin') => void;
+  login: (email: string, password: string) => Promise<string | null>;
+  register: (name: string, email: string, phone: string, password: string) => Promise<string | null>;
+  logout: () => Promise<void>;
+  updateProfile: (changes: Partial<Pick<UserProfile, 'name' | 'phone' | 'address'>>) => Promise<boolean>;
+  changePassword: (current: string, next: string) => Promise<boolean>;
 
   // Pending action preservation
-  pendingAction: {
-    type: 'apply' | 'save' | 'message';
-    vehicleId: string;
-  } | null;
+  pendingAction: { type: 'apply' | 'save' | 'message'; vehicleId: string } | null;
   setPendingAction: (action: { type: 'apply' | 'save' | 'message'; vehicleId: string } | null) => void;
-  executePendingActionIfAny: () => void;
 
   // Filter & Search
   filters: FilterState;
@@ -210,9 +228,9 @@ interface AppContextType {
   toggleSaveVehicle: (id: string) => void;
   isVehicleSaved: (id: string) => boolean;
   addRecentlyViewed: (id: string) => void;
-  submitReport: (report: Omit<VehicleReport, 'id' | 'createdAt' | 'status'>) => void;
+  submitReport: (report: Omit<VehicleReport, 'id' | 'createdAt' | 'status'>) => Promise<boolean>;
 
-  // Vehicle Comparison (Buyer Role)
+  // Vehicle Comparison
   comparedVehicleIds: string[];
   toggleCompareVehicle: (id: string) => void;
   isInCompare: (id: string) => boolean;
@@ -221,32 +239,50 @@ interface AppContextType {
   setCompareModalOpen: (open: boolean) => void;
 
   // Applications
-  createApplication: (appData: Omit<VehicleApplication, 'id' | 'referenceNo' | 'submittedAt' | 'status'>) => VehicleApplication;
-  updateApplicationStatus: (id: string, status: ApplicationStatus, sellerNotes?: string) => void;
-  withdrawApplication: (id: string) => void;
+  createApplication: (input: ApplicationInput) => Promise<VehicleApplication | undefined>;
+  updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string) => Promise<boolean>;
+  withdrawApplication: (id: string) => Promise<boolean>;
+  reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => Promise<boolean>;
+  attachDocumentForClient: (appId: string, docIndex: number, file: File) => Promise<boolean>;
+  recordPartialPayment: (appId: string, amount: number, description: string, screenshot?: Blob & { name?: string }) => Promise<PaymentReceipt | undefined>;
+
+  // Quotations
+  requestQuotation: (vehicleId: string, req: { method: 'cash' | 'financing'; downPayment: number; termMonths: number; note: string }) => Promise<Quotation | undefined>;
+  saveQuotation: (id: string, changes: Partial<Quotation>, send: boolean) => Promise<Quotation | undefined>;
+
+  // Commissions
+  approveCommission: (id: string) => Promise<boolean>;
+  payCommission: (id: string, proof: File) => Promise<boolean>;
 
   // Messaging
-  startOrOpenConversation: (vehicleId: string) => string;
-  sendMessage: (conversationId: string, text: string) => void;
+  startOrOpenConversation: (vehicleId: string) => Promise<string>;
+  sendMessage: (conversationId: string, text: string) => Promise<boolean>;
   markConversationRead: (conversationId: string) => void;
 
   // Notifications
   markNotificationRead: (id: string) => void;
   clearAllNotifications: () => void;
 
-  // Seller Actions
-  createVehicleListing: (vehicleData: Partial<Vehicle>) => Vehicle;
-  leads: ClientLead[];
-  claimLead: (clientId: string) => void;
-  assignLead: (clientId: string, agentName: string | null) => void;
-  updateVehicleListing: (id: string, updates: Partial<Vehicle>) => void;
-  deleteVehicleListing: (id: string) => void;
+  // Listings
+  createVehicleListing: (vehicleData: Partial<Vehicle>) => Promise<Vehicle | undefined>;
+  updateVehicleListing: (id: string, updates: Partial<Vehicle>) => Promise<boolean>;
+  deleteVehicleListing: (id: string) => Promise<boolean>;
+  setVehicleStatus: (id: string, status: VehicleStatus) => Promise<boolean>;
+  submitListingRequest: (req: Pick<ListingRequest, 'type' | 'vehicleId' | 'vehicleTitle' | 'changes' | 'note'>) => Promise<boolean>;
+  decideListingRequest: (id: string, approve: boolean, reason?: string) => Promise<boolean>;
+  adminResolveReport: (reportId: string, action: 'dismiss' | 'unpublish_vehicle') => Promise<boolean>;
 
-  // Admin Actions
-  adminApproveVehicle: (id: string) => void;
-  adminUnpublishVehicle: (id: string) => void;
-  adminDeleteVehicle: (id: string) => void;
-  adminResolveReport: (reportId: string, action: 'dismiss' | 'unpublish_vehicle') => void;
+  // Leads
+  claimLead: (clientId: string) => Promise<boolean>;
+  assignLead: (clientId: string, agentName: string | null) => Promise<boolean>;
+
+  // Accounting
+  addExpense: (v: VoucherInput) => Promise<Expense | undefined>;
+
+  // Accounts (admin)
+  createAccount: (a: { name: string; email: string; role: 'seller' | 'admin'; password: string; phone?: string }) => Promise<boolean>;
+  resetPassword: (userId: string, password: string) => Promise<boolean>;
+  setAccountActive: (userId: string, active: boolean) => Promise<boolean>;
 }
 
 const defaultFilters: FilterState = {
@@ -266,42 +302,32 @@ const defaultFilters: FilterState = {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Older saved data used other condition names and a two-state commission.
-// Listings belong to the whole sales team; older data named one agent per listing.
-const normalizeVehicle = (v: Vehicle): Vehicle => ({
-  ...v,
-  condition: v.condition === 'New' || v.condition === 'Surplus / 2nd hand' ? v.condition : 'Surplus / 2nd hand',
-  sellerName: TEAM_NAME,
-  sellerId: 'team',
-});
-const normalizeCommission = (c: Commission): Commission => {
-  if ((c as unknown as { status: string }).status === 'pending') return { ...c, status: 'receivable', agentName: c.agentName || DEMO_AGENT, transactionCompleted: true };
-  // Saved data from before proof images and sale dates: pick them up from the seed.
-  const seed = INITIAL_COMMISSIONS.find((s) => s.id === c.id);
-  return { ...c, proofImage: c.proofImage ?? seed?.proofImage, completedAt: c.completedAt ?? seed?.completedAt, agentName: c.agentName || DEMO_AGENT, transactionCompleted: c.transactionCompleted ?? true };
-};
-const readJson = <T,>(key: string, fallback: T): T => {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? (JSON.parse(saved) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-// Each portal keeps its own signed-in user; everything else is shared.
-const USER_KEY = `gb_user_${PORTAL}`;
-
 // Buyer links like /?vehicle=v-123 open straight on that listing (used by Share and the portals).
-const linkedVehicleId = PORTAL === 'buyer' ? new URLSearchParams(window.location.search).get('vehicle') : null;
-// An agent's share link (?agent=carlo-santos) remembers that agent for this browser's client, so their
-// first inquiry goes to that agent instead of the Open leads pool.
-const linkedAgent = PORTAL === 'buyer' ? agentFromSlug(new URLSearchParams(window.location.search).get('agent')) : undefined;
-if (linkedAgent) {
+const params = new URLSearchParams(window.location.search);
+const linkedVehicleId = PORTAL === 'buyer' ? params.get('vehicle') : null;
+// An agent's share link (?agent=carlo-santos) is remembered on this browser and sent with the client's first
+// message, application or quotation request; the server decides whether it applies.
+const REF_KEY = 'gb_ref_agent';
+if (PORTAL === 'buyer' && params.get('agent')) {
   try {
-    localStorage.setItem('gb_ref_agent', linkedAgent);
+    localStorage.setItem(REF_KEY, params.get('agent')!.toLowerCase());
   } catch {}
 }
+const takeRef = () => {
+  try {
+    return localStorage.getItem(REF_KEY) || undefined;
+  } catch {
+    return undefined;
+  }
+};
+const clearRef = () => {
+  try {
+    localStorage.removeItem(REF_KEY);
+  } catch {}
+};
 const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedVehicleId ? 'vehicle_detail' : 'intro';
+
+const EMPTY: ServerState = { me: null, vehicles: [] };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Navigation
@@ -311,239 +337,80 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [accountTab, setAccountTab] = useState<AccountTab>('profile');
   const [sellerTab, setSellerTab] = useState<SellerTab>('dashboard');
   const [adminTab, setAdminTab] = useState<AdminTab>('dashboard');
+  const [selectedQuotationId, setSelectedQuotationId] = useState<string | null>(null);
 
   // Modals
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [reportModalVehicle, setReportModalVehicle] = useState<Vehicle | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: 'apply' | 'save' | 'message'; vehicleId: string } | null>(null);
 
-  // Pending intent before auth
-  const [pendingAction, setPendingAction] = useState<{
-    type: 'apply' | 'save' | 'message';
-    vehicleId: string;
-  } | null>(null);
-
-  // Toast notifications
+  // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const showToast = (title: string, message?: string, type: 'success' | 'info' | 'error' = 'success') => {
+  const showToast = useCallback((title: string, message?: string, type: 'success' | 'info' | 'error' = 'success') => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; // two toasts can land in the same millisecond
     setToasts((prev) => [...prev, { id, title, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
-  };
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
+  }, []);
+  const dismissToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
-  const dismissToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  // ----- Server data -----
+  const [data, setData] = useState<ServerState>(EMPTY);
+  const [ready, setReady] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const loading = useRef<Promise<void> | null>(null);
 
-  // Core Data
-  const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
-    const saved = localStorage.getItem('gb_vehicles');
-    if (!saved) return INITIAL_VEHICLES;
-    try {
-      const parsed: Vehicle[] = JSON.parse(saved);
-      // Migrate legacy SVG data images to authentic photography from INITIAL_VEHICLES
-      return parsed.map((pv) => {
-        const init = INITIAL_VEHICLES.find((iv) => iv.id === pv.id);
-        if (init && (pv.images?.[0]?.startsWith('data:image/svg') || !pv.images?.length)) {
-          return { ...pv, images: init.images };
-        }
-        return normalizeVehicle(pv);
-      });
-    } catch {
-      return INITIAL_VEHICLES;
+  const refresh = useCallback(async () => {
+    // One fetch at a time; a change announced mid-fetch triggers one more.
+    if (loading.current) {
+      await loading.current;
     }
-  });
-
-  const [guides] = useState<Guide[]>(INITIAL_GUIDES);
-
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    const user: UserProfile | null = readJson<UserProfile | null>(USER_KEY, PORTAL === 'buyer' ? INITIAL_USER : null);
-    // Each portal only ever acts in its own role; portals start signed out.
-    return user && PORTAL !== 'buyer' ? { ...user, role: PORTAL } : user;
-  });
-
-  const [applications, setApplications] = useState<VehicleApplication[]>(() => {
-    const saved = localStorage.getItem('gb_applications');
-    return saved ? JSON.parse(saved) : INITIAL_APPLICATIONS;
-  });
-
-  const [conversations, setConversations] = useState<Conversation[]>(() => {
-    const saved = localStorage.getItem('gb_conversations');
-    return saved ? JSON.parse(saved) : INITIAL_CONVERSATIONS;
-  });
-
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-
-  const [reports, setReports] = useState<VehicleReport[]>(() => {
-    const saved = localStorage.getItem('gb_reports');
-    return saved ? JSON.parse(saved) : INITIAL_REPORTS;
-  });
-
-  const [commissions, setCommissions] = useState<Commission[]>(() =>
-    readJson<Commission[]>('gb_commissions', INITIAL_COMMISSIONS).map(normalizeCommission)
-  );
-  const [listingRequests, setListingRequests] = useState<ListingRequest[]>(() =>
-    readJson<ListingRequest[]>('gb_listing_requests', INITIAL_LISTING_REQUESTS)
-  );
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_commissions', JSON.stringify(commissions));
-    } catch {}
-  }, [commissions]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_listing_requests', JSON.stringify(listingRequests));
-    } catch {}
-  }, [listingRequests]);
-
-  const [expenses, setExpenses] = useState<Expense[]>(() => readJson<Expense[]>('gb_expenses', INITIAL_EXPENSES));
-  const [credits, setCredits] = useState<Expense[]>(() => readJson<Expense[]>('gb_credits', INITIAL_CREDITS));
-  const [quotations, setQuotations] = useState<Quotation[]>(() => readJson<Quotation[]>('gb_quotations', INITIAL_QUOTATIONS));
-  const [selectedQuotationId, setSelectedQuotationId] = useState<string | null>(null);
-  const [leads, setLeads] = useState<ClientLead[]>(() => readJson<ClientLead[]>('gb_leads', INITIAL_LEADS));
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_leads', JSON.stringify(leads));
-    } catch {}
-  }, [leads]);
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_quotations', JSON.stringify(quotations));
-    } catch {}
-  }, [quotations]);
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_expenses', JSON.stringify(expenses));
-    } catch {}
-  }, [expenses]);
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_credits', JSON.stringify(credits));
-    } catch {}
-  }, [credits]);
-
-  // Saves an expense (payment voucher, PV) or a credit entry (credit voucher, CV).
-  const addExpense: AppContextType['addExpense'] = (e) => {
-    const isCredit = e.kind === 'credit';
-    const count = isCredit ? credits.length : expenses.length;
-    const voucherNo = `${isCredit ? 'CV' : 'PV'}-2026-${String(110 + count).padStart(4, '0')}`;
-    const record: Expense = { ...e, id: `${isCredit ? 'cr' : 'exp'}-${Date.now()}`, voucherNo, createdAt: new Date().toISOString() };
-    (isCredit ? setCredits : setExpenses)((prev) => [record, ...prev]);
-    showToast(isCredit ? 'Credit entry saved' : 'Expense saved', `${voucherNo} for ₱${e.total.toLocaleString()} · ${e.payee}.`);
-    return record;
-  };
-
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    const saved = localStorage.getItem('gb_notifications');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
-  });
-
-  // Compare state (Buyer role)
-  const [comparedVehicleIds, setComparedVehicleIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('gb_compare_ids');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [compareModalOpen, setCompareModalOpen] = useState(false);
-
-  // Filter state
-  const [filters, setFilters] = useState<FilterState>(defaultFilters);
-
-  // Sync to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_vehicles', JSON.stringify(vehicles));
-    } catch {}
-  }, [vehicles]);
-
-  useEffect(() => {
-    try {
-      if (currentUser) {
-        localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
-      } else {
-        localStorage.removeItem(USER_KEY);
-      }
-    } catch {}
-  }, [currentUser]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_applications', JSON.stringify(applications));
-    } catch {}
-  }, [applications]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_conversations', JSON.stringify(conversations));
-    } catch {}
-  }, [conversations]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_reports', JSON.stringify(reports));
-    } catch {}
-  }, [reports]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_notifications', JSON.stringify(notifications));
-    } catch {}
-  }, [notifications]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('gb_compare_ids', JSON.stringify(comparedVehicleIds));
-    } catch {}
-  }, [comparedVehicleIds]);
-
-  // Another tab (another portal) changed shared data: pick it up live.
-  useEffect(() => {
-    const sync: Record<string, (raw: string) => void> = {
-      gb_vehicles: (raw) => setVehicles((JSON.parse(raw) as Vehicle[]).map(normalizeVehicle)),
-      gb_applications: (raw) => setApplications(JSON.parse(raw)),
-      gb_conversations: (raw) => setConversations(JSON.parse(raw)),
-      gb_reports: (raw) => setReports(JSON.parse(raw)),
-      gb_notifications: (raw) => setNotifications(JSON.parse(raw)),
-      gb_commissions: (raw) => setCommissions((JSON.parse(raw) as Commission[]).map(normalizeCommission)),
-      gb_listing_requests: (raw) => setListingRequests(JSON.parse(raw)),
-      gb_expenses: (raw) => setExpenses(JSON.parse(raw)),
-      gb_credits: (raw) => setCredits(JSON.parse(raw)),
-      gb_quotations: (raw) => setQuotations(JSON.parse(raw)),
-      gb_leads: (raw) => setLeads(JSON.parse(raw)),
-    };
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key || !e.newValue || !sync[e.key]) return;
+    const p = (async () => {
       try {
-        sync[e.key](e.newValue);
-      } catch {}
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+        setData(await api<ServerState>('/state'));
+        setServerError(null);
+      } catch (e) {
+        setServerError(e instanceof ApiError ? e.message : 'Cannot reach the server.');
+      } finally {
+        setReady(true);
+      }
+    })();
+    loading.current = p;
+    await p;
+    loading.current = null;
   }, []);
 
-  const notify = (audience: 'client' | 'agent' | 'admin', title: string, message: string, linkTarget?: string, recipient?: string) => {
-    setNotifications((prev) => [
-      {
-        id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        audience,
-        recipient,
-        title,
-        message,
-        type: 'system',
-        linkTarget,
-        read: false,
-        createdAt: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
+  // Live updates: the server announces every change; each open portal refetches what it may see.
+  useEffect(() => {
+    refresh();
+    const events = new EventSource('/api/events');
+    let timer: number | undefined;
+    events.addEventListener('change', () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, 80);
+    });
+    events.onopen = () => refresh(); // catch up after a reconnect
+    return () => {
+      events.close();
+      window.clearTimeout(timer);
+    };
+  }, [refresh]);
+
+  const currentUser = data.me;
+
+  // Runs a server action: refreshes the data after it, toasts success, and turns refusals into an error toast.
+  const run = async <T,>(fn: () => Promise<T>, ok?: [string, string?], failTitle = 'Could not save'): Promise<T | undefined> => {
+    try {
+      const out = await fn();
+      await refresh();
+      if (ok) showToast(ok[0], ok[1]);
+      return out;
+    } catch (e) {
+      showToast(failTitle, e instanceof Error ? e.message : 'Please try again.', 'error');
+      if (e instanceof ApiError && e.status === 401) refresh();
+      return undefined;
+    }
   };
+  const done = (x: unknown) => x !== undefined;
 
   // Navigate handler with window scroll to top
   const navigateTo: AppContextType['navigateTo'] = (view, params) => {
@@ -566,872 +433,290 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     else apply('smooth');
   };
 
-  // Auth functions
-  const login = (email: string, role: 'buyer' | 'seller' | 'admin' = PORTAL) => {
-    const user: UserProfile = {
-      ...INITIAL_USER,
-      // Each email is its own client (leads, chats and applications are per client); the demo email keeps the seeded id.
-      id: email.trim().toLowerCase() === INITIAL_USER.email ? INITIAL_USER.id : `usr-${email.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-      email,
-      role,
-      name:
-        role === 'seller'
-          ? DEMO_AGENT
-          : email.trim().toLowerCase() === INITIAL_USER.email
-          ? INITIAL_USER.name
-          : email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Valued User',
-    };
-    setCurrentUser(user);
+  // ----- Auth -----
+  const afterSignIn = (name: string, title: string) => {
     setAuthModalOpen(false);
-    showToast('Signed In', `Welcome back, ${user.name}!`);
-
-    // Execute any pending action that requested authentication
-    setTimeout(() => {
-      executePendingActionIfAny();
-    }, 100);
-  };
-
-  const register = (name: string, email: string, phone: string) => {
-    const user: UserProfile = {
-      id: `usr-${Date.now()}`,
-      name,
-      email,
-      phone,
-      role: PORTAL,
-      address: {
-        street: '',
-        barangay: '',
-        city: 'Metro Manila',
-        province: 'Metro Manila',
-        region: 'NCR',
-        postalCode: '1000',
-        country: 'Philippines',
-      },
-      savedVehicleIds: [],
-      recentlyViewedIds: [],
-      memberSince: 'October 2026',
-    };
-    setCurrentUser(user);
-    setAuthModalOpen(false);
-    showToast('Account Created', `Welcome to Groom Broom, ${name}!`);
-    setTimeout(() => {
-      executePendingActionIfAny();
-    }, 100);
-  };
-
-  const logout = () => {
-    setCurrentUser(null);
-    setCurrentView(PORTAL === 'buyer' ? 'marketplace' : PORTAL);
-    showToast('Signed Out', 'You have been logged out securely.');
-  };
-
-  const switchRole = (role: 'buyer' | 'seller' | 'admin') => {
-    if (!currentUser) return;
-    setCurrentUser({ ...currentUser, role });
-    showToast('Switched Portal Role', `Now acting as ${role.toUpperCase()}`);
-    if (role === 'seller') {
-      navigateTo('seller', { sellerTab: 'dashboard' });
-    } else if (role === 'admin') {
-      navigateTo('admin', { adminTab: 'dashboard' });
-    } else {
-      navigateTo('marketplace');
-    }
-  };
-
-  // Resume intent after login
-  const executePendingActionIfAny = () => {
-    if (!pendingAction) return;
-    const { type, vehicleId } = pendingAction;
+    showToast(title, `Welcome, ${name}!`);
+    const action = pendingAction;
     setPendingAction(null);
-
-    if (type === 'apply') {
-      navigateTo('apply', { vehicleId });
-      showToast('Resuming Application', 'Continuing with your vehicle purchase interest application.');
-    } else if (type === 'save') {
-      toggleSaveVehicle(vehicleId);
-      navigateTo('vehicle_detail', { vehicleId });
-    } else if (type === 'message') {
-      const convId = startOrOpenConversation(vehicleId);
-      setActiveConversationId(convId);
-      navigateTo('account', { accountTab: 'messages' });
-      showToast('Conversation Opened', 'You can now chat directly with the agent.');
+    if (!action) return;
+    if (action.type === 'apply') navigateTo('apply', { vehicleId: action.vehicleId });
+    else if (action.type === 'save') {
+      toggleSave(action.vehicleId, true);
+      navigateTo('vehicle_detail', { vehicleId: action.vehicleId });
+    } else if (action.type === 'message') {
+      startOrOpenConversation(action.vehicleId).then((id) => {
+        if (!id) return;
+        setActiveConversationId(id);
+        navigateTo('account', { accountTab: 'messages' });
+      });
     }
   };
 
-  // Filter actions
-  const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+  const login = async (email: string, password: string) => {
+    try {
+      const user = await api<UserProfile>('/auth/login', { body: { email, password } });
+      await refresh();
+      afterSignIn(user.name, 'Signed in');
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : 'Could not sign in.';
+    }
   };
 
-  const resetFilters = () => {
-    setFilters(defaultFilters);
+  const register = async (name: string, email: string, phone: string, password: string) => {
+    try {
+      const user = await api<UserProfile>('/auth/register', { body: { name, email, phone, password } });
+      await refresh();
+      afterSignIn(user.name, 'Account created');
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : 'Could not create the account.';
+    }
   };
 
-  // Extract all unique brands from inventory
-  const availableBrands = useMemo(() => {
-    const brands = new Set(vehicles.map((v) => v.brand));
-    return ['all', ...Array.from(brands).sort()];
-  }, [vehicles]);
+  const logout = async () => {
+    try {
+      await api('/auth/logout', { body: {} });
+    } catch {}
+    await refresh();
+    setCurrentView(PORTAL === 'buyer' ? 'marketplace' : PORTAL);
+    showToast('Signed out', 'You have been signed out.');
+  };
 
-  // Compute filtered & sorted vehicles
-  const filteredVehicles = useMemo(() => {
-    return vehicles
-      .filter((v) => {
-        // If on deals page, require isDeal
-        if (currentView === 'deals' && !v.isDeal) return false;
+  const updateProfile: AppContextType['updateProfile'] = async (changes) =>
+    done(await run(() => api('/me', { method: 'PATCH', body: changes }), ['Profile saved', 'Your details were updated.']));
 
-        // Status check: regular users only see available/reserved
-        if (currentUser?.role !== 'admin' && (v.status === 'unpublished' || v.status === 'sold')) return false;
+  const changePassword = async (current: string, next: string) =>
+    done(await run(() => api('/me/password', { body: { current, next } }), ['Password changed', 'Use your new password next time you sign in.']));
 
-        // Search Query
-        if (filters.searchQuery.trim()) {
-          const q = filters.searchQuery.toLowerCase();
-          const matchTitle = v.title.toLowerCase().includes(q);
-          const matchBrand = v.brand.toLowerCase().includes(q);
-          const matchModel = v.model.toLowerCase().includes(q);
-          const matchLoc = v.location.toLowerCase().includes(q);
-          const matchCat = v.category.toLowerCase().includes(q);
-          if (!matchTitle && !matchBrand && !matchModel && !matchLoc && !matchCat) {
-            return false;
+  // ----- Browsing (filters stay in the browser) -----
+  const [comparedVehicleIds, setComparedVehicleIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('gb_compare_ids') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('gb_compare_ids', JSON.stringify(comparedVehicleIds));
+    } catch {}
+  }, [comparedVehicleIds]);
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterState>(defaultFilters);
+  const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => setFilters((prev) => ({ ...prev, [key]: value }));
+  const resetFilters = () => setFilters(defaultFilters);
+
+  const vehicles = data.vehicles;
+  const availableBrands = useMemo(() => ['all', ...Array.from(new Set(vehicles.map((v) => v.brand))).sort()], [vehicles]);
+
+  const filteredVehicles = useMemo(
+    () =>
+      vehicles
+        .filter((v) => {
+          if (currentView === 'deals' && !v.isDeal) return false;
+          // The marketplace lists active cars only, for every role.
+          if (v.status === 'unpublished' || v.status === 'sold') return false;
+          if (filters.searchQuery.trim()) {
+            const q = filters.searchQuery.toLowerCase();
+            if (![v.title, v.brand, v.model, v.location, v.category].some((s) => s.toLowerCase().includes(q))) return false;
           }
-        }
-
-        // Category
-        if (filters.category !== 'all' && v.category !== filters.category) return false;
-
-        // Brand
-        if (filters.brand !== 'all' && v.brand.toLowerCase() !== filters.brand.toLowerCase()) return false;
-
-        // Condition
-        if (filters.condition !== 'all' && v.condition !== filters.condition) return false;
-
-        // Transmission
-        if (filters.transmission !== 'all' && v.transmission !== filters.transmission) return false;
-
-        // Fuel
-        if (filters.fuel !== 'all' && v.fuel !== filters.fuel) return false;
-
-        // Price
-        if (v.price < filters.minPrice || v.price > filters.maxPrice) return false;
-
-        // Year
-        if (v.year < filters.minYear || v.year > filters.maxYear) return false;
-
-        // Location
-        if (filters.location !== 'all') {
-          if (!v.location.toLowerCase().includes(filters.location.toLowerCase()) &&
-              !v.province.toLowerCase().includes(filters.location.toLowerCase())) {
-            return false;
+          if (filters.category !== 'all' && v.category !== filters.category) return false;
+          if (filters.brand !== 'all' && v.brand.toLowerCase() !== filters.brand.toLowerCase()) return false;
+          if (filters.condition !== 'all' && v.condition !== filters.condition) return false;
+          if (filters.transmission !== 'all' && v.transmission !== filters.transmission) return false;
+          if (filters.fuel !== 'all' && v.fuel !== filters.fuel) return false;
+          if (v.price < filters.minPrice || v.price > filters.maxPrice) return false;
+          if (v.year < filters.minYear || v.year > filters.maxYear) return false;
+          if (filters.location !== 'all') {
+            const loc = filters.location.toLowerCase();
+            if (!v.location.toLowerCase().includes(loc) && !v.province.toLowerCase().includes(loc)) return false;
           }
-        }
+          return true;
+        })
+        .sort((a, b) => {
+          switch (filters.sortBy) {
+            case 'newest':
+              return b.year - a.year || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            case 'price_asc':
+              return a.price - b.price;
+            case 'price_desc':
+              return b.price - a.price;
+            case 'mileage_asc':
+              return a.mileage - b.mileage;
+            case 'mileage_desc':
+              return b.mileage - a.mileage;
+            default:
+              return (b.featured ? 1 : 0) - (a.featured ? 1 : 0) || b.viewsCount - a.viewsCount;
+          }
+        }),
+    [vehicles, filters, currentView]
+  );
 
-        return true;
-      })
-      .sort((a, b) => {
-        switch (filters.sortBy) {
-          case 'newest':
-            return b.year - a.year || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-          case 'price_asc':
-            return a.price - b.price;
-          case 'price_desc':
-            return b.price - a.price;
-          case 'mileage_asc':
-            return a.mileage - b.mileage;
-          case 'mileage_desc':
-            return b.mileage - a.mileage;
-          case 'recommended':
-          default:
-            return (b.featured ? 1 : 0) - (a.featured ? 1 : 0) || b.viewsCount - a.viewsCount;
-        }
-      });
-  }, [vehicles, filters, currentView, currentUser]);
-
-  // Saved vehicles
-  const isVehicleSaved = (id: string) => {
-    return !!currentUser?.savedVehicleIds.includes(id);
+  // Saved and recently viewed live on the client's account, so they follow them to any device.
+  const isVehicleSaved = (id: string) => !!currentUser?.savedVehicleIds?.includes(id);
+  const toggleSave = (id: string, forceSave = false) => {
+    if (!currentUser) return;
+    const saved = currentUser.savedVehicleIds?.includes(id);
+    if (saved && forceSave) return;
+    const savedVehicleIds = saved ? currentUser.savedVehicleIds.filter((v) => v !== id) : [...(currentUser.savedVehicleIds ?? []), id];
+    setData((d) => (d.me ? { ...d, me: { ...d.me, savedVehicleIds } } : d)); // show it right away
+    run(() => api('/me', { method: 'PATCH', body: { savedVehicleIds } }), saved ? ['Removed from saved'] : ['Saved', 'Find it under Saved Vehicles.']);
   };
-
   const toggleSaveVehicle = (id: string) => {
     if (!currentUser) {
       setPendingAction({ type: 'save', vehicleId: id });
       setAuthModalOpen(true);
       return;
     }
-
-    const saved = currentUser.savedVehicleIds.includes(id);
-    let updatedList: string[];
-    if (saved) {
-      updatedList = currentUser.savedVehicleIds.filter((vid) => vid !== id);
-      showToast('Removed from Saved', 'Vehicle removed from your saved garage.');
-    } else {
-      updatedList = [...currentUser.savedVehicleIds, id];
-      showToast('Saved to Garage', 'Vehicle added to your saved vehicles!');
-    }
-    setCurrentUser({ ...currentUser, savedVehicleIds: updatedList });
+    toggleSave(id);
   };
-
   const addRecentlyViewed = (id: string) => {
-    if (!currentUser) return;
-    const current = currentUser.recentlyViewedIds || [];
-    const filtered = current.filter((vid) => vid !== id);
-    const updated = [id, ...filtered].slice(0, 10);
-    setCurrentUser({ ...currentUser, recentlyViewedIds: updated });
+    if (!currentUser || currentUser.recentlyViewedIds?.[0] === id) return;
+    const recentlyViewedIds = [id, ...(currentUser.recentlyViewedIds ?? []).filter((v) => v !== id)].slice(0, 10);
+    setData((d) => (d.me ? { ...d, me: { ...d.me, recentlyViewedIds } } : d));
+    api('/me', { method: 'PATCH', body: { recentlyViewedIds } }).catch(() => {});
   };
 
-  // Compare Actions (Buyer Role)
   const toggleCompareVehicle = (id: string) => {
     if (comparedVehicleIds.includes(id)) {
       setComparedVehicleIds((prev) => prev.filter((vid) => vid !== id));
       showToast('Removed from Comparison', 'Vehicle removed from your compare dock.');
-    } else {
-      if (comparedVehicleIds.length >= 4) {
-        showToast('Limit Reached', 'You can compare up to 4 vehicles simultaneously.', 'info');
-        setCompareModalOpen(true);
-        return;
-      }
-      const v = vehicles.find((x) => x.id === id);
-      setComparedVehicleIds((prev) => [...prev, id]);
-      showToast(
-        'Added to Comparison',
-        `${v ? v.title : 'Vehicle'} added (${comparedVehicleIds.length + 1}/4). Click Compare Now to review.`,
-        'success'
-      );
+      return;
     }
+    if (comparedVehicleIds.length >= 4) {
+      showToast('Limit Reached', 'You can compare up to 4 vehicles simultaneously.', 'info');
+      setCompareModalOpen(true);
+      return;
+    }
+    const v = vehicles.find((x) => x.id === id);
+    setComparedVehicleIds((prev) => [...prev, id]);
+    showToast('Added to Comparison', `${v ? v.title : 'Vehicle'} added (${comparedVehicleIds.length + 1}/4). Click Compare Now to review.`);
   };
-
   const isInCompare = (id: string) => comparedVehicleIds.includes(id);
-
   const clearCompare = () => {
     setComparedVehicleIds([]);
     showToast('Comparison Cleared', 'All vehicles removed from comparison.');
   };
 
-  // Reports
-  const submitReport = (reportData: Omit<VehicleReport, 'id' | 'createdAt' | 'status'>) => {
-    const newReport: VehicleReport = {
-      ...reportData,
-      id: `rep-${Date.now()}`,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-    setReports((prev) => [newReport, ...prev]);
-    setReportModalVehicle(null);
-    showToast('Report Submitted', 'Thank you for keeping Groom Broom safe. Our team is reviewing this listing.');
+  const submitReport: AppContextType['submitReport'] = async (r) => {
+    const out = await run(() => api('/reports', { body: r }), ['Report sent', 'Thank you. Our team will review this listing.'], 'Could not send the report');
+    if (done(out)) setReportModalVehicle(null);
+    return done(out);
   };
 
-  // Applications
-  // ----- Client ownership (Open leads) -----
-  const ownerOf = (clientId: string) => leads.find((l) => l.clientId === clientId)?.agentName;
-
-  // A client's chats, open applications and not-yet-earned commissions follow their owner (or go back to the team).
-  const moveClient = (clientId: string, owner: string | undefined) => {
-    const name = owner ?? TEAM_NAME;
-    setConversations((prev) => prev.map((c) => (c.buyerId === clientId ? { ...c, sellerName: name, sellerId: owner ? agentSlug(owner) : 'team' } : c)));
-    const refs = applications.filter((a) => a.applicantId === clientId && a.status !== 'completed').map((a) => a.referenceNo);
-    setApplications((prev) =>
-      prev.map((a) => (a.applicantId === clientId && !['completed', 'declined', 'withdrawn'].includes(a.status) ? { ...a, sellerName: name } : a))
+  // ----- Applications -----
+  const createApplication: AppContextType['createApplication'] = async (input) => {
+    const app = await run(() => api<VehicleApplication>('/applications', { body: { ...input, ref: takeRef() } }), undefined, 'Could not send the application');
+    if (app) {
+      clearRef();
+      showToast('Application submitted', `Reference no. ${app.referenceNo}`);
+    }
+    return app;
+  };
+  const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note) =>
+    done(await run(() => api(`/applications/${id}/status`, { body: { status, note } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
+  const withdrawApplication = async (id: string) =>
+    done(await run(() => api(`/applications/${id}/status`, { body: { status: 'withdrawn' } }), ['Application withdrawn', 'Your application has been canceled.']));
+  const reviewDocument: AppContextType['reviewDocument'] = async (appId, i, approve, reason) =>
+    done(await run(() => api(`/applications/${appId}/documents/${i}/review`, { body: { approve, reason } })));
+  const attachDocumentForClient: AppContextType['attachDocumentForClient'] = async (appId, i, file) =>
+    done(
+      await run(async () => {
+        const up = await uploadFile(file, file.name, 'private');
+        return api(`/applications/${appId}/documents/${i}/file`, { body: { fileId: up.id } });
+      }, ['Document uploaded', 'It is now waiting for review.'], 'Could not upload')
     );
-    if (owner) setCommissions((prev) => prev.map((c) => (refs.includes(c.applicationRef) && !c.transactionCompleted ? { ...c, agentName: owner } : c)));
-  };
+  const recordPartialPayment: AppContextType['recordPartialPayment'] = (appId, amount, description, screenshot) =>
+    run(async () => {
+      const up = screenshot ? await uploadFile(screenshot, screenshot.name || 'payment.jpg', 'private') : undefined;
+      return api<PaymentReceipt>(`/applications/${appId}/payments`, { body: { amount, description, fileId: up?.id } });
+    }, undefined, 'Could not record the payment').then((r) => {
+      if (r) showToast('Payment confirmed', `Acknowledgement receipt ${r.arNo} was released.`);
+      return r;
+    });
 
-  // The client did something (first message, application, quotation request). New clients go to the agent whose
-  // link they came through, otherwise into the Open leads pool. Returns the owning agent, if any.
-  // Only a chat message starts the 24-hour reply clock: an agent can only answer in a chat.
-  const touchLead = (interest: string, isMessage: boolean): string | undefined => {
-    if (!currentUser || PORTAL !== 'buyer') return undefined;
-    const now = new Date().toISOString();
-    const existing = leads.find((l) => l.clientId === currentUser.id);
-    if (existing) {
-      try {
-        localStorage.removeItem('gb_ref_agent'); // already someone's client; the link does not move them
-      } catch {}
-      if (isMessage) setLeads((prev) => prev.map((l) => (l.id === existing.id ? { ...l, lastClientAt: now } : l)));
-      return existing.agentName;
-    }
-    let ref: string | null = null;
-    try {
-      ref = localStorage.getItem('gb_ref_agent');
-      localStorage.removeItem('gb_ref_agent'); // a link credits one client, not everyone who later uses this browser
-    } catch {}
-    const agent = ref && AGENTS.includes(ref) ? ref : undefined;
-    const lead: ClientLead = {
-      id: `lead-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      clientId: currentUser.id,
-      clientName: currentUser.name,
-      clientEmail: currentUser.email,
-      agentName: agent,
-      source: agent ? 'link' : 'pool',
-      createdAt: now,
-      pooledAt: agent ? undefined : now,
-      claimedAt: agent ? now : undefined,
-      interest,
-      lastClientAt: isMessage ? now : undefined,
-      history: [{ at: now, text: agent ? `Came through ${agent}'s link` : 'Entered Open leads' }],
-    };
-    setLeads((prev) => [lead, ...prev]);
-    if (agent) notify('agent', 'New client from your link', `${lead.clientName} contacted you about the ${interest}.`, 'leads', agent);
-    else notify('agent', 'New lead', `${lead.clientName} is asking about the ${interest}. Claim them in Open leads.`, 'leads');
-    return agent;
-  };
-
-  const claimLead = (clientId: string) => {
-    const me = currentUser?.name;
-    const lead = leads.find((l) => l.clientId === clientId);
-    if (!me || !lead) return;
-    if (lead.agentName) {
-      showToast('Already claimed', `${lead.clientName} is already ${lead.agentName === me ? 'your' : `${lead.agentName}'s`} client.`, 'error');
-      return;
-    }
-    const now = new Date().toISOString();
-    setLeads((prev) =>
-      prev.map((l) =>
-        l.id === lead.id ? { ...l, agentName: me, source: 'pool', claimedAt: now, escalatedAt: undefined, history: [...l.history, { at: now, text: `Claimed by ${me}` }] } : l
-      )
-    );
-    moveClient(clientId, me);
-    notify('admin', 'Lead claimed', `${me} claimed ${lead.clientName} (${lead.interest}).`, 'leads');
-    showToast('Client claimed', `${lead.clientName} is now your client. Their chats are in Client Chats.`);
-  };
-
-  // Admin: give a client to an agent, or put them back in Open leads (null).
-  const assignLead = (clientId: string, agentName: string | null, reason?: string) => {
-    const lead = leads.find((l) => l.clientId === clientId);
-    if (!lead || (lead.agentName ?? null) === agentName) return;
-    const now = new Date().toISOString();
-    const text = agentName ? `Assigned to ${agentName} by the admin` : reason || 'Returned to Open leads by the admin';
-    setLeads((prev) =>
-      prev.map((l) =>
-        l.id === lead.id
-          ? {
-              ...l,
-              agentName: agentName ?? undefined,
-              source: agentName ? 'admin' : 'pool',
-              claimedAt: agentName ? now : undefined,
-              pooledAt: agentName ? l.pooledAt : now,
-              escalatedAt: undefined,
-              history: [...l.history, { at: now, text }],
-            }
-          : l
-      )
-    );
-    moveClient(clientId, agentName ?? undefined);
-    if (lead.agentName) notify('agent', 'Client reassigned', `${lead.clientName} is no longer your client. ${text}.`, 'leads', lead.agentName);
-    if (agentName) notify('agent', 'New client assigned', `${lead.clientName} (${lead.interest}) is now your client.`, 'leads', agentName);
-    else notify('agent', 'New lead', `${lead.clientName} is back in Open leads (${lead.interest}).`, 'leads');
-    if (!reason) showToast(agentName ? 'Client reassigned' : 'Back in Open leads', agentName ? `${lead.clientName} now belongs to ${agentName}.` : `${lead.clientName} can be claimed by any agent.`);
-  };
-
-  // The 2-hour and 24-hour rules, checked every minute.
-  // ponytail: runs in every open tab of the demo; move to a scheduled server job with the backend.
-  useEffect(() => {
-    const check = () => {
-      const now = Date.now();
-      leads.forEach((l) => {
-        if (shouldRelease(l, now)) {
-          assignLead(l.clientId, null, `No reply from ${l.agentName} within 24 hours`);
-          notify('admin', 'Client released', `${l.clientName} waited 24 hours for ${l.agentName} and is back in Open leads.`, 'leads');
-        } else if (shouldAlertUnclaimed(l, now)) {
-          setLeads((prev) => prev.map((x) => (x.id === l.id ? { ...x, escalatedAt: new Date().toISOString() } : x)));
-          notify('admin', 'Lead waiting', `${l.clientName} has been in Open leads for over 2 hours (${l.interest}).`, 'leads');
-        }
-      });
-    };
-    check();
-    const id = window.setInterval(check, 60_000);
-    return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, applications]);
-
-  const createApplication = (
-    appData: Omit<VehicleApplication, 'id' | 'referenceNo' | 'submittedAt' | 'status'>
-  ): VehicleApplication => {
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const owner = touchLead(appData.vehicleTitle, false);
-    const newApp: VehicleApplication = {
-      ...appData,
-      sellerId: owner ? agentSlug(owner) : 'team',
-      sellerName: owner ?? TEAM_NAME,
-      id: `app-${Date.now()}`,
-      referenceNo: `GB-2026-${randomSuffix}`,
-      status: 'submitted',
-      submittedAt: new Date().toISOString(),
-    };
-
-    setApplications((prev) => [newApp, ...prev]);
-
-    notify('client', 'Application received', `Your application ${newApp.referenceNo} for ${newApp.vehicleTitle} is with the admin team for review.`, 'applications');
-    if (owner) notify('agent', 'Your client applied', `${newApp.applicantName} applied for the ${newApp.vehicleTitle} (${newApp.purchaseMethod}).`, 'messages', owner);
-    notify('admin', 'Application to review', `${newApp.referenceNo}: ${newApp.applicantName} applied for the ${newApp.vehicleTitle}.`, 'applications');
-
-    showToast('Application Submitted', `Reference No: ${newApp.referenceNo}`);
-    return newApp;
-  };
-
-  const updateApplicationStatus = (id: string, status: ApplicationStatus, sellerNotes?: string) => {
-    const app = applications.find((a) => a.id === id);
-    if (!app) return;
-
-    // Financing can only be approved once every document has been approved.
-    if (status === 'approved' && app.purchaseMethod === 'financing') {
-      const docs = app.documents || [];
-      if (!docs.length || docs.some((d) => d.status !== 'approved')) {
-        showToast('Documents not approved yet', 'Approve every financing document before approving this application.', 'error');
-        return;
-      }
-    }
-
-    setApplications((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status, sellerNotes: sellerNotes !== undefined ? sellerNotes : a.sellerNotes } : a))
-    );
-
-    const setStatusOf = (vehicleStatus: VehicleStatus) =>
-      setVehicles((prev) => prev.map((v) => (v.id === app.vehicleId ? { ...v, status: vehicleStatus } : v)));
-
-    if (status === 'approved') {
-      // Rule: an approved application reserves the vehicle automatically.
-      setStatusOf('reserved');
-      if (!commissions.some((c) => c.applicationRef === app.referenceNo)) {
-        const amount = Math.round(app.vehiclePrice * COMMISSION_RATE);
-        const agent = ownerOf(app.applicantId) ?? app.sellerName;
-        setCommissions((prev) => [
-          {
-            id: `com-${Date.now()}`,
-            agentName: agent,
-            applicationRef: app.referenceNo,
-            vehicleTitle: app.vehicleTitle,
-            clientName: app.applicantName,
-            salePrice: app.vehiclePrice,
-            rate: COMMISSION_RATE,
-            amount,
-            status: 'receivable',
-            transactionCompleted: false,
-            createdAt: new Date().toISOString(),
-          },
-          ...prev,
-        ]);
-        notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It becomes payable once the transaction is complete.`, 'commissions', agent);
-      }
-      notify('client', 'Application approved', `${app.referenceNo} was approved. The ${app.vehicleTitle} is now reserved for you.`, 'applications');
-    } else if (status === 'completed') {
-      setStatusOf('sold');
-      // The commission goes to whoever owns the client when the sale completes.
-      const owner = ownerOf(app.applicantId);
-      setCommissions((prev) =>
-        prev.map((c) => (c.applicationRef === app.referenceNo ? { ...c, agentName: owner ?? c.agentName, transactionCompleted: true, completedAt: new Date().toISOString() } : c))
-      );
-      notify('agent', 'Sale completed', `The ${app.vehicleTitle} sale to ${app.applicantName} is complete. Your commission can now be approved for payout.`, 'commissions', owner ?? app.sellerName);
-      notify('client', 'Purchase completed', `The ${app.vehicleTitle} has been released to you. Thank you for choosing Broom Broom.`, 'applications');
-    } else if (status === 'declined' || status === 'withdrawn') {
-      if (app.status === 'approved') setStatusOf('available');
-      setCommissions((prev) => prev.filter((c) => !(c.applicationRef === app.referenceNo && c.status === 'receivable')));
-      if (status === 'declined') {
-        notify('client', 'Application declined', `${app.referenceNo} was declined.${sellerNotes ? ` Reason: ${sellerNotes}` : ''}`, 'applications');
-      }
-    } else {
-      notify('client', 'Application update', `${app.referenceNo} is now ${status.replace('_', ' ')}.`, 'applications');
-    }
-    showToast('Application updated', `${app.referenceNo} is now ${status.replace('_', ' ')}.`);
-  };
-
-  // Financing documents: approve each one, or reject it with the reason the client will read.
-  const reviewDocument = (appId: string, docIndex: number, approve: boolean, reason?: string) => {
-    const app = applications.find((a) => a.id === appId);
-    if (!app?.documents?.[docIndex]) return;
-    if (!approve && !reason?.trim()) {
-      showToast('Add a reason', 'Tell the client why this document was rejected.', 'error');
-      return;
-    }
-    const doc: ApplicationDocument = approve
-      ? { ...app.documents[docIndex], status: 'approved', reason: undefined }
-      : { ...app.documents[docIndex], status: 'rejected', reason: reason!.trim() };
-    const documents = app.documents.map((d, i) => (i === docIndex ? doc : d));
-    setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, documents } : a)));
-    if (!approve) {
-      notify('client', 'Document needs attention', `${doc.label} for ${app.referenceNo} was not accepted: ${doc.reason}`, 'applications');
-    } else if (documents.every((d) => d.status === 'approved')) {
-      notify('client', 'Documents approved', `All financing documents for ${app.referenceNo} were approved.`, 'applications');
-    }
-  };
-
-  // A confirmed partial payment releases the next acknowledgement receipt (AR) to the client.
-  const recordPartialPayment = (appId: string, amount: number, description: string, attachment?: { image: string; name: string }) => {
-    const app = applications.find((a) => a.id === appId);
-    if (!app || !(amount > 0) || !description.trim()) return undefined;
-    const receipt: PaymentReceipt = {
-      arNo: nextArNo(applications),
-      date: new Date().toISOString(),
-      description: description.trim(),
-      amount,
-      receivedBy: currentUser?.name || 'Admin',
-      attachment: attachment?.image,
-      attachmentName: attachment?.name,
-    };
-    setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, payments: [...(a.payments ?? []), receipt] } : a)));
-    notify('client', 'Payment received', `Your payment of ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} for ${app.referenceNo} was confirmed. Acknowledgement receipt ${receipt.arNo} is ready.`, 'applications');
-    showToast('Payment confirmed', `Acknowledgement receipt ${receipt.arNo} was released to ${app.applicantName}.`);
-    return receipt;
-  };
-
-  // The client handed a document to the admin, who files it on their application; it then waits for review like any other.
-  const attachDocumentForClient = (appId: string, docIndex: number, fileName: string) => {
-    const app = applications.find((a) => a.id === appId);
-    const doc = app?.documents?.[docIndex];
-    if (!app || !doc) return;
-    const documents = app.documents!.map((d, i) => (i === docIndex ? { ...d, fileName, status: 'pending' as const, reason: undefined, addedByAdmin: true } : d));
-    setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, documents } : a)));
-    notify('client', 'Document received', `The admin team added your ${doc.label} to ${app.referenceNo}.`, 'applications');
-    showToast('Document uploaded', `${doc.label} was added to ${app.referenceNo} for review.`);
-  };
-
-  // Quotations: the client asks for one on a listing; the admin fills in the unit and the numbers and sends it.
-  const requestQuotation: AppContextType['requestQuotation'] = (vehicleId, req) => {
-    const v = vehicles.find((x) => x.id === vehicleId);
-    if (!v || !currentUser) return undefined;
-    touchLead(v.title, false);
-    const a = currentUser.address;
-    const q: Quotation = {
-      id: `qt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      status: 'requested',
-      requestedAt: new Date().toISOString(),
-      vehicleId: v.id,
-      vehicleTitle: v.title,
-      vehicleImage: v.images[0],
-      clientId: currentUser.id,
-      clientName: currentUser.name,
-      clientEmail: currentUser.email,
-      clientPhone: currentUser.phone,
-      clientAddress: [a?.street, a?.barangay, a?.city, a?.province].filter(Boolean).join(', ') + (a?.postalCode ? ` ${a.postalCode}` : ''),
-      method: req.method,
-      clientNote: req.note.trim() || undefined,
-      unitType: `${v.year} ${v.brand} ${v.model}`,
-      variant: '',
-      engineNo: '',
-      chassisNo: '',
-      color: v.color,
-      transmission: v.transmission,
-      unitPrice: v.price,
-      downPayment: req.method === 'financing' ? req.downPayment : 0,
-      termMonths: req.termMonths,
-      annualRate: DEFAULT_RATE,
-      insurance: 0,
-      registration: 0,
-      chattelMortgage: 0,
-      remarks: '',
-    };
-    setQuotations((prev) => [q, ...prev]);
-    notify('admin', 'Quotation requested', `${q.clientName} asked for a ${q.method} quotation on the ${q.vehicleTitle}.`, 'quotations');
-    showToast('Quotation requested', 'The admin team will send it to your account. You can also see it under My Quotations.');
+  // ----- Quotations -----
+  const requestQuotation: AppContextType['requestQuotation'] = async (vehicleId, req) => {
+    const q = await run(() => api<Quotation>('/quotations', { body: { vehicleId, ...req, ref: takeRef() } }), ['Quotation requested', 'The admin team will send it to My Quotations.'], 'Could not request a quotation');
+    if (q) clearRef();
     return q;
   };
+  const saveQuotation: AppContextType['saveQuotation'] = (id, changes, send) =>
+    run(() => api<Quotation>(`/quotations/${id}`, { method: 'PATCH', body: { changes, send } }), send ? ['Quotation sent', 'The client can see it in My Quotations.'] : ['Draft saved', 'The client will see it once you send it.']);
 
-  const saveQuotation: AppContextType['saveQuotation'] = (id, changes, send) => {
-    const q = quotations.find((x) => x.id === id);
-    if (!q) return undefined;
-    const updated: Quotation = { ...q, ...changes };
-    if (send) {
-      updated.quoteNo = q.quoteNo ?? nextQuoteNo(quotations);
-      updated.status = q.status === 'accepted' ? 'accepted' : 'sent';
-      updated.sentAt = new Date().toISOString();
-      updated.validUntil = changes.validUntil || q.validUntil || daysFromToday(DEFAULT_VALID_DAYS);
-      updated.preparedBy = currentUser?.name || 'Admin';
-    }
-    setQuotations((prev) => prev.map((x) => (x.id === id ? updated : x)));
-    if (send) {
-      notify('client', q.quoteNo ? 'Quotation updated' : 'Quotation ready', `Quotation ${updated.quoteNo} for the ${q.vehicleTitle} is ready. It is valid until ${new Date(`${updated.validUntil}T00:00:00`).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}.`, 'quotations');
-      showToast(q.quoteNo ? 'Quotation updated' : 'Quotation sent', `${updated.quoteNo} was sent to ${q.clientName}.`);
-    } else {
-      showToast('Draft saved', 'The client will see it once you send it.');
-    }
-    return updated;
-  };
-
-  const markQuotationAccepted = (id: string, applicationRef: string) => {
-    const q = quotations.find((x) => x.id === id);
-    if (!q) return;
-    setQuotations((prev) => prev.map((x) => (x.id === id ? { ...x, status: 'accepted', applicationRef } : x)));
-    notify('admin', 'Quotation accepted', `${q.clientName} applied for the ${q.vehicleTitle} using ${q.quoteNo} (${applicationRef}).`, 'applications');
-  };
-
-  // Commission stages: receivable -> payable (admin approval, sale must be complete) -> paid (cash + proof).
-  const approveCommission = (id: string) => {
-    const c = commissions.find((x) => x.id === id);
-    if (!c || c.status !== 'receivable') return;
-    if (!c.transactionCompleted) {
-      showToast('Transaction not complete', 'A commission can only be approved after the sale is completed.', 'error');
-      return;
-    }
-    setCommissions((prev) => prev.map((x) => (x.id === id ? { ...x, status: 'payable', approvedAt: new Date().toISOString() } : x)));
-    notify('agent', 'Commission payable', `₱${c.amount.toLocaleString()} for the ${c.vehicleTitle} was approved and is awaiting cash transfer.`, 'commissions', c.agentName);
-    showToast('Commission approved', 'It is now payable.');
-  };
-
-  const payCommission = (id: string, proofFileName: string, proofImage?: string) => {
-    const c = commissions.find((x) => x.id === id);
-    if (!c || c.status !== 'payable') return;
-    const receiptNo = `BB-OR-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
-    setCommissions((prev) =>
-      prev.map((x) => (x.id === id ? { ...x, status: 'paid', proofFileName, proofImage, receiptNo, paidAt: new Date().toISOString() } : x))
-    );
-    notify('agent', 'Cash transferred', `₱${c.amount.toLocaleString()} for the ${c.vehicleTitle} was sent. Your receipt ${receiptNo} is ready.`, 'commissions', c.agentName);
-    showToast('Commission paid', 'The agent has been notified and can download the receipt.');
-  };
-
-  // Listing requests: agents ask, the admin decides.
-  const submitListingRequest: AppContextType['submitListingRequest'] = (req) => {
-    setListingRequests((prev) => [
-      { ...req, id: `req-${Date.now()}`, agentName: currentUser?.name || DEMO_AGENT, status: 'pending', createdAt: new Date().toISOString() },
-      ...prev,
-    ]);
-    notify('admin', 'Listing request', `${currentUser?.name || DEMO_AGENT} asked to ${req.type} "${req.vehicleTitle}".`, 'approvals');
-    showToast('Request sent', 'The admin team will review it.');
-  };
-
-  const decideListingRequest = (id: string, approve: boolean, reason?: string) => {
-    const req = listingRequests.find((r) => r.id === id);
-    if (!req || req.status !== 'pending') return;
-    if (!approve && !reason?.trim()) {
-      showToast('Add a reason', 'Tell the agent why the request was rejected.', 'error');
-      return;
-    }
-    if (approve) {
-      if (req.type === 'add') createVehicleListing(req.changes || {});
-      if (req.type === 'edit' && req.vehicleId) updateVehicleListing(req.vehicleId, req.changes || {});
-      if (req.type === 'remove' && req.vehicleId) deleteVehicleListing(req.vehicleId);
-    }
-    setListingRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: approve ? 'approved' : 'rejected', reason: reason?.trim(), decidedAt: new Date().toISOString() } : r))
-    );
-    notify(
-      'agent',
-      approve ? 'Listing request approved' : 'Listing request rejected',
-      approve ? `Your ${req.type} request for "${req.vehicleTitle}" was applied.` : `Your ${req.type} request for "${req.vehicleTitle}" was rejected: ${reason!.trim()}`,
-      'vehicles',
-      req.agentName
-    );
-  };
-
-  // Only the admin console calls this (the agent portal has no status controls).
-  const setVehicleStatus = (id: string, status: VehicleStatus) => {
-    setVehicles((prev) => prev.map((v) => (v.id === id ? { ...v, status } : v)));
-    const label = { available: 'approved', reserved: 'reserved', sold: 'released', unpublished: 'disapproved' }[status];
-    showToast('Listing status updated', `The listing is now ${label}.`);
-  };
-
-  const withdrawApplication = (id: string) => {
-    updateApplicationStatus(id, 'withdrawn');
-    showToast('Application Withdrawn', 'Your application has been canceled.');
-  };
-
-  // Messaging
-  const startOrOpenConversation = (vehicleId: string): string => {
-    const vehicle = vehicles.find((v) => v.id === vehicleId);
-    if (!vehicle) return '';
-
-    const buyerId = currentUser?.id || 'usr-guest';
-    const buyerName = currentUser?.name || 'Guest User';
-
-    const existing = conversations.find(
-      (c) => c.vehicleId === vehicleId && c.buyerId === buyerId
+  // ----- Commissions -----
+  const approveCommission = async (id: string) => done(await run(() => api(`/commissions/${id}/approve`, { body: {} }), ['Commission approved', 'It is now payable.']));
+  const payCommission = async (id: string, proof: File) =>
+    done(
+      await run(async () => {
+        const up = await uploadFile(proof, proof.name, 'private');
+        return api(`/commissions/${id}/pay`, { body: { fileId: up.id } });
+      }, ['Commission paid', 'The agent was notified and can download the receipt.'])
     );
 
-    if (existing) {
-      return existing.id;
-    }
-
-    const owner = touchLead(vehicle.title, true);
-    const newConv: Conversation = {
-      id: `conv-${Date.now()}`,
-      vehicleId: vehicle.id,
-      vehicleTitle: vehicle.title,
-      vehiclePrice: vehicle.price,
-      vehicleImage: vehicle.images[0] || generateVehicleSvg('car', '#111827', vehicle.model),
-      buyerId,
-      buyerName,
-      sellerId: owner ? agentSlug(owner) : 'team',
-      sellerName: owner ?? TEAM_NAME,
-      lastMessage: `Inquiry regarding ${vehicle.title}`,
-      updatedAt: new Date().toISOString(),
-      unreadBuyer: 0,
-      unreadSeller: 1,
-      messages: [
-        {
-          id: `msg-${Date.now()}`,
-          senderId: buyerId,
-          senderName: buyerName,
-          text: `Hi${owner ? ` ${owner}` : ''}, I am interested in the ${vehicle.title}. Is it still available for a viewing?`,
-          timestamp: new Date().toISOString(),
-          isSeller: false,
-        },
-      ],
-    };
-
-    setConversations((prev) => [newConv, ...prev]);
-    return newConv.id;
+  // ----- Chat -----
+  const startOrOpenConversation = async (vehicleId: string) => {
+    const existing = data.conversations?.find((c) => c.vehicleId === vehicleId && c.buyerId === currentUser?.id);
+    if (existing) return existing.id;
+    const conv = await run(() => api<Conversation>('/conversations', { body: { vehicleId, ref: takeRef() } }), undefined, 'Could not start the chat');
+    if (conv) clearRef();
+    return conv?.id ?? '';
   };
-
-  const sendMessage = (conversationId: string, text: string) => {
-    if (!text.trim()) return;
-    // Track who is waiting on whom for the 24-hour reply rule.
-    const conv = conversations.find((c) => c.id === conversationId);
-    if (conv) {
-      const now = new Date().toISOString();
-      const fromAgent = currentUser?.role === 'seller';
-      setLeads((prev) =>
-        prev.map((l) =>
-          l.clientId !== conv.buyerId ? l : fromAgent ? (l.agentName === currentUser?.name ? { ...l, lastAgentAt: now } : l) : { ...l, lastClientAt: now }
-        )
-      );
-    }
-
-    setConversations((prev) =>
-      prev.map((conv) => {
-        if (conv.id === conversationId) {
-          const isSellerRole = currentUser?.role === 'seller';
-          const newMsg = {
-            id: `msg-${Date.now()}`,
-            senderId: currentUser?.id || 'usr-buyer-01',
-            senderName: currentUser?.name || 'User',
-            text: text.trim(),
-            timestamp: new Date().toISOString(),
-            isSeller: isSellerRole,
-          };
-
-          return {
-            ...conv,
-            lastMessage: text.trim(),
-            updatedAt: new Date().toISOString(),
-            unreadBuyer: isSellerRole ? conv.unreadBuyer + 1 : 0,
-            unreadSeller: !isSellerRole ? conv.unreadSeller + 1 : 0,
-            messages: [...conv.messages, newMsg],
-          };
-        }
-        return conv;
-      })
-    );
-  };
-
+  const sendMessage = async (conversationId: string, text: string) =>
+    done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { text } }), undefined, 'Message not sent'));
   const markConversationRead = (conversationId: string) => {
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id === conversationId) {
-          return {
-            ...c,
-            unreadBuyer: currentUser?.role === 'seller' ? c.unreadBuyer : 0,
-            unreadSeller: currentUser?.role === 'seller' ? 0 : c.unreadSeller,
-          };
-        }
-        return c;
-      })
-    );
+    api(`/conversations/${conversationId}/read`, { body: {} }).catch(() => {});
   };
 
-  // Notifications
+  // ----- Notifications -----
   const markNotificationRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+    setData((d) => ({ ...d, notifications: d.notifications?.map((n) => (n.id === id ? { ...n, read: true } : n)) }));
+    api(`/notifications/${id}/read`, { body: {} }).catch(() => {});
   };
-
   const clearAllNotifications = () => {
-    setNotifications([]);
-    showToast('Notifications Cleared', 'All notifications have been removed.');
+    run(() => api('/notifications/clear', { body: {} }), ['Notifications cleared']);
   };
 
-  // Seller Listing Management
-  const createVehicleListing = (vehicleData: Partial<Vehicle>): Vehicle => {
-    const id = `veh-${Date.now()}`;
-    const category = vehicleData.category || 'cars';
-    const newVehicle: Vehicle = {
-      id,
-      title: vehicleData.title || 'Untitled Vehicle',
-      brand: vehicleData.brand || 'Custom Brand',
-      model: vehicleData.model || 'Model',
-      year: vehicleData.year || 2024,
-      category,
-      price: vehicleData.price || 500000,
-      mileage: vehicleData.mileage || 0,
-      condition: vehicleData.condition || 'Surplus / 2nd hand',
-      transmission: vehicleData.transmission || 'Automatic',
-      fuel: vehicleData.fuel || 'Gasoline',
-      bodyType: vehicleData.bodyType || 'Sedan',
-      color: vehicleData.color || 'Jet Black',
-      drivetrain: vehicleData.drivetrain || 'Front-Wheel Drive',
-      location: vehicleData.location || 'Philippines',
-      province: vehicleData.province || 'Metro Manila',
-      region: vehicleData.region || 'NCR',
-      sellerId: 'team',
-      sellerName: TEAM_NAME,
-      sellerLocation: 'Metro Manila, Philippines',
-      sellerRating: 5.0,
-      sellerReviewCount: 1,
-      sellerVerified: true,
-      description: vehicleData.description || '',
-      images:
-        vehicleData.images && vehicleData.images.length > 0
-          ? vehicleData.images
-          : [generateVehicleSvg(category === 'cars' ? 'car' : category === 'motorcycles' ? 'bike' : 'car', '#111827', vehicleData.title || 'Vehicle')],
-      videos: vehicleData.videos,
-      specs: vehicleData.specs || {
-        engine: 'Standard Engine',
-        horsepower: 'Standard HP',
-        seating: '5 Passengers',
-        doors: '4 Doors',
-      },
-      financingAvailable: vehicleData.financingAvailable ?? true,
-      minMonthlyPayment: Math.round((vehicleData.price || 500000) * 0.018),
-      status: 'available',
-      featured: false,
-      createdAt: new Date().toISOString(),
-      viewsCount: 1,
-    };
+  // ----- Listings -----
+  const createVehicleListing = (v: Partial<Vehicle>) =>
+    run(() => api<Vehicle>('/vehicles', { body: v }), v.status === 'unpublished' ? ['Listing saved', 'It is hidden until you approve it.'] : ['Listing published', `${v.title} is now on the marketplace.`]);
+  const updateVehicleListing = async (id: string, updates: Partial<Vehicle>) =>
+    done(await run(() => api(`/vehicles/${id}`, { method: 'PATCH', body: updates }), ['Listing updated']));
+  const deleteVehicleListing = async (id: string) => done(await run(() => api(`/vehicles/${id}`, { method: 'DELETE' }), ['Listing deleted', 'It was removed from the marketplace.']));
+  const setVehicleStatus = async (id: string, status: VehicleStatus) => {
+    const label = { available: 'approved', reserved: 'reserved', sold: 'released', unpublished: 'disapproved' }[status];
+    return done(await run(() => api(`/vehicles/${id}/status`, { body: { status } }), ['Listing status updated', `The listing is now ${label}.`]));
+  };
+  const submitListingRequest: AppContextType['submitListingRequest'] = async (req) =>
+    done(await run(() => api('/listing-requests', { body: req }), ['Request sent', 'The admin team will review it.']));
+  const decideListingRequest = async (id: string, approve: boolean, reason?: string) =>
+    done(await run(() => api(`/listing-requests/${id}/decide`, { body: { approve, reason } }), [approve ? 'Request approved' : 'Request rejected', 'The agent was notified.']));
+  const adminResolveReport = async (reportId: string, action: 'dismiss' | 'unpublish_vehicle') =>
+    done(await run(() => api(`/reports/${reportId}/resolve`, { body: { action } }), ['Report resolved', action === 'dismiss' ? 'Dismissed.' : 'The listing was hidden.']));
 
-    setVehicles((prev) => [newVehicle, ...prev]);
-    showToast('Listing Published', `${newVehicle.title} is now active on the marketplace!`);
-    return newVehicle;
+  // ----- Leads -----
+  const claimLead = async (clientId: string) =>
+    done(await run(() => api(`/leads/${encodeURIComponent(clientId)}/claim`, { body: {} }), ['Client claimed', 'Their chats are now in Client Chats.'], 'Could not claim'));
+  const assignLead = async (clientId: string, agentName: string | null) =>
+    done(await run(() => api(`/leads/${encodeURIComponent(clientId)}/assign`, { body: { agentName } }), agentName ? ['Client reassigned', `Now with ${agentName}.`] : ['Back in Open leads', 'Any agent can claim them.']));
+
+  // ----- Accounting -----
+  const addExpense: AppContextType['addExpense'] = async (v) => {
+    const e = await run(() => api<Expense>('/vouchers', { body: v }));
+    if (e) showToast(e.kind === 'credit' ? 'Credit entry saved' : 'Expense saved', `${e.voucherNo} for ₱${e.total.toLocaleString()} · ${e.payee}.`);
+    return e;
   };
 
-  const updateVehicleListing = (id: string, updates: Partial<Vehicle>) => {
-    setVehicles((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, ...updates } : v))
-    );
-    showToast('Listing Updated', 'Vehicle details updated successfully.');
-  };
-
-  const deleteVehicleListing = (id: string) => {
-    setVehicles((prev) => prev.filter((v) => v.id !== id));
-    showToast('Listing Deleted', 'Vehicle removed from the marketplace.');
-  };
-
-  // Admin Management
-  const adminApproveVehicle = (id: string) => {
-    updateVehicleListing(id, { status: 'available' });
-    showToast('Listing Approved', 'Vehicle is approved and visible to clients.');
-  };
-
-  const adminUnpublishVehicle = (id: string) => {
-    updateVehicleListing(id, { status: 'unpublished' });
-    showToast('Listing Unpublished', 'Vehicle hidden from marketplace.');
-  };
-
-  const adminDeleteVehicle = (id: string) => {
-    deleteVehicleListing(id);
-  };
-
-  const adminResolveReport = (reportId: string, action: 'dismiss' | 'unpublish_vehicle') => {
-    const report = reports.find((r) => r.id === reportId);
-    if (!report) return;
-
-    if (action === 'unpublish_vehicle') {
-      adminUnpublishVehicle(report.vehicleId);
-    }
-
-    setReports((prev) =>
-      prev.map((r) =>
-        r.id === reportId ? { ...r, status: action === 'dismiss' ? 'dismissed' : 'resolved' } : r
-      )
-    );
-    showToast('Report Resolved', `Action executed: ${action.replace('_', ' ')}.`);
-  };
+  // ----- Accounts -----
+  const createAccount: AppContextType['createAccount'] = async (a) =>
+    done(await run(() => api('/users', { body: a }), ['Account created', `${a.name} can now sign in.`], 'Could not create the account'));
+  const resetPassword = async (userId: string, password: string) =>
+    done(await run(() => api(`/users/${userId}/password`, { body: { password } }), ['Password reset', 'Share the new password with them privately.']));
+  const setAccountActive = async (userId: string, active: boolean) =>
+    done(await run(() => api(`/users/${userId}/active`, { body: { active } }), [active ? 'Account enabled' : 'Account disabled']));
 
   return (
     <AppContext.Provider
@@ -1443,6 +728,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sellerTab,
         adminTab,
         navigateTo,
+        selectedQuotationId,
+
+        ready,
+        serverError,
+        refresh,
 
         authModalOpen,
         setAuthModalOpen,
@@ -1454,24 +744,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dismissToast,
 
         vehicles,
-        guides,
-        applications,
-        conversations,
+        guides: INITIAL_GUIDES,
+        applications: data.applications ?? [],
+        conversations: data.conversations ?? [],
         activeConversationId,
         setActiveConversationId,
-        reports,
-        notifications,
+        reports: data.reports ?? [],
+        commissions: data.commissions ?? [],
+        listingRequests: data.listingRequests ?? [],
+        expenses: data.expenses ?? [],
+        credits: data.credits ?? [],
+        quotations: data.quotations ?? [],
+        leads: data.leads ?? [],
+        notifications: data.notifications ?? [],
+        agents: data.agents ?? [],
+        accounts: data.users ?? [],
+        myAgent: data.myAgent ?? null,
 
         currentUser,
         isAuthenticated: !!currentUser,
         login,
         register,
         logout,
-        switchRole,
+        updateProfile,
+        changePassword,
 
         pendingAction,
         setPendingAction,
-        executePendingActionIfAny,
 
         filters,
         setFilters,
@@ -1495,6 +794,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         createApplication,
         updateApplicationStatus,
         withdrawApplication,
+        reviewDocument,
+        attachDocumentForClient,
+        recordPartialPayment,
+
+        requestQuotation,
+        saveQuotation,
+
+        approveCommission,
+        payCommission,
 
         startOrOpenConversation,
         sendMessage,
@@ -1506,32 +814,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         createVehicleListing,
         updateVehicleListing,
         deleteVehicleListing,
-
-        adminApproveVehicle,
-        adminUnpublishVehicle,
-        adminDeleteVehicle,
-        adminResolveReport,
-        commissions,
-        approveCommission,
-        payCommission,
-        recordPartialPayment,
-        attachDocumentForClient,
-        listingRequests,
-        expenses,
-        quotations,
-        requestQuotation,
-        leads,
-        claimLead,
-        assignLead,
-        saveQuotation,
-        markQuotationAccepted,
-        selectedQuotationId,
-        addExpense,
-        credits,
+        setVehicleStatus,
         submitListingRequest,
         decideListingRequest,
-        reviewDocument,
-        setVehicleStatus,
+        adminResolveReport,
+
+        claimLead,
+        assignLead,
+
+        addExpense,
+
+        createAccount,
+        resetPassword,
+        setAccountActive,
       }}
     >
       {children}

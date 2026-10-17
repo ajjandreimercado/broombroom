@@ -6,7 +6,10 @@ import { STATUS_LABEL } from '../admin/ListingsManager.tsx';
 import { SectionHeader, EmptyState, Drawer, btn, peso, shortDate } from '../admin/ui.tsx';
 import { Vehicle } from '../../types.ts';
 import { portalUrl } from '../../portals.ts';
-import { referralLink } from '../leads.ts';
+import { agentSlug } from '../leads.ts';
+
+// An agent's personal link to a listing; clients who arrive through it become that agent's clients.
+const referralLink = (vehicleId: string, agentName: string) => portalUrl('buyer', `?vehicle=${vehicleId}&agent=${agentSlug(agentName)}`);
 import { Eye, Link2, PlusCircle } from 'lucide-react';
 
 type Panel = { kind: 'add' } | { kind: 'edit' | 'remove'; vehicle: Vehicle } | null;

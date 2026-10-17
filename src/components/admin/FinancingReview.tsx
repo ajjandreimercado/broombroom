@@ -92,7 +92,18 @@ export const FinancingReview: React.FC = () => {
                             <div className="min-w-0 flex-1">
                               <p className="text-[14px] font-medium text-[#141517]">{d.label}</p>
                               <p className="text-[12.5px] text-[#4E585E] truncate">
-                                {d.fileName ? `${d.fileName}${d.addedByAdmin ? ' · uploaded by admin' : ''}` : 'Not submitted yet. Upload it when the client hands it in.'}
+                                {d.fileName ? (
+                                  <>
+                                    {d.url ? (
+                                      <a href={d.url} target="_blank" rel="noopener" className="text-[#1D5FD1] underline underline-offset-2">{d.fileName}</a>
+                                    ) : (
+                                      d.fileName
+                                    )}
+                                    {d.addedByAdmin ? ' · uploaded by admin' : ''}
+                                  </>
+                                ) : (
+                                  'Not submitted yet. Upload it when the client hands it in.'
+                                )}
                               </p>
                               {d.status === 'rejected' && d.reason && <p className="text-[12.5px] text-[#B42318]">Rejected: {d.reason}</p>}
                             </div>
@@ -112,7 +123,7 @@ export const FinancingReview: React.FC = () => {
                                     if (!file) return;
                                     const problem = checkUpload(file);
                                     if (problem) return showToast('Upload failed', problem, 'error');
-                                    attachDocumentForClient(app.id, i, file.name);
+                                    attachDocumentForClient(app.id, i, file);
                                   }}
                                 />
                               </label>

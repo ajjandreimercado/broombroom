@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
-import { AGENTS } from '../../data/mockData.ts';
 import { SectionHeader, EmptyState, shortDate } from './ui.tsx';
 import { Eye } from 'lucide-react';
 
 // Admin: read-only view of every agent-to-client conversation.
 export const ConversationsMonitor: React.FC = () => {
-  const { conversations } = useApp();
+  const { conversations, agents } = useApp();
   const [agent, setAgent] = useState('all');
   const list = conversations
     .filter((c) => agent === 'all' || c.sellerName === agent)
@@ -24,7 +23,7 @@ export const ConversationsMonitor: React.FC = () => {
           className="px-3 py-2 text-[13px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
         >
           <option value="all">All agents</option>
-          {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
+          {agents.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </SectionHeader>
 

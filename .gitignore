@@ -11,3 +11,6 @@ coverage/
 .backup/
 .wrangler/
 .impeccable/review/
+
+# server database and uploaded files (client documents are private)
+server/data/

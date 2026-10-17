@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
 import { VehicleApplication } from '../types.ts';
-import { openAcknowledgementReceipt, openImage } from './receipt.ts';
+import { openAcknowledgementReceipt, openImage, reserveWindow } from './receipt.ts';
+import { dataUrlToBlob } from '../api.ts';
 import { isOngoing, amountPaid } from './ApplicationProgress.tsx';
 import { photoDataUrl } from '../media.ts';
 import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
@@ -31,17 +32,19 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState(`Partial payment for ${app.vehicleTitle}`);
-  const [shot, setShot] = useState<{ image: string; name: string } | undefined>();
+  const [shot, setShot] = useState<{ blob: Blob; name: string } | undefined>();
+  const [saving, setSaving] = useState(false);
   const [shotError, setShotError] = useState('');
   const attachShot = async (file?: File) => {
     if (!file) return;
     const problem = checkUpload(file);
     if (problem || !file.type.startsWith('image/')) return setShotError(problem || `${file.name} is not an image. Attach a screenshot or photo.`);
     setShotError('');
-    setShot({ image: await photoDataUrl(file, 1400), name: file.name });
+    // Shrunk before upload; the screenshot only needs to be readable.
+    setShot({ blob: await dataUrlToBlob(await photoDataUrl(file, 1400)), name: file.name.replace(/\.\w+$/, '.jpg') });
   };
   const value = Number(amount);
-  const canAccept = app.status !== 'declined' && app.status !== 'withdrawn';
+  const canAccept = app.status !== 'declined' && app.status !== 'withdrawn' && app.status !== 'completed';
   const show = (arNo: string) => {
     const p = app.payments?.find((x) => x.arNo === arNo);
     if (p && !openAcknowledgementReceipt(app, p)) showToast('Allow pop-ups', 'Your browser blocked the receipt window. Allow pop-ups for this site and try again.', 'error');
@@ -72,14 +75,18 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
         (open ? (
           <form
             className="flex flex-wrap items-center gap-2 animate-fade-up"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              const receipt = recordPartialPayment(app.id, value, description, shot);
-              if (!receipt) return;
+              if (saving) return;
+              setSaving(true);
+              const win = reserveWindow(); // opened during the click so the browser allows it
+              const receipt = await recordPartialPayment(app.id, value, description, shot ? Object.assign(shot.blob, { name: shot.name }) : undefined);
+              setSaving(false);
+              if (!receipt) return win?.close();
               setOpen(false);
               setAmount('');
               setShot(undefined);
-              openAcknowledgementReceipt({ ...app, payments: [...(app.payments ?? []), receipt] }, receipt);
+              openAcknowledgementReceipt({ ...app, payments: [...(app.payments ?? []), receipt] }, receipt, win);
             }}
           >
             <label className="flex items-center border border-[#8C989F] bg-white">
@@ -118,8 +125,8 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
                 <input type="file" accept="image/*" className="sr-only" onChange={(e) => { attachShot(e.target.files?.[0]); e.target.value = ''; }} />
               </label>
             )}
-            <button type="submit" disabled={!(value > 0) || !description.trim()} className={btn.primary}>
-              Confirm &amp; release AR
+            <button type="submit" disabled={saving || !(value > 0) || !description.trim()} className={btn.primary}>
+              {saving ? 'Saving…' : 'Confirm & release AR'}
             </button>
             <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">
               Cancel

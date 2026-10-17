@@ -45,13 +45,12 @@ export const VehicleDetailView: React.FC = () => {
     showToast,
     isInCompare,
     toggleCompareVehicle,
-    leads,
+    myAgent,
     currentUser,
   } = useApp();
 
   const vehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
   // A client who already belongs to an agent deals with that agent on every listing.
-  const myAgent = leads.find((l) => l.clientId === currentUser?.id)?.agentName;
   const inCompare = vehicle ? isInCompare(vehicle.id) : false;
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -103,13 +102,14 @@ export const VehicleDetailView: React.FC = () => {
     toggleSaveVehicle(vehicle.id);
   };
 
-  const handleMessage = () => {
+  const handleMessage = async () => {
     if (!isAuthenticated) {
       setPendingAction({ type: 'message', vehicleId: vehicle.id });
       setAuthModalOpen(true);
       return;
     }
-    const convId = startOrOpenConversation(vehicle.id);
+    const convId = await startOrOpenConversation(vehicle.id);
+    if (!convId) return;
     setActiveConversationId(convId);
     navigateTo('account', { accountTab: 'messages' });
   };

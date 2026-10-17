@@ -52,14 +52,15 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
     toggleCompareVehicle(vehicle.id);
   };
 
-  const handleMessageClick = (e: React.MouseEvent) => {
+  const handleMessageClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isAuthenticated) {
       setPendingAction({ type: 'message', vehicleId: vehicle.id });
       setAuthModalOpen(true);
       return;
     }
-    const convId = startOrOpenConversation(vehicle.id);
+    const convId = await startOrOpenConversation(vehicle.id);
+    if (!convId) return;
     setActiveConversationId(convId);
     navigateTo('account', { accountTab: 'messages' });
   };

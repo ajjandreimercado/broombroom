@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
 import { StatusMark } from '../StatusMark.tsx';
-import { AGENTS } from '../../data/mockData.ts';
 import { ClientLead } from '../../types.ts';
 import { EmptyState, FilterTabs, SectionHeader, shortDate } from './ui.tsx';
 import { REPLY_RELEASE_MS, UNCLAIMED_ALERT_MS, duration, waitingSince } from '../leads.ts';
@@ -12,7 +11,7 @@ const POOL = '__pool__';
 
 // Admin: who every client belongs to, what is overdue, and reassigning when needed.
 export const LeadsManager: React.FC = () => {
-  const { leads, assignLead } = useApp();
+  const { leads, assignLead, agents } = useApp();
   const [filter, setFilter] = useState<Filter>('all');
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -74,7 +73,7 @@ export const LeadsManager: React.FC = () => {
                     className="px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
                   >
                     <option value={POOL}>Open leads (anyone)</option>
-                    {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
+                    {agents.map((a) => <option key={a} value={a}>{a}</option>)}
                   </select>
                 </label>
               </li>

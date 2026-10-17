@@ -1,4 +1,7 @@
-import { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission, ListingRequest, Expense, Quotation, ClientLead } from '../types.ts';
+import type { Vehicle, VehicleApplication, Conversation, UserProfile, Guide, VehicleReport, AppNotification, Commission, ListingRequest, Expense, Quotation, ClientLead } from '../types.ts';
+
+// Vite sets BASE_URL for the site; the API server also loads this file to seed its database.
+const BASE = import.meta.env?.BASE_URL ?? './';
 
 // Listings belong to the whole team; clients belong to the agent who claimed them (see components/leads.ts).
 export const TEAM_NAME = 'Broom Broom sales team';
@@ -149,7 +152,7 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     description:
       'Immaculate 2025 Suzuki Every Cargo Turbo 4WD in signature Brilliant Cobalt Blue with full black aerodynamic roof rack system and 14-inch sport multi-spoke black alloys. Factory high-roof specification, twin sliding passenger doors, fold-flat cargo floor, air conditioning, power steering, and clean Philippine LTO registration papers with verified engine and chassis numbers.',
     images: [
-      `${import.meta.env.BASE_URL}vehicles/suzuki-every-microvan.jpg`,
+      `${BASE}vehicles/suzuki-every-microvan.jpg`,
       'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80',
     ],
@@ -198,7 +201,7 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     description:
       'Immaculately maintained 2024 Porsche 911 Carrera S with factory Sport Chrono Package, Sport Exhaust System, and bespoke orange aerodynamic accent stitching. Full dealer maintenance history at Porsche Philippines, ceramic coated since delivery, and clean LTO registration records ready for immediate transfer.',
     images: [
-      `${import.meta.env.BASE_URL}vehicles/porsche-911-carrera.jpg`,
+      `${BASE}vehicles/porsche-911-carrera.jpg`,
       'https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80',
     ],
@@ -247,7 +250,7 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     description:
       'Pristine 2024 Panigale V4 S equipped with Ohlins Smart EC 2.0 electronically controlled suspension, Akrapovic full titanium exhaust system, and cornering EVO traction control. Zero track drops, strictly weekend canyon cruiser, single owner with original invoice and warranty booklet.',
     images: [
-      `${import.meta.env.BASE_URL}vehicles/ducati-panigale-v4s.jpg`,
+      `${BASE}vehicles/ducati-panigale-v4s.jpg`,
       'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=1200&q=80',
     ],
@@ -293,7 +296,7 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     description:
       'The undisputed king of desert trucks. Powered by a twin-turbo 3.0L EcoBoost V6 engine paired with Fox 2.5 Live Valve Internal Bypass shock absorbers. Loaded with Baja drive mode, active valve dual exhaust, Matrix LED headlights, and 12-inch SYNC 4 touchscreen.',
     images: [
-      `${import.meta.env.BASE_URL}vehicles/ford-ranger-raptor.jpg`,
+      `${BASE}vehicles/ford-ranger-raptor.jpg`,
       'https://images.unsplash.com/photo-1559416523-140ddc3d238c?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=1200&q=80',
     ],
@@ -339,7 +342,7 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     description:
       'The track-honed benchmark. 6-speed manual with rev-matching, Brembo 4-piston calipers, Michelin Pilot Sport 4S tires on 19-inch lightweight alloys, and signature red suede bucket seats. First owner, always parked indoors, zero modifications.',
     images: [
-      `${import.meta.env.BASE_URL}vehicles/honda-civic-type-r.jpg`,
+      `${BASE}vehicles/honda-civic-type-r.jpg`,
       'https://images.unsplash.com/photo-1590362891991-f776e747a588?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=1200&q=80',
     ],
@@ -481,7 +484,7 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     description:
       'Unstoppable off-road capability. 200HP Rotax ACE triple-cylinder engine with intercooled turbocharger. Fox 3.0 PODIUM RC2 Piggyback shocks with bypass, 72-inch track width, beadlock wheels, and heavy-duty front bumper with integrated winch.',
     images: [
-      `${import.meta.env.BASE_URL}vehicles/canam-maverick-x3.jpg`,
+      `${BASE}vehicles/canam-maverick-x3.jpg`,
       'https://images.unsplash.com/photo-1551524559-8af4e6624178?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
     ],

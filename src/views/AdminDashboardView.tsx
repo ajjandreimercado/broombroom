@@ -15,6 +15,7 @@ import { VoucherPage } from '../components/accounting/VoucherPage.tsx';
 import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { Quotations } from '../components/admin/Quotations.tsx';
 import { LeadsManager } from '../components/admin/LeadsManager.tsx';
+import { AccountsManager } from '../components/admin/AccountsManager.tsx';
 import { EmptyState, SectionHeader } from '../components/admin/ui.tsx';
 import {
   ShieldAlert,
@@ -35,6 +36,7 @@ import {
   FileSpreadsheet,
   Calculator,
   Users,
+  UserCog,
 } from 'lucide-react';
 
 type NavItem = { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number };
@@ -85,6 +87,7 @@ export const AdminDashboardView: React.FC = () => {
         { id: 'leads', label: 'Clients & leads', icon: Users, count: leads.filter((l) => !l.agentName).length },
         { id: 'agent_reports', label: 'Agent reports', icon: BarChart3 },
         { id: 'conversations', label: 'Conversations', icon: MessagesSquare, count: conversations.length },
+        { id: 'accounts', label: 'Accounts', icon: UserCog },
       ],
     },
   ];
@@ -158,6 +161,7 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'acc_reports' && <SalesReport />}
             {adminTab === 'quotations' && <Quotations />}
             {adminTab === 'leads' && <LeadsManager />}
+            {adminTab === 'accounts' && <AccountsManager />}
             {adminTab === 'acc_savings' && (
               <section>
                 <SectionHeader title="Savings deposit" />

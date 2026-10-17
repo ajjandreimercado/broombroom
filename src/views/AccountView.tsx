@@ -52,13 +52,15 @@ export const AccountView: React.FC = () => {
     toggleCompareVehicle,
     clearCompare,
     quotations,
+    updateProfile,
+    changePassword,
+    setAuthModalOpen,
   } = useApp();
   // Clients only see notifications meant for them.
   const notifications = allNotifications.filter((n) => (n.audience ?? 'client') === 'client');
 
   // Profile Edit State
   const [name, setName] = useState(currentUser?.name || '');
-  const [email, setEmail] = useState(currentUser?.email || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [street, setStreet] = useState(currentUser?.address?.street || '');
   const [city, setCity] = useState(currentUser?.address?.city || '');
@@ -79,13 +81,21 @@ export const AccountView: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#F7F8F8] flex items-center justify-center p-6">
         <div className="text-center max-w-sm">
-          <p className="text-base font-semibold text-[#141517]">Please sign in to access your account</p>
-          <button
-            onClick={() => navigateTo('marketplace')}
-            className="mt-4 px-5 py-2.5 bg-[#141517] text-white rounded-[2px] text-xs font-semibold hover:bg-[#2A2E31] transition-colors cursor-pointer"
-          >
-            Return to Marketplace
-          </button>
+          <p className="text-base font-semibold text-[#141517]">Please sign in to see your account</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="px-5 py-2.5 bg-[#1D5FD1] text-white rounded-[2px] text-xs font-semibold hover:bg-[#174CA8] transition-colors cursor-pointer"
+            >
+              Sign in
+            </button>
+            <button
+              onClick={() => navigateTo('marketplace')}
+              className="px-5 py-2.5 border border-[#141517] text-[#141517] rounded-[2px] text-xs font-semibold hover:bg-[#EEF1F2] transition-colors cursor-pointer"
+            >
+              Browse vehicles
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -117,18 +127,18 @@ export const AccountView: React.FC = () => {
 
   const handleProfileSave = (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('Profile Saved', 'Your account profile details have been updated.');
+    if (!name.trim()) return showToast('Add your name', 'Your full name is required.', 'error');
+    updateProfile({ name: name.trim(), phone: phone.trim(), address: { ...currentUser.address, street: street.trim(), city: city.trim() } });
   };
 
-  const handlePasswordUpdate = (e: React.FormEvent) => {
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPass || newPass.length < 6) {
-      showToast('Validation Error', 'New password must be at least 6 characters.', 'error');
-      return;
+    if (!currentPass) return showToast('Enter your current password', undefined, 'error');
+    if (!newPass || newPass.length < 8) return showToast('Password too short', 'The new password must be at least 8 characters.', 'error');
+    if (await changePassword(currentPass, newPass)) {
+      setCurrentPass('');
+      setNewPass('');
     }
-    showToast('Password Changed', 'Your security credentials have been updated.');
-    setCurrentPass('');
-    setNewPass('');
   };
 
   const tabs: { id: AccountTab; label: string; icon: any; badge?: number }[] = [
@@ -242,10 +252,12 @@ export const AccountView: React.FC = () => {
                       <label className="gb-label block mb-2">Email Address</label>
                       <input
                         type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
+                        value={currentUser.email}
+                        readOnly
+                        aria-describedby="email-hint"
+                        className="w-full px-3 py-2.5 text-[14px] bg-[#EEF1F2] border border-[#C9D1D6] text-[#4E585E]"
                       />
+                      <p id="email-hint" className="mt-1 text-[11.5px] text-[#6B767D]">Your sign-in email. Ask the admin team to change it.</p>
                     </div>
                   </div>
 
@@ -863,7 +875,9 @@ export const AccountView: React.FC = () => {
                     {viewingApplication.documents!.map((d) => (
                       <li key={d.label} className="py-2 border-b border-[#DDE3E6]">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-[#141517]">{d.label}</span>
+                          <span className="text-[#141517]">
+                            {d.url ? <a href={d.url} target="_blank" rel="noopener" className="underline underline-offset-2">{d.label}</a> : d.label}
+                          </span>
                           <StatusMark status={!d.fileName ? 'Hand to admin' : d.status === 'approved' ? 'Approved' : d.status === 'rejected' ? 'Rejected' : 'In review'} />
                         </div>
                         {d.status === 'rejected' && d.reason && <p className="text-[#B42318] mt-1">Reason: {d.reason}</p>}

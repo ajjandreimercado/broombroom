@@ -4,6 +4,7 @@ import { COMMISSION_RATE } from '../data/mockData.ts';
 import { Commission } from '../types.ts';
 import { openCommissionReceipt } from './receipt.ts';
 import { photoDataUrl } from '../media.ts';
+import { dataUrlToBlob } from '../api.ts';
 import { FilterTabs, SectionHeader, EmptyState, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
 import { FileCheck2, Download, Check } from 'lucide-react';
 
@@ -54,9 +55,14 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
     const problem = checkUpload(file);
     if (problem) return setError(problem);
     setError('');
-    // A photo of the proof is printed on the agent's receipt; a PDF proof is listed by name only.
-    const image = file.type.startsWith('image/') ? await photoDataUrl(file, 1200).catch(() => undefined) : undefined;
-    payCommission(id, file.name, image);
+    // A photo of the proof is printed on the agent's receipt (shrunk first); a PDF proof is listed by name only.
+    const proof = file.type.startsWith('image/')
+      ? await photoDataUrl(file, 1600)
+          .then(dataUrlToBlob)
+          .then((b) => new File([b], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }))
+          .catch(() => file)
+      : file;
+    payCommission(id, proof);
   };
 
   const receipt = (c: Commission) => {

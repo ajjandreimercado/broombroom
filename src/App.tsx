@@ -50,6 +50,17 @@ const PortalSignIn: React.FC = () => {
   );
 };
 
+const SignInPrompt: React.FC<{ text: string; onSignIn: () => void }> = ({ text, onSignIn }) => (
+  <section className="gb-container py-20">
+    <div className="max-w-md border-t-2 border-[#141517] pt-6">
+      <p className="text-[16px] text-[#141517]">{text}</p>
+      <button onClick={onSignIn} className="mt-5 px-6 py-3 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[14px] font-semibold cursor-pointer">
+        Sign in
+      </button>
+    </div>
+  </section>
+);
+
 const PortalFooter: React.FC = () => {
   const { navigateTo } = useApp();
   return (
@@ -71,7 +82,7 @@ const PortalFooter: React.FC = () => {
 const SHARED_VIEWS = ['help', 'terms', 'privacy'];
 
 const AppContent: React.FC = () => {
-  const { currentView, currentUser } = useApp();
+  const { currentView, currentUser, ready, serverError, refresh, setAuthModalOpen } = useApp();
 
   useEffect(() => {
     document.title = PORTAL === 'buyer' ? 'Broom Broom · A Happy Ride | Vehicle Marketplace' : `${PORTAL_LABEL[PORTAL]} · Broom Broom`;
@@ -99,7 +110,7 @@ const AppContent: React.FC = () => {
       case 'vehicle_detail':
         return <VehicleDetailView />;
       case 'apply':
-        return <ApplicationWizardView />;
+        return currentUser ? <ApplicationWizardView /> : <SignInPrompt text="Sign in or create an account to apply for this vehicle." onSignIn={() => setAuthModalOpen(true)} />;
       case 'account':
         return <AccountView />;
       case 'how_it_works':
@@ -116,6 +127,25 @@ const AppContent: React.FC = () => {
   };
 
   const isBuyerSite = PORTAL === 'buyer';
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-[#F7F8F8]" role="status" aria-live="polite">
+        <p className="text-[14px] text-[#4E585E]">Loading Broom Broom…</p>
+      </div>
+    );
+  }
+  if (serverError && !currentUser && !isBuyerSite) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-[#F7F8F8] p-6">
+        <div className="max-w-sm text-center">
+          <p className="font-semibold text-[#141517]">Cannot reach the server</p>
+          <p className="mt-1 text-[13px] text-[#4E585E]">{serverError}</p>
+          <button onClick={() => refresh()} className="mt-4 px-5 py-2.5 bg-[#141517] text-white text-[13px] font-semibold cursor-pointer">Try again</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden bg-[#F7F8F8] text-[#141517]">

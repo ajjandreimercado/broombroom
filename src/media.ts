@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 
-// Listing videos are too big for localStorage, so the file goes into IndexedDB and the
-// listing keeps an "idb:<id>" reference. Same origin, so all three portals can read it.
-// ponytail: media lives in this browser only (demo has no backend); move to real storage with the API.
+// Listing media now uploads to the server. Videos added before that were kept in this browser's IndexedDB
+// as "idb:<id>" references; this reads them so those listings still play here.
 const openDb = () =>
   new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open('gb_media', 1);
@@ -10,18 +9,6 @@ const openDb = () =>
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
-
-export const saveMedia = async (file: Blob): Promise<string> => {
-  const id = `idb:${crypto.randomUUID()}`;
-  const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction('files', 'readwrite');
-    tx.objectStore('files').put(file, id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return id;
-};
 
 const loadMedia = async (id: string): Promise<Blob | undefined> => {
   const db = await openDb();

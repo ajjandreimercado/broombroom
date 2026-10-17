@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
 import { StatusMark } from '../StatusMark.tsx';
 import { Quotation } from '../../types.ts';
-import { openQuotation } from '../receipt.ts';
+import { openQuotation, reserveWindow } from '../receipt.ts';
 import { QUOTE_TERMS, daysFromToday, DEFAULT_VALID_DAYS, quoteFigures, quoteLabel, isExpired } from '../quote.ts';
 import { money } from '../accounting/ledger.ts';
 import { Drawer, EmptyState, FilterTabs, SectionHeader, btn, shortDate } from './ui.tsx';
@@ -38,13 +38,18 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
     if (!d.validUntil || d.validUntil < daysFromToday(0)) return 'Set a "valid until" date from today onward.';
     return '';
   };
-  const save = (send: boolean) => {
+  const [busy, setBusy] = useState(false);
+  const save = async (send: boolean) => {
     const p = problem();
     if (p) return setError(p);
     setError('');
-    const saved = saveQuotation(quote.id, { ...d, downPayment: financing ? d.downPayment : 0 }, send);
-    if (saved && send) {
-      if (!openQuotation(saved)) showToast('Allow pop-ups', 'The quotation was sent. Allow pop-ups to preview its PDF here.', 'info');
+    setBusy(true);
+    const win = send ? reserveWindow() : null; // opened during the click so the browser allows it
+    const saved = await saveQuotation(quote.id, { ...d, downPayment: financing ? d.downPayment : 0 }, send);
+    setBusy(false);
+    if (!saved) return win?.close();
+    if (send) {
+      if (!openQuotation(saved, win)) showToast('Allow pop-ups', 'The quotation was sent. Allow pop-ups to preview its PDF here.', 'info');
       onDone();
     }
   };
@@ -150,11 +155,11 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
       {error && <p role="alert" className="text-[13px] text-[#B42318]">{error}</p>}
 
       <div className="flex flex-wrap gap-2 pt-1">
-        <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => save(true)}>
+        <button className={`${btn.primary} flex items-center gap-1.5`} disabled={busy} onClick={() => save(true)}>
           <Send className="w-4 h-4" aria-hidden="true" />
           {quote.quoteNo ? 'Update & resend' : 'Send to client'}
         </button>
-        <button className={btn.outline} onClick={() => save(false)}>Save draft</button>
+        <button className={btn.outline} disabled={busy} onClick={() => save(false)}>Save draft</button>
         <button
           className="px-3 py-2 text-[13px] font-semibold text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer"
           onClick={() => {

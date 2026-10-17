@@ -1,15 +1,11 @@
 import type { ClientLead } from '../types.ts';
-import { AGENTS } from '../data/mockData.ts';
-import { portalUrl } from '../portals.ts';
+
+// Shared by the site and the API server: keep this file free of browser-only code.
 
 export const UNCLAIMED_ALERT_MS = 2 * 60 * 60 * 1000; // admin is told after 2 hours in the pool
 export const REPLY_RELEASE_MS = 24 * 60 * 60 * 1000; // an owned client waiting 24 hours for a reply goes back to the pool
 
 export const agentSlug = (name: string) => name.toLowerCase().trim().replace(/\s+/g, '-');
-export const agentFromSlug = (slug: string | null) => (slug ? AGENTS.find((a) => agentSlug(a) === slug.toLowerCase()) : undefined);
-
-// An agent's personal link to a listing; clients who arrive through it become that agent's clients.
-export const referralLink = (vehicleId: string, agentName: string) => portalUrl('buyer', `?vehicle=${vehicleId}&agent=${agentSlug(agentName)}`);
 
 const t = (iso?: string) => (iso ? new Date(iso).getTime() : 0);
 
