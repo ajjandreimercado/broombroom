@@ -37,7 +37,7 @@ export const ApplicationWizardView: React.FC = () => {
     myAgent,
   } = useApp();
 
-  const vehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
+  const vehicle = vehicles.find((v) => v.id === selectedVehicleId); // never another car: a removed listing shows "not found"
   // Applying from a sent quotation: its method, down payment, term and price carry over.
   const quote = quotations.find((q) => q.id === selectedQuotationId && q.vehicleId === vehicle?.id && q.status === 'sent' && !isExpired(q));
   const price = quote?.unitPrice ?? vehicle?.price ?? 0;

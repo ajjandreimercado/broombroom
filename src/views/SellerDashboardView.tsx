@@ -18,6 +18,7 @@ import {
   Send,
   Users,
 } from 'lucide-react';
+import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 
 export const SellerDashboardView: React.FC = () => {
   const {
@@ -172,6 +173,7 @@ export const SellerDashboardView: React.FC = () => {
 
           {/* Active Seller Section Content */}
           <main className="flex-1 w-full min-w-0 space-y-8">
+            <ErrorBoundary key={sellerTab}>
             {/* 1. OVERVIEW DASHBOARD */}
             {sellerTab === 'dashboard' && (
               <div className="space-y-12">
@@ -342,6 +344,7 @@ export const SellerDashboardView: React.FC = () => {
 
             {/* 5. COMMISSIONS */}
             {sellerTab === 'commissions' && <Commissions mode="agent" />}
+            </ErrorBoundary>
           </main>
         </div>
       </div>

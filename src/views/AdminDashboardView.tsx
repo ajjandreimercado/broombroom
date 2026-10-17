@@ -38,6 +38,7 @@ import {
   Users,
   UserCog,
 } from 'lucide-react';
+import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 
 type NavItem = { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number };
 
@@ -145,6 +146,7 @@ export const AdminDashboardView: React.FC = () => {
           </aside>
 
           <main className="lg:col-span-9 min-w-0">
+            <ErrorBoundary key={adminTab}>
             {adminTab === 'dashboard' && <AdminOverview />}
             {adminTab === 'approvals' && <ListingRequests />}
             {adminTab === 'applications' && <ApplicationsManager />}
@@ -163,6 +165,7 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'quotations' && <Quotations />}
             {adminTab === 'leads' && <LeadsManager />}
             {adminTab === 'accounts' && <AccountsManager />}
+            </ErrorBoundary>
           </main>
         </div>
       </div>

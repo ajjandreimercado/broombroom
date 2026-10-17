@@ -49,7 +49,7 @@ export const VehicleDetailView: React.FC = () => {
     currentUser,
   } = useApp();
 
-  const vehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
+  const vehicle = vehicles.find((v) => v.id === selectedVehicleId); // never another car: a removed listing shows "not found"
   // A client who already belongs to an agent deals with that agent on every listing.
   const inCompare = vehicle ? isInCompare(vehicle.id) : false;
 

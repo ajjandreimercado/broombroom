@@ -51,7 +51,7 @@ export const AgentReports: React.FC = () => {
       <dl className="grid grid-cols-2 md:grid-cols-4 border-b border-[#C9D1D6]">
         {[
           { label: 'Team sales', value: peso(totals.revenue), note: `${totals.units} units completed` },
-          { label: 'Top seller', value: top.revenue ? top.name : '-', note: top.revenue ? peso(top.revenue) : 'No completed sales yet' },
+          { label: 'Top seller', value: top?.revenue ? top.name : '-', note: top?.revenue ? peso(top.revenue) : 'No completed sales yet' }, // no agents yet: none
           { label: 'Commission receivable', value: peso(totals.receivable), note: 'Earned, not yet approved for payout' },
           { label: 'Commission paid', value: peso(totals.paid), note: 'Transferred with proof of payment' },
         ].map((m, i) => (

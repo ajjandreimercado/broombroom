@@ -23,6 +23,7 @@ import { HowItWorksView } from './views/HowItWorksView.tsx';
 import { HelpView } from './views/HelpView.tsx';
 import { LegalView } from './views/LegalView.tsx';
 import { SetPassword } from './components/SetPassword.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 const PortalSignIn: React.FC = () => {
   const { setAuthModalOpen } = useApp();
@@ -153,7 +154,9 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden bg-[#F7F8F8] text-[#141517]">
       <Navbar />
-      <main key={currentView} className="flex-1 animate-view-fade">{isBuyerSite ? renderBuyerView() : renderPortalView()}</main>
+      <main key={currentView} className="flex-1 animate-view-fade">
+        <ErrorBoundary key={currentView}>{isBuyerSite ? renderBuyerView() : renderPortalView()}</ErrorBoundary>
+      </main>
       {isBuyerSite ? <Footer /> : <PortalFooter />}
       <AuthModal />
       <ReportModal />
