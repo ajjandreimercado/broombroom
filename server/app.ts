@@ -32,6 +32,7 @@ const clientSiteUrl = (req: Request) => {
   const host = String(req.get('host') || 'localhost').replace(/^(agent|admin)\./, '');
   return `${req.protocol}://${host}`;
 };
+const TEMP_ALLOWED = new Set(['GET /state', 'GET /events', 'POST /me/password', 'POST /auth/logout', 'POST /auth/login', 'POST /auth/google']);
 const body = (req: Request) => (req.body && typeof req.body === 'object' ? req.body : {});
 
 // Each upload must really be the type it claims: checked against the file's first bytes.
@@ -78,7 +79,7 @@ export const createApp = () => {
       const row = await raw('uploads').findOne({ _id: String(req.params.id) });
       if (!row) return void res.status(404).send('Not found');
       if (row.visibility === 'private') {
-        const viewers = (await Promise.all((['buyer', 'seller', 'admin'] as Portal[]).map((p) => sessionUser(req, p)))).filter(Boolean) as User[];
+        const viewers = ((await Promise.all((['buyer', 'seller', 'admin'] as Portal[]).map((p) => sessionUser(req, p)))).filter(Boolean) as User[]).filter((u) => !u.mustChangePassword);
         if (!viewers.some((u) => u.role === 'admin' || u.id === row.ownerId)) return void res.status(403).send('Not allowed');
         res.setHeader('Cache-Control', 'private, no-store');
       } else {
@@ -114,6 +115,8 @@ export const createApp = () => {
     sessionUser(req)
       .then((u) => {
         req.user = u;
+        // Signed in with a temporary password: only setting their own password (or signing out) is allowed.
+        if (u?.mustChangePassword && !TEMP_ALLOWED.has(`${req.method} ${req.path}`)) return next(new HttpError(403, 'Set your own password first.'));
         next();
       })
       .catch(next);
@@ -190,18 +193,19 @@ export const createApp = () => {
       res.json({ ok: true, data: publicUser(user) });
     })
   );
-  // Sign in or sign up with Google (client site only). The token is checked on the server before anything else.
+  // Sign in with Google. Clients may also sign up this way; agents and admins only sign in to accounts the admin made.
+  // The token is checked on the server before anything else.
   api.post(
     '/auth/google',
     handle(async (req, res) => {
-      if (portalOf(req) !== 'buyer') throw new HttpError(403, 'Google sign-in is for client accounts. Sign in with your password.');
+      const portal = portalOf(req);
       const clientId = process.env.GOOGLE_CLIENT_ID;
       if (!clientId) throw new HttpError(503, 'Google sign-in is not set up yet. Sign in with your email and password.');
       rateLimit(`google|${req.ip}`, 30, 15 * 60e3, 'Too many sign-in attempts. Try again in a few minutes.');
       const profile = await verifyGoogleToken(body(req).credential, clientId);
       if (!profile) throw new HttpError(401, 'Google sign-in did not go through. Please try again.');
-      const { user, created } = await svc.googleSignIn(profile);
-      await startSession(res, req, user, 'buyer');
+      const { user, created } = portal === 'buyer' ? await svc.googleSignIn(profile) : { user: await svc.googleStaffSignIn(profile, portal), created: false };
+      await startSession(res, req, user, portal);
       res.json({ ok: true, data: { ...publicUser(user), created } });
     })
   );
@@ -341,7 +345,7 @@ export const createApp = () => {
       const target = await users.byId(String(req.params.id));
       if (!target) throw new HttpError(404, 'Account not found.');
       if (!validPassword(body(req).password)) throw new HttpError(400, PASSWORD_RULE);
-      await users.setPassword(target.id, body(req).password);
+      await users.setPassword(target.id, body(req).password, true); // they must replace it on their next sign-in
     })
   );
   api.post(

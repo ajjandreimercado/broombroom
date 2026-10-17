@@ -49,7 +49,7 @@ npm run lint    # type-check
 
 - `server/app.ts`: HTTP routes. Every change goes through `server/services.ts`, which checks who is asking and applies the rules inside a database transaction (approval reserves the car, financing needs every document approved, commissions go receivable → payable after the sale → paid with proof, first-come lead claiming, the 2-hour and 24-hour lead rules, running AR / QT / voucher / OR numbers).
 - `server/state.ts`: what each person may see. Clients get only their own records, agents their own clients plus Open leads, admins everything.
-- Sign-in: scrypt-hashed passwords (8+ characters with letters and numbers), HttpOnly session cookies (one per site, `Secure` over HTTPS), throttled after 10 failed tries. Agents and admins are created in **Admin → Accounts**; clients sign up on the site. Admins reset forgotten passwords there.
+- Sign-in: scrypt-hashed passwords (8+ characters with letters and numbers), HttpOnly session cookies (one per site, `Secure` over HTTPS), throttled after 10 failed tries. Agents and admins are created in **Admin → Accounts** with a temporary password; on first sign-in they must set their own (the server refuses everything else until they do), or they sign in with Google using that email, which retires the temporary password. Google never creates staff accounts. Clients sign up on the site (email or Google). Admins reset forgotten passwords in Accounts; a reset is temporary again.
 - Security: every change needs the `X-Portal` header and a same-site origin (CSRF guard); per-address limits on sign-ups, help messages and listing reports, and per-account limits on uploads; uploads are checked against the file's real contents; production pages send a strict Content-Security-Policy (only the site's own scripts), HSTS and the usual hardening headers.
 - Files: uploads are stored in MongoDB (GridFS). Client documents, payment screenshots and payout proofs are private (owner and admins only); listing photos and videos are public. Uploads never attached to anything are deleted after a day.
 - Transactions: each change commits as a whole or not at all (MongoDB transactions), so two agents can never claim the same client.
@@ -81,7 +81,7 @@ Render sets `PORT` and `RENDER` itself.
 
 ### Sign in with Google (clients)
 
-Clients can sign up and sign in with their Google account; agents and admins keep their passwords. A Google account whose email matches an existing client account signs in to that account. The server checks every Google token (Google's signature, this site's client ID, expiry, verified email) before signing anyone in.
+Clients can sign up and sign in with their Google account. Agents and admins can sign in with Google too, but only with the email the admin registered for them. A Google account whose email matches an existing client account signs in to that account. The server checks every Google token (Google's signature, this site's client ID, expiry, verified email) before signing anyone in.
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → create a project (e.g. "Broom Broom").
 2. **APIs & Services → OAuth consent screen**: External; app name "Broom Broom", support email `broombroombookingservices@gmail.com`, and the Privacy and Terms page addresses. Publish the app (so anyone can sign in, not just test users).

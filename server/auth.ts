@@ -42,6 +42,10 @@ export const users = {
   byGoogleId: async (sub: string) => toUser(await users_().findOne({ googleId: sub }, opts())),
   // Sign in with Google from now on (the account keeps its password, if it has one).
   linkGoogle: async (id: string, sub: string) => void (await users_().updateOne({ _id: id }, { $set: { googleId: sub } }, opts())),
+  // After signing in with Google, a temporary password someone else knows is replaced by an unknown one.
+  async retireTemporaryPassword(id: string) {
+    await users_().updateOne({ _id: id, mustChangePassword: true }, { $set: { passwordHash: hashPassword(randomBytes(32).toString('base64url')), noPassword: true }, $unset: { mustChangePassword: '' } }, opts());
+  },
   // A client account made through Google has no password of its own; it signs in with Google.
   async createWithGoogle(u: Omit<User, 'active'>, sub: string) {
     await users.create({ ...u, password: randomBytes(32).toString('base64url') });
@@ -50,11 +54,16 @@ export const users = {
   },
   all: async () => (await users_().find({}, opts()).sort({ role: 1, name: 1 }).toArray()).map((d) => toUser(d)!),
   agents: async () => (await users_().find({ role: 'seller', active: true }, opts()).sort({ name: 1 }).toArray()).map((d) => toUser(d)!),
-  async create(u: Omit<User, 'active'> & { password: string }) {
+  // temporary: a password someone else chose (the admin); the person must set their own on first sign-in.
+  async create(u: Omit<User, 'active'> & { password: string; temporary?: boolean }) {
     const { id, email, role, name, password } = u;
     const profile = Object.fromEntries(PROFILE.map((k) => [k, (u as any)[k]]));
     await users_().insertOne(
-      { _id: id, email: email.trim(), emailLower: email.trim().toLowerCase(), role, name: name.trim(), passwordHash: hashPassword(password), active: true, createdAt: new Date(), ...profile },
+      {
+        _id: id, email: email.trim(), emailLower: email.trim().toLowerCase(), role, name: name.trim(), passwordHash: hashPassword(password), active: true, createdAt: new Date(),
+        ...(u.temporary ? { mustChangePassword: true } : {}),
+        ...profile,
+      },
       opts()
     );
     return (await users.byId(id))!;
@@ -64,8 +73,15 @@ export const users = {
     const profile = Object.fromEntries(PROFILE.map((k) => [k, (u as any)[k]]));
     await users_().updateOne({ _id: u.id }, { $set: { name: u.name, ...profile } }, opts());
   },
-  async setPassword(id: string, password: string) {
-    await users_().updateOne({ _id: id }, { $set: { passwordHash: hashPassword(password) }, $unset: { noPassword: '' } }, opts());
+  // temporary = set by the admin (a reset): the person must replace it. Otherwise it is their own password.
+  async setPassword(id: string, password: string, temporary = false) {
+    await users_().updateOne(
+      { _id: id },
+      temporary
+        ? { $set: { passwordHash: hashPassword(password), mustChangePassword: true }, $unset: { noPassword: '' } }
+        : { $set: { passwordHash: hashPassword(password) }, $unset: { noPassword: '', mustChangePassword: '' } },
+      opts()
+    );
     await raw('sessions').deleteMany({ userId: id }, opts()); // sign out everywhere
   },
   async setActive(id: string, active: boolean) {

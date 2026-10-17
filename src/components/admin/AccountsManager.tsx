@@ -39,7 +39,7 @@ const ResetPassword: React.FC<{ account: AccountSummary }> = ({ account }) => {
       <input value={password} onChange={(e) => setPassword(e.target.value)} aria-label={`New password for ${account.name}`} className={`${input} flex-1 min-w-[180px] font-mono`} minLength={8} required />
       <button type="submit" className={btn.primary} disabled={!goodPassword(password)} title={PASSWORD_RULE}>Set password</button>
       <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
-      <p className="w-full text-[12px] text-[#4E585E]">Copy it now and give it to {account.name} privately. They are signed out everywhere and can change it in Settings.</p>
+      <p className="w-full text-[12px] text-[#4E585E]">Copy it now and give it to {account.name} privately. They are signed out everywhere and must set their own password when they next sign in.</p>
     </form>
   );
 };
@@ -96,7 +96,7 @@ export const AccountsManager: React.FC = () => {
           <label className="block sm:col-span-2">
             <span className="gb-label block mb-1.5">Temporary password</span>
             <input className={`${input} font-mono`} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={8} required />
-            <span className="block mt-1 text-[12px] text-[#4E585E]">Give it to them privately; they can change it in Settings after signing in.</span>
+            <span className="block mt-1 text-[12px] text-[#4E585E]">Give it to them privately. They must set their own password when they first sign in, or they can sign in with Google using this email (the temporary password then stops working).</span>
           </label>
           <div className="sm:col-span-2 flex gap-2">
             <button type="submit" className={btn.primary}>Create account</button>

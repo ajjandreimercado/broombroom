@@ -22,6 +22,7 @@ import { AdminDashboardView } from './views/AdminDashboardView.tsx';
 import { HowItWorksView } from './views/HowItWorksView.tsx';
 import { HelpView } from './views/HelpView.tsx';
 import { LegalView } from './views/LegalView.tsx';
+import { SetPassword } from './components/SetPassword.tsx';
 
 const PortalSignIn: React.FC = () => {
   const { setAuthModalOpen } = useApp();
@@ -102,6 +103,7 @@ const AppContent: React.FC = () => {
   };
 
   const renderBuyerView = () => {
+    if (currentUser?.mustChangePassword) return <SetPassword />; // the admin reset this client's password
     switch (currentView) {
       case 'intro':
         return <IntroView />;
@@ -122,6 +124,7 @@ const AppContent: React.FC = () => {
 
   const renderPortalView = () => {
     if (!currentUser) return <PortalSignIn />;
+    if (currentUser.mustChangePassword) return <SetPassword />;
     if (SHARED_VIEWS.includes(currentView)) return renderShared();
     return PORTAL === 'seller' ? <SellerDashboardView /> : <AdminDashboardView />;
   };

@@ -15,11 +15,21 @@ process.env.NODE_ENV = 'test'; // emails stay in the outbox (no BREVO_API_KEY in
 delete process.env.BREVO_API_KEY;
 // Test-only accounts. The database starts empty, like production: the admin comes from these settings, and the
 // agents, clients, listings and money accounts below are made through the API.
-const ADMIN = { email: 'admin@test.local', password: 'Admin-test-2026' };
+// The admin and agents start with temporary passwords and set their own on first sign-in, like real staff.
+const ADMIN = { email: 'admin@test.local', temporary: 'Admin-temp-2026', password: 'Admin-test-2026' };
+const AGENT_TEMP = 'Agent-temp-2026';
 const AGENT_PASSWORD = 'Agent-test-2026';
 const CLIENT_PASSWORD = 'Client-test-2026';
 process.env.ADMIN_EMAIL = ADMIN.email;
-process.env.ADMIN_PASSWORD = ADMIN.password;
+process.env.ADMIN_PASSWORD = ADMIN.temporary;
+
+// Sign in with a temporary password and replace it, as the site asks on first sign-in.
+const setOwnPassword = async (portal: 'seller' | 'admin', email: string, temporary: string, password: string) => {
+  const c = client(portal);
+  assert.equal((await c.login(email, temporary)).status, 200);
+  const r = await c.post('/api/me/password', { current: temporary, next: password });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+};
 
 let server: Server;
 let base = '';
@@ -32,10 +42,12 @@ before(async () => {
   server = createApp().listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${(server.address() as any).port}`;
+  await setOwnPassword('admin', ADMIN.email, ADMIN.temporary, ADMIN.password);
   const ad = await admin();
   for (const [name, email] of [['Carlo Santos', 'carlo.santos@test.local'], ['Bea Villanueva', 'bea.villanueva@test.local']]) {
-    const r = await ad.post('/api/users', { role: 'seller', name, email, password: AGENT_PASSWORD });
+    const r = await ad.post('/api/users', { role: 'seller', name, email, password: AGENT_TEMP });
     assert.equal(r.status, 200, JSON.stringify(r.json));
+    await setOwnPassword('seller', email, AGENT_TEMP, AGENT_PASSWORD);
   }
   for (const [name, email] of [['Andrei Mercado', 'andrei@test.local'], ['Jessa Ramos', 'jessa@test.local']]) {
     const r = await client('buyer').post('/api/auth/register', { name, email, phone: '0917 000 0000', password: CLIENT_PASSWORD });
@@ -395,10 +407,28 @@ test('accounts: admin creates an agent who can then sign in; disabling signs the
   const made = await ad.post('/api/users', { name: 'New Agent', email: 'new.agent@test.local', role: 'seller', password: 'Password1!' });
   assert.equal(made.status, 200);
   const agent = await signedIn('seller', 'new.agent@test.local', 'Password1!');
+  // a temporary password: nothing to see or do until they set their own
+  let st = await agent.state();
+  assert.equal(st.me.mustChangePassword, true);
+  assert.equal(st.conversations, undefined);
+  assert.equal(st.leads, undefined);
+  assert.equal((await agent.post(`/api/leads/x/claim`)).status, 403);
+  assert.equal((await agent.post('/api/me/password', { current: 'Password1!', next: 'Password1!' })).status, 400, 'not the temporary one again');
+  assert.equal((await agent.post('/api/me/password', { current: 'Password1!', next: 'MyOwnPass99' })).status, 200);
+  st = await agent.state();
+  assert.equal(st.me.mustChangePassword, undefined);
+  assert.ok(Array.isArray(st.leads), 'works normally now');
   assert.ok((await ad.state()).agents.includes('New Agent'));
   await ad.post(`/api/users/${made.data.id}/active`, { active: false });
   assert.equal((await agent.state()).me, null);
-  assert.equal((await client('seller').login('new.agent@test.local', 'Password1!')).status, 401);
+  assert.equal((await client('seller').login('new.agent@test.local', 'MyOwnPass99')).status, 401);
+  await ad.post(`/api/users/${made.data.id}/active`, { active: true });
+
+  // an admin reset is temporary again
+  assert.equal((await ad.post(`/api/users/${made.data.id}/password`, { password: 'ResetPass11' })).status, 200);
+  const again = await signedIn('seller', 'new.agent@test.local', 'ResetPass11');
+  assert.equal((await again.state()).me.mustChangePassword, true);
+  assert.equal((await again.post('/api/me/password', { current: 'ResetPass11', next: 'MyOwnPass100' })).status, 200);
 });
 
 test('password change needs the current password and signs out other sessions', async () => {
@@ -641,7 +671,7 @@ test('Google sign-in: new clients are created, existing clients are linked, staf
   // the route: client site only, and off until GOOGLE_CLIENT_ID is set
   assert.equal((await client('buyer').post('/api/auth/google', { credential: 'x.y.z' })).status, 503);
   process.env.GOOGLE_CLIENT_ID = 'test-client-id';
-  assert.equal((await client('seller').post('/api/auth/google', { credential: 'x.y.z' })).status, 403);
+  assert.equal((await client('seller').post('/api/auth/google', { credential: 'x.y.z' })).status, 401, 'staff portals verify the token too');
   assert.equal((await client('buyer').post('/api/auth/google', { credential: 'x.y.z' })).status, 401, 'a bad token is refused');
   delete process.env.GOOGLE_CLIENT_ID;
 
@@ -669,4 +699,27 @@ test('Google sign-in: new clients are created, existing clients are linked, staf
   // an account made with Google can set its first password without a current one
   await assert.doesNotReject(svc.changePassword(fresh.user, undefined, 'FirstPass123'));
   assert.ok(await (await import('./auth.ts')).users.verify('newgoogle@test.local', 'FirstPass123'));
+});
+
+test('staff Google sign-in: only accounts the admin made, for that portal; a temporary password stops working', async () => {
+  const ad = await admin();
+  const made = await ad.post('/api/users', { name: 'Google Agent', email: 'google.agent@test.local', role: 'seller', password: 'TempPass123' });
+  assert.equal(made.status, 200);
+  // nobody else can get in with Google
+  await assert.rejects(svc.googleStaffSignIn({ sub: 'g-stranger', email: 'stranger@test.local', name: 'X' }, 'seller'), /No agent account/);
+  await assert.rejects(svc.googleStaffSignIn({ sub: 'g-ga', email: 'google.agent@test.local', name: 'X' }, 'admin'), /No admin account/, 'an agent is not an admin');
+  const c = await newClient();
+  await assert.rejects(svc.googleStaffSignIn({ sub: 'g-client', email: c.email, name: 'X' }, 'seller'), /No agent account/, 'a client is not an agent');
+
+  const u = await svc.googleStaffSignIn({ sub: 'g-ga', email: 'google.agent@test.local', name: 'Whatever' }, 'seller');
+  assert.equal(u.id, made.data.id);
+  assert.equal(u.googleLinked, true);
+  assert.equal(u.mustChangePassword, undefined, 'no password to change');
+  assert.equal((await client('seller').login('google.agent@test.local', 'TempPass123')).status, 401, 'the temporary password stopped working');
+  // the linked Google account keeps working; another Google account with the same email does not
+  assert.equal((await svc.googleStaffSignIn({ sub: 'g-ga', email: 'google.agent@test.local', name: 'X' }, 'seller')).id, made.data.id);
+  await assert.rejects(svc.googleStaffSignIn({ sub: 'g-other', email: 'google.agent@test.local', name: 'X' }, 'seller'), /different Google account/);
+  // disabled staff are refused
+  await ad.post(`/api/users/${made.data.id}/active`, { active: false });
+  await assert.rejects(svc.googleStaffSignIn({ sub: 'g-ga', email: 'google.agent@test.local', name: 'X' }, 'seller'), /disabled/);
 });

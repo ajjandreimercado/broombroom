@@ -1113,6 +1113,7 @@ export const changePassword = async (me: User, current: unknown, next: unknown) 
   // An account made with Google sets its first password without one (it is already signed in through Google).
   if (me.hasPassword !== false && (typeof current !== 'string' || !(await users.checkPassword(me.id, current)))) bad('Your current password is not correct.');
   if (!validPassword(next)) bad(PASSWORD_RULE);
+  if (next === current) bad(me.mustChangePassword ? 'Choose your own password, not the temporary one.' : 'Choose a password different from the current one.');
   await users.setPassword(me.id, next as string);
 };
 
@@ -1120,13 +1121,36 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Sign in (or sign up) a client with a verified Google profile. The same email as an existing client account signs
 // in to that account; agent and admin accounts keep signing in with their password on their own portal.
+// The account a Google profile belongs to: the one linked to that Google account, else the one with its email
+// (unless that one is already linked to a different Google account).
+const accountForGoogle = async (g: GoogleProfile) => {
+  const bySub = await users.byGoogleId(g.sub);
+  if (bySub) return bySub;
+  const byMail = await users.byEmail(g.email);
+  if (byMail?.googleLinked) bad('This email is linked to a different Google account.');
+  return byMail;
+};
+// Link the Google account; a temporary password (which the admin knows) stops working once Google is used.
+const signedInWithGoogle = async (u: User, sub: string) => {
+  if (!u.active) forbidden('This account is disabled. Contact the admin team.');
+  if (!u.googleLinked) await users.linkGoogle(u.id, sub);
+  if (u.mustChangePassword) await users.retireTemporaryPassword(u.id);
+  return (await users.byId(u.id))!;
+};
+
+// Agents and admins: only accounts the admin already made, for that portal. Google never creates a staff account.
+export const googleStaffSignIn = async (g: GoogleProfile, portal: 'seller' | 'admin') => {
+  const u = await accountForGoogle(g);
+  if (!u || u.role !== portal)
+    forbidden(`No ${portal === 'seller' ? 'agent' : 'admin'} account uses ${g.email}. Ask the admin to add this email, or sign in with your password.`);
+  return signedInWithGoogle(u!, g.sub);
+};
+
 export const googleSignIn = async (g: GoogleProfile): Promise<{ user: User; created: boolean }> => {
-  const existing = (await users.byGoogleId(g.sub)) ?? (await users.byEmail(g.email));
+  const existing = await accountForGoogle(g);
   if (existing) {
-    if (existing.role !== 'buyer') bad('This email belongs to a staff account. Sign in on your portal with your password.');
-    if (!existing.active) forbidden('This account is disabled. Contact the admin team.');
-    if (!existing.googleLinked) await users.linkGoogle(existing.id, g.sub);
-    return { user: (await users.byId(existing.id))!, created: false };
+    if (existing.role !== 'buyer') bad('This email belongs to a staff account. Sign in on your portal instead.');
+    return { user: await signedInWithGoogle(existing, g.sub), created: false };
   }
   try {
     const user = await users.createWithGoogle(
@@ -1165,6 +1189,7 @@ export const createAccount = async (input: any) => {
     role,
     name,
     password: input.password,
+    temporary: true, // they set their own on first sign-in (or sign in with Google)
     phone: text(input.phone, 'Phone', 40, false),
     address: { street: '', barangay: '', city: '', province: '', region: '', postalCode: '', country: 'Philippines' },
     savedVehicleIds: [],

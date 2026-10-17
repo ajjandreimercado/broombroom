@@ -34,9 +34,10 @@ export const AuthModal: React.FC = () => {
 
   const switchMode = (m: typeof mode) => { setError(''); setMode(m); };
 
-  // "Continue with Google" for clients, above the email form; shown once the server has a Google client ID.
+  // "Sign in with Google" above the email form, once the server has a Google client ID. Clients can also sign up
+  // this way; agents and admins use the Google account for the email the admin registered.
   const google = (text: 'signin_with' | 'signup_with') =>
-    PORTAL === 'buyer' && googleClientId ? (
+    googleClientId ? (
       <div className="mb-5">
         <GoogleButton
           clientId={googleClientId}
@@ -50,6 +51,7 @@ export const AuthModal: React.FC = () => {
             if (problem) setError(problem);
           }}
         />
+        {PORTAL !== 'buyer' && <p className="mt-2 text-[12px] text-[#4E585E]">Use the Google account for the email the admin registered for you.</p>}
         <div className="mt-5 flex items-center gap-3 text-[12px] text-[#6B767D]" aria-hidden="true">
           <span className="h-px flex-1 bg-[#C9D1D6]" />
           or with email
@@ -285,7 +287,7 @@ export const AuthModal: React.FC = () => {
                 <p className="text-[13px] text-[#4E585E] mt-2 leading-relaxed">
                   For your security, the Broom Broom admin team resets passwords. Email{' '}
                   <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#1D5FD1] underline underline-offset-4 [overflow-wrap:anywhere]">{CONTACT_EMAIL}</a>{' '}
-                  from the address you signed up with; they will give you a temporary password, which you can change in Settings after you sign in.
+                  from the address you signed up with; they will give you a temporary password, and you set your own when you sign in with it.{googleClientId ? ' If your account uses Google, just sign in with Google instead.' : ''}
                 </p>
               </div>
               <button

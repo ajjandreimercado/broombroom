@@ -13,8 +13,8 @@ export const seedIfEmpty = async () => {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password || password.length < 12)
     throw new Error('First start: set ADMIN_EMAIL and ADMIN_PASSWORD (12+ characters) to create the admin account.');
   await users.create({
-    id: 'admin-01', email, role: 'admin', name: 'Administrator', password, phone: '', address: blankAddress,
+    id: 'admin-01', email, role: 'admin', name: 'Administrator', password, temporary: true, phone: '', address: blankAddress,
     savedVehicleIds: [], recentlyViewedIds: [], memberSince: new Date().toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }),
   });
-  console.log(`Created the admin account ${email}. Change its password after the first sign-in.`);
+  console.log(`Created the admin account ${email}. The first sign-in asks for a new password.`);
 };

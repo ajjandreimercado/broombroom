@@ -13,6 +13,8 @@ export const buildState = async (me?: User) => {
   const vehicles = await store.all<Vehicle>('vehicles', role === 'admin' || role === 'seller' ? {} : { status: { $in: ['available', 'reserved'] } }, NEWEST('createdAt'));
   // The Google client ID is public (it is in every Google button); the site shows the button only when it is set.
   const base = { me: me ? publicUser(me) : null, vehicles, googleClientId: process.env.GOOGLE_CLIENT_ID || null };
+  // A temporary password shows nothing until the person sets their own.
+  if (me?.mustChangePassword) return { ...base, vehicles: [] };
   if (!me) return base;
 
   const notifications = (await store.all<AppNotification>('notifications', notificationScope(me), NEWEST('createdAt'))).slice(0, 200);

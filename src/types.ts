@@ -212,6 +212,7 @@ export interface UserProfile {
   avatar?: string;
   googleLinked?: boolean; // can sign in with Google
   hasPassword?: boolean; // false for accounts made with Google (they may set one in Settings)
+  mustChangePassword?: boolean; // signed in with a temporary password: must set their own before anything else
 }
 
 export interface Guide {

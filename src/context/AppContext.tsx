@@ -818,7 +818,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const createAccount: AppContextType['createAccount'] = async (a) =>
     done(await run(() => api('/users', { body: a }), ['Account created', `${a.name} can now sign in.`], 'Could not create the account'));
   const resetPassword = async (userId: string, password: string) =>
-    done(await run(() => api(`/users/${userId}/password`, { body: { password } }), ['Password reset', 'Share the new password with them privately.']));
+    done(await run(() => api(`/users/${userId}/password`, { body: { password } }), ['Password reset', 'Share it with them privately; they must set their own when they next sign in.']));
   const setAccountActive = async (userId: string, active: boolean) =>
     done(await run(() => api(`/users/${userId}/active`, { body: { active } }), [active ? 'Account enabled' : 'Account disabled']));
 
