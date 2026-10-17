@@ -1,9 +1,9 @@
-// Broom Broom runs as three sites from one build, told apart by hostname:
-//   broombroom.ph        clients (public marketplace)
-//   agent.broombroom.ph  agent portal
-//   admin.broombroom.ph  admin console
-// Locally the same split works on localhost, agent.localhost and admin.localhost.
-// Set VITE_BUYER_URL / VITE_AGENT_URL / VITE_ADMIN_URL to override the derived URLs.
+// Broom Broom runs as three sites from one build. On any address the portal is picked with ?portal=:
+//   https://example.com/                 clients (public marketplace)
+//   https://example.com/?portal=agent    agent portal
+//   https://example.com/?portal=admin    admin console
+// Subdomains also work (agent.example.com, admin.example.com) when those hostnames point at the same service;
+// set VITE_AGENT_URL / VITE_ADMIN_URL (and VITE_BUYER_URL) at build time to link between them.
 
 export type Portal = 'buyer' | 'seller' | 'admin';
 
@@ -12,9 +12,14 @@ const PREFIX: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'agent.', adm
 const detect = (hostname: string): Portal =>
   hostname.startsWith(PREFIX.seller) ? 'seller' : hostname.startsWith(PREFIX.admin) ? 'admin' : 'buyer';
 
-// Locally, on GitHub Pages and on Render's own address (*.onrender.com) the portals share one address and pick the
-// portal with ?portal=agent|admin. Real domains use subdomains (agent., admin.).
-const QUERY_MODE = /(^|\.)(github\.io|onrender\.com)$|^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+const ENV_URL: Record<Portal, string | undefined> = {
+  buyer: import.meta.env.VITE_BUYER_URL,
+  seller: import.meta.env.VITE_AGENT_URL,
+  admin: import.meta.env.VITE_ADMIN_URL,
+};
+
+// One address with ?portal=, unless this is an agent./admin. subdomain or the build names separate portal URLs.
+const QUERY_MODE = detect(window.location.hostname) === 'buyer' && !ENV_URL.seller && !ENV_URL.admin;
 const QUERY_KEY: Record<Exclude<Portal, 'buyer'>, string> = { seller: 'agent', admin: 'admin' };
 const fromQuery = (): Portal => {
   const q = new URLSearchParams(window.location.search).get('portal');
@@ -23,13 +28,7 @@ const fromQuery = (): Portal => {
 
 export const PORTAL: Portal = QUERY_MODE ? fromQuery() : detect(window.location.hostname);
 
-const ENV_URL: Record<Portal, string | undefined> = {
-  buyer: import.meta.env.VITE_BUYER_URL,
-  seller: import.meta.env.VITE_AGENT_URL,
-  admin: import.meta.env.VITE_ADMIN_URL,
-};
-
-// The bare domain this site sits under, e.g. "broombroom.ph" or "localhost".
+// The bare domain this site sits under, e.g. "example.com" or "localhost".
 const baseHost = () => {
   const { hostname } = window.location;
   return PORTAL === 'buyer' ? hostname : hostname.slice(PREFIX[PORTAL].length);

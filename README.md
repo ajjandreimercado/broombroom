@@ -5,13 +5,15 @@ React 19 + Vite + Tailwind CSS v4 on the front, a Node API (Express + MongoDB) b
 
 ## Three sites, one build
 
-The same build serves three sites. Which one you get depends on the hostname (see `src/portals.ts`):
+The same build serves three sites on one address; `?portal=` picks the site (see `src/portals.ts`):
 
-| Site | Production (placeholder) | Local |
+| Site | Live (Render) | Local |
 |---|---|---|
-| Marketplace (clients) | `broombroom.ph` | http://localhost:3000 |
-| Agent portal | `agent.broombroom.ph` | http://localhost:3000/?portal=agent |
-| Admin console | `admin.broombroom.ph` | http://localhost:3000/?portal=admin |
+| Marketplace (clients) | https://broombroom.onrender.com/ | http://localhost:3000 |
+| Agent portal | https://broombroom.onrender.com/?portal=agent | http://localhost:3000/?portal=agent |
+| Admin console | https://broombroom.onrender.com/?portal=admin | http://localhost:3000/?portal=admin |
+
+With a custom domain the same paths apply (`https://yourdomain.com/?portal=agent`).
 
 Each site keeps its own sign-in, and an account only works on its own site (a client account on the marketplace, an agent on the agent portal, an admin on the admin console).
 
@@ -73,7 +75,9 @@ npm run lint    # type-check
 | `APP_URL` | The client site's address, used for links in emails (e.g. `https://broombroom.onrender.com`) |
 | `NODE_VERSION` | `22` |
 
-Render sets `PORT` and `RENDER` itself. Add the three hostnames (`broombroom.ph`, `agent.`, `admin.`) as custom domains of the same service. The free Render plan sleeps after about 15 minutes without visitors (the next visit waits for it to wake); the free Atlas M0 holds 512 MB including uploaded files and has no automatic backups.
+Render sets `PORT` and `RENDER` itself.
+
+**Custom domain:** in Render, open the service → **Settings → Custom Domains → Add**, enter the domain (and `www.` if wanted), and add the DNS records Render shows at the domain's registrar (usually an `A` record for the bare domain and a `CNAME` for `www`). Render issues the HTTPS certificate automatically once DNS points at it. Then set `APP_URL=https://yourdomain.com` on Render (links in emails) and add `https://yourdomain.com` to the Google client ID's JavaScript origins. Nothing in the code needs to change. The free Render plan sleeps after about 15 minutes without visitors (the next visit waits for it to wake); the free Atlas M0 holds 512 MB including uploaded files and has no automatic backups.
 
 ### Sign in with Google (clients)
 
