@@ -308,6 +308,10 @@ export const updateVehicle = (id: string, input: any) =>
     const v = need(await store.get<Vehicle>('vehicles', idOf(id)), 'Listing');
     const changes = cleanListing(input, true);
     await markMediaAttached([...(changes.images || []), ...(changes.videos || [])]);
+    // Every photo removed: back to the drawn placeholder. No videos: none.
+    if (changes.images && !changes.images.length) changes.images = [generateVehicleSvg((changes.category ?? v.category) === 'motorcycles' ? 'bike' : 'car', '#111827', changes.title ?? v.title)];
+    if (changes.videos && !changes.videos.length) changes.videos = undefined;
+    if (changes.location !== undefined) changes.sellerLocation = changes.location || 'Philippines';
     return store.put('vehicles', { ...v, ...changes, minMonthlyPayment: Math.round((changes.price ?? v.price) * 0.018) });
   });
 

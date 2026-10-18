@@ -3,8 +3,9 @@ import { useApp } from '../../context/AppContext.tsx';
 import { StatusMark } from '../StatusMark.tsx';
 import { Vehicle, VehicleStatus } from '../../types.ts';
 import { FilterTabs, SectionHeader, EmptyState, Drawer, btn, peso } from './ui.tsx';
-import { PlusCircle, Search, ExternalLink } from 'lucide-react';
+import { PlusCircle, Search, ExternalLink, Pencil } from 'lucide-react';
 import { portalUrl } from '../../portals.ts';
+import { AddVehicleForm } from '../AddVehicleForm.tsx';
 
 // How the admin talks about listing states (stored values stay the same).
 export const STATUS_LABEL: Record<VehicleStatus, string> = {
@@ -53,9 +54,14 @@ export const StatusControl: React.FC<{ vehicle: Vehicle }> = ({ vehicle }) => {
 export const ListingDetail: React.FC<{ vehicle: Vehicle; onDeleted: () => void }> = ({ vehicle, onDeleted }) => {
   const { applications, deleteVehicleListing } = useApp();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
   const apps = applications.filter((a) => a.vehicleId === vehicle.id);
+  if (editing) return <AddVehicleForm key={vehicle.id} editing={vehicle} onDone={() => setEditing(false)} />;
   return (
     <div className="space-y-6">
+      <button className={`${btn.primary} inline-flex items-center gap-1.5`} onClick={() => setEditing(true)}>
+        <Pencil className="w-4 h-4" aria-hidden="true" /> Edit listing
+      </button>
       <img src={vehicle.images[0]} alt="" className="w-full aspect-[16/10] object-cover bg-[#EEF1F2]" />
       <div>
         <p className="font-display text-[22px] leading-tight text-[#141517]">{peso(vehicle.price)}</p>
@@ -118,7 +124,7 @@ export const ListingsManager: React.FC = () => {
 
   return (
     <section className="space-y-5">
-      <SectionHeader title="Listings" hint="Only admins post listings and change their status. Click a listing to approve, reserve, disapprove or release it.">
+      <SectionHeader title="Listings" hint="Only admins post listings and change them. Click a listing to edit its details, photos and videos, or to approve, reserve, disapprove or release it.">
         <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => navigateTo('admin', { adminTab: 'add_vehicle' })}>
           <PlusCircle className="w-4 h-4" aria-hidden="true" /> Add listing
         </button>

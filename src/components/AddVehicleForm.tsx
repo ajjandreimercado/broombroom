@@ -7,30 +7,31 @@ import { StoredVideo } from './StoredVideo.tsx';
 import { ImagePlus, X } from 'lucide-react';
 
 
-// Admins post listings straight to the marketplace; agents use the same form to request one.
-export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () => void }> = ({ mode = 'admin', onDone }) => {
-  const { createVehicleListing, submitListingRequest, navigateTo, showToast } = useApp();
+// Admins post listings straight to the marketplace (or edit one: `editing`); agents use the same form to request one.
+export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Vehicle; onDone?: () => void }> = ({ mode = 'admin', editing, onDone }) => {
+  const { createVehicleListing, updateVehicleListing, submitListingRequest, navigateTo, showToast } = useApp();
   const isRequest = mode === 'request';
   const [note, setNote] = useState('');
 
-  // Add Vehicle Form state
-  const [title, setTitle] = useState('');
-  const [brand, setBrand] = useState('Honda');
-  const [model, setModel] = useState('');
-  const [year, setYear] = useState(2025);
-  const [category, setCategory] = useState<Exclude<VehicleCategory, 'all'>>('cars');
-  const [price, setPrice] = useState<number>(1200000);
-  const [mileage, setMileage] = useState<number>(5000);
-  const [condition, setCondition] = useState<VehicleCondition>('New');
-  const [transmission, setTransmission] = useState<TransmissionType>('Automatic');
-  const [fuel, setFuel] = useState<FuelType>('Gasoline');
-  const [bodyType, setBodyType] = useState('Sedan');
-  const [color, setColor] = useState('Obsidian Black');
-  const [location, setLocation] = useState('');
-  const [description, setDescription] = useState('');
-  const [financingAvailable, setFinancingAvailable] = useState(true);
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [videos, setVideos] = useState<string[]>([]);
+  // Form state: empty for a new listing, the listing's current details when editing.
+  const [title, setTitle] = useState(editing?.title ?? '');
+  const [brand, setBrand] = useState(editing?.brand ?? 'Honda');
+  const [model, setModel] = useState(editing?.model ?? '');
+  const [year, setYear] = useState(editing?.year ?? 2025);
+  const [category, setCategory] = useState<Exclude<VehicleCategory, 'all'>>((editing?.category as Exclude<VehicleCategory, 'all'>) ?? 'cars');
+  const [price, setPrice] = useState<number>(editing?.price ?? 1200000);
+  const [mileage, setMileage] = useState<number>(editing?.mileage ?? 5000);
+  const [condition, setCondition] = useState<VehicleCondition>(editing?.condition ?? 'New');
+  const [transmission, setTransmission] = useState<TransmissionType>(editing?.transmission ?? 'Automatic');
+  const [fuel, setFuel] = useState<FuelType>(editing?.fuel ?? 'Gasoline');
+  const [bodyType, setBodyType] = useState(editing?.bodyType ?? 'Sedan');
+  const [color, setColor] = useState(editing?.color ?? 'Obsidian Black');
+  const [location, setLocation] = useState(editing?.location && editing.location !== 'Philippines' ? editing.location : '');
+  const [description, setDescription] = useState(editing?.description ?? '');
+  const [financingAvailable, setFinancingAvailable] = useState(editing?.financingAvailable ?? true);
+  // The drawn placeholder (a data: picture) is not an uploaded photo; it comes back by itself when no photos are left.
+  const [photos, setPhotos] = useState<string[]>(editing?.images.filter((u) => !u.startsWith('data:')) ?? []);
+  const [videos, setVideos] = useState<string[]>(editing?.videos ?? []);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState('');
 
@@ -99,6 +100,14 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
     };
 
     setSaving(true);
+    if (editing) {
+      // Every field, including an empty photo or video list (the server then puts the placeholder back).
+      const { status, ...changes } = data;
+      const saved = await updateVehicleListing(editing.id, { ...changes, images: photos, videos, location: location.trim() || 'Philippines' });
+      setSaving(false);
+      if (saved) onDone?.();
+      return;
+    }
     if (isRequest) {
       const sent = await submitListingRequest({ type: 'add', vehicleTitle: data.title!, changes: data, note: note.trim() });
       setSaving(false);
@@ -122,9 +131,11 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
   return (
               <div className="border-t-2 border-[#141517] pt-6 space-y-6">
                 <div>
-                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">{isRequest ? 'Request a new listing' : 'Add a listing'}</h2>
+                  <h2 className="font-display text-[22px] leading-tight text-[#141517]">{editing ? 'Edit listing' : isRequest ? 'Request a new listing' : 'Add a listing'}</h2>
                   <p className="text-[13px] text-[#4E585E] mt-1">
-                    {isRequest
+                    {editing
+                      ? 'Changes show on the marketplace as soon as you save. The listing keeps its status.'
+                      : isRequest
                       ? 'The admin team reviews your request before anything is posted.'
                       : 'Publishes to the marketplace for the whole sales team.'}
                   </p>
@@ -364,7 +375,12 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                   </div>
 
                   <div className="flex gap-3 pt-3">
-                    {!isRequest && (
+                    {editing && (
+                      <button type="button" onClick={onDone} className="py-3 px-5 border border-[#141517] hover:bg-[#EEF1F2] text-[#141517] font-semibold text-[13px] cursor-pointer transition-colors">
+                        Cancel
+                      </button>
+                    )}
+                    {!isRequest && !editing && (
                       <button
                         type="button"
                         onClick={(e) => handleCreateVehicle(e, true)}
@@ -378,7 +394,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; onDone?: () 
                       disabled={mediaBusy || saving}
                       className="disabled:opacity-60 py-3 px-6 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[13px] transition-colors cursor-pointer"
                     >
-                      {isRequest ? 'Send request' : 'Publish listing'}
+                      {saving ? 'Saving…' : editing ? 'Save changes' : isRequest ? 'Send request' : 'Publish listing'}
                     </button>
                   </div>
                 </form>

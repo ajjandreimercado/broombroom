@@ -782,3 +782,23 @@ test('conversations: claiming a client starts a chat with the agent; clients can
   assert.equal(l.data.messages[0].text, 'Is the price negotiable?');
   assert.equal((await ca.state()).conversations.filter((x: any) => x.buyerId === c.id).length, 3);
 });
+
+test('editing a listing: details, photos and videos change; removing every photo brings back the placeholder', async () => {
+  const ad = await admin();
+  const v = await freeVehicle();
+  const img = (await ad.upload(PNG, 'image/png', 'car.png', 'public')).data;
+  const e1 = await ad.patch(`/api/vehicles/${v.id}`, { title: 'Test Unit Edited', price: 899000, description: 'Fresh tires', location: 'Pasig City', images: [img.url], videos: [] });
+  assert.equal(e1.status, 200, JSON.stringify(e1.json));
+  assert.equal(e1.data.title, 'Test Unit Edited');
+  assert.equal(e1.data.price, 899000);
+  assert.deepEqual(e1.data.images, [img.url]);
+  assert.equal(e1.data.videos, undefined);
+  assert.equal(e1.data.sellerLocation, 'Pasig City');
+  assert.equal(e1.data.status, v.status, 'status unchanged');
+  const e2 = await ad.patch(`/api/vehicles/${v.id}`, { images: [] });
+  assert.equal(e2.data.images.length, 1);
+  assert.ok(e2.data.images[0].startsWith('data:image/svg+xml'), 'placeholder');
+  assert.equal((await ad.patch(`/api/vehicles/${v.id}`, { images: ['javascript:alert(1)'] })).status, 400);
+  assert.equal((await ad.patch(`/api/vehicles/${v.id}`, { price: -5 })).status, 400);
+  assert.equal((await (await carlo()).patch(`/api/vehicles/${v.id}`, { price: 1 })).status, 403, 'admins only');
+});
