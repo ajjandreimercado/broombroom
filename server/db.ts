@@ -22,6 +22,7 @@ export const COLLECTIONS = [
   'receipts',
   'sales_entries',
   'ledger_accounts',
+  'referrals',
 ] as const;
 export type Table = (typeof COLLECTIONS)[number];
 

@@ -20,6 +20,8 @@ import type {
   ManualReceipt,
   ReceiptLine,
   SalesEntry,
+  Referral,
+  ReferralStatus,
   LedgerAccount,
 } from '../src/types.ts';
 import { TEAM_NAME, COMMISSION_RATE, generateVehicleSvg } from '../src/data/constants.ts';
@@ -544,10 +546,12 @@ export const createApplication = (me: User, input: any) =>
     return app;
   });
 
-// The agent's commission on a sale, receivable until the sale completes. Once per application.
-const addReceivable = async (app: VehicleApplication) => {
+// The agent's commission on a sale, receivable until the vehicle is released. Once per application.
+// The admin sets the amount; without one it is the standard rate of the price.
+const commissionAmount = (app: VehicleApplication, v: unknown) =>
+  v === undefined || v === null || v === '' ? Math.round(app.vehiclePrice * COMMISSION_RATE) : money(v, 'Agent commission', { allowZero: true });
+const addReceivable = async (app: VehicleApplication, amount = commissionAmount(app, undefined)) => {
   if (await store.one('commissions', { applicationRef: app.referenceNo })) return;
-  const amount = Math.round(app.vehiclePrice * COMMISSION_RATE);
   const agent = (await ownerOf(app.applicantId)) ?? app.sellerName;
   await store.put<Commission>('commissions', {
     id: newId('com'),
@@ -556,13 +560,13 @@ const addReceivable = async (app: VehicleApplication) => {
     vehicleTitle: app.vehicleTitle,
     clientName: app.applicantName,
     salePrice: app.vehiclePrice,
-    rate: COMMISSION_RATE,
+    rate: app.vehiclePrice ? amount / app.vehiclePrice : 0,
     amount,
     status: 'receivable',
     transactionCompleted: false,
     createdAt: now(),
   });
-  await notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It becomes payable once the transaction is complete.`, 'commissions', agent);
+  await notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It is yours in full once the vehicle is released.`, 'commissions', agent);
 };
 
 // Admin: reserve the vehicle for the client. Their documents must be approved; the reservation payment is confirmed
@@ -610,17 +614,30 @@ export const releaseVehicle = (id: string, input: any) =>
     if (input?.orcrConfirmed !== true) bad('Confirm that the vehicle now has its OR and CR.');
     const vehicle = await store.get<Vehicle>('vehicles', app.vehicleId);
     if (vehicle) await store.put('vehicles', { ...vehicle, status: 'sold' });
-    const owner = await ownerOf(app.applicantId);
-    for (const c of await store.all<Commission>('commissions', { applicationRef: app.referenceNo }))
-      await store.put('commissions', { ...c, agentName: owner ?? c.agentName, transactionCompleted: true, completedAt: now() });
+    // The agent who has the client gets the full commission on release: payable at once, awaiting the cash transfer.
+    const existing = await store.one<Commission>('commissions', { applicationRef: app.referenceNo });
+    const amount = input?.commission === undefined && existing ? existing.amount : commissionAmount(app, input?.commission);
+    if (!existing) await addReceivable(app, amount);
+    const c = (await store.one<Commission>('commissions', { applicationRef: app.referenceNo }))!;
+    const agent = (await ownerOf(app.applicantId)) ?? c.agentName;
+    await store.put<Commission>('commissions', {
+      ...c,
+      agentName: agent,
+      amount,
+      rate: app.vehiclePrice ? amount / app.vehiclePrice : 0,
+      status: c.status === 'paid' ? 'paid' : 'payable',
+      transactionCompleted: true,
+      completedAt: now(),
+      approvedAt: c.approvedAt ?? now(),
+    });
     const saved = await store.put<VehicleApplication>('applications', { ...app, status: 'completed', releasedAt: now(), orcrConfirmed: true });
     await releaseLock(saved);
-    await notify('agent', 'Sale completed', `The ${app.vehicleTitle} was released to ${app.applicantName}. Your commission can now be approved for payout.`, 'commissions', owner ?? app.sellerName);
+    await notify('agent', 'Vehicle released: full commission', `The ${app.vehicleTitle} was released to ${app.applicantName}. Your full commission of ₱${amount.toLocaleString()} is approved and awaiting the cash transfer.`, 'commissions', agent);
     await notify('client', 'Vehicle released', `Your ${app.vehicleTitle} has been released to you with its OR and CR. Thank you for choosing Broom Broom.`, 'applications', app.applicantId);
     return saved;
   });
 
-export const setApplicationStatus = (me: User, id: string, status: ApplicationStatus, note?: unknown) =>
+export const setApplicationStatus = (me: User, id: string, status: ApplicationStatus, note?: unknown, commission?: unknown) =>
   tx(async () => {
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
     if (me.role === 'buyer' && (app.applicantId !== me.id || status !== 'withdrawn')) forbidden();
@@ -640,7 +657,7 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
     let extra: Partial<VehicleApplication> = {};
     if (status === 'approved') {
       // After the information sheet: the commission is receivable from now (cash and financing).
-      await addReceivable(app);
+      await addReceivable(app, commissionAmount(app, commission));
       extra = { approvedAt: now(), ciComments: reason || undefined, ...(app.purchaseMethod === 'financing' ? { financingApprovedAt: now() } : {}) };
       await notify('client', 'Application approved', `${app.referenceNo} for the ${app.vehicleTitle} was approved. We will tell you when the vehicle is ready for release.`, 'applications', app.applicantId);
     } else if (status === 'declined' || status === 'withdrawn') {
@@ -818,6 +835,30 @@ export const deleteReceipt = (id: string) =>
   tx(async () => {
     need(await store.get<ManualReceipt>('receipts', idOf(id)), 'Receipt');
     await store.remove('receipts', idOf(id));
+  });
+
+// ---------- referrals the admin tracks by hand ----------
+const REFERRAL_STATUS: ReferralStatus[] = ['receivable', 'processing', 'approved', 'disapproved'];
+export const addReferral = (me: User, input: any) =>
+  tx(async () => {
+    const r: Referral = {
+      id: newId('ref'),
+      referredBy: text(input?.referredBy, 'Referred by', 120),
+      clientName: text(input?.clientName, 'Client name', 120),
+      status: 'receivable',
+      history: [{ at: now(), by: me.name, text: 'Added as receivable' }],
+      createdBy: me.name,
+      createdAt: now(),
+    };
+    return store.put('referrals', r);
+  });
+
+export const setReferralStatus = (me: User, id: string, status: unknown) =>
+  tx(async () => {
+    const r = need(await store.get<Referral>('referrals', idOf(id)), 'Referral');
+    if (!REFERRAL_STATUS.includes(status as ReferralStatus)) bad('Unknown referral status.');
+    if (r.status === status) return r;
+    return store.put<Referral>('referrals', { ...r, status: status as ReferralStatus, history: [...r.history, { at: now(), by: me.name, text: `${r.status} → ${status}` }] });
   });
 
 // ---------- sales entered by hand in the sales report ----------

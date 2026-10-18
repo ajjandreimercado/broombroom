@@ -333,7 +333,8 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
 
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'completed' })).status, 400, 'release has its own step');
   assert.equal((await ad.post(`/api/applications/${app.id}/release`, {})).status, 400, 'OR/CR must be confirmed');
-  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true })).status, 200);
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, commission: -5 })).status, 400, 'no negative commission');
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, commission: 25000 })).status, 200);
   let s = await ad.state();
   const rel = s.applications.find((a: any) => a.id === app.id);
   assert.equal(rel.status, 'completed');
@@ -341,8 +342,9 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
   assert.equal(s.vehicles.find((x: any) => x.id === v.id).status, 'sold');
   const com = s.commissions.find((x: any) => x.applicationRef === app.referenceNo);
   assert.equal(com.transactionCompleted, true);
-  assert.equal((await ad.post(`/api/commissions/${com.id}/pay`, {})).status, 400); // must be approved first
-  assert.equal((await ad.post(`/api/commissions/${com.id}/approve`)).status, 200);
+  // on release the agent gets the full commission the admin set, payable at once
+  assert.equal(com.amount, 25000);
+  assert.equal(com.status, 'payable');
   assert.equal((await ad.post(`/api/commissions/${com.id}/pay`, {})).status, 400); // proof required
   const proof = (await ad.upload(PNG, 'image/png', 'transfer.png')).data.id;
   assert.equal((await ad.post(`/api/commissions/${com.id}/pay`, { fileId: proof })).status, 200);
@@ -377,6 +379,44 @@ test('open leads: two agents claiming at once, only one wins', async () => {
   assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
   const winner = results[0].status === 200 ? 'Carlo Santos' : 'Bea Villanueva';
   assert.equal((await c.state()).conversations[0].sellerName, winner);
+});
+
+test('commission: the admin sets it on approval; on release the client’s agent gets it in full', async () => {
+  const c = await newClient();
+  const ad = await admin();
+  const v = await freeVehicle();
+  const app = (await apply(c, v.id, { ref: 'bea-villanueva' })).data;
+  await approveDocs(ad, app.id);
+  assert.equal((await reserve(ad, app.id)).status, 200);
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 200);
+  assert.equal((await c.post(`/api/applications/${app.id}/status`, { status: 'approved', commission: 1 })).status, 403);
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved', commission: 18000 })).status, 200);
+  let com = (await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo);
+  assert.equal(com.amount, 18000);
+  assert.equal(com.status, 'receivable');
+  // release without a new amount keeps the admin's figure
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true })).status, 200);
+  com = (await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo);
+  assert.equal(com.amount, 18000);
+  assert.equal(com.agentName, 'Bea Villanueva');
+  assert.equal(com.status, 'payable');
+  const b = await bea();
+  assert.ok((await b.state()).commissions.some((x: any) => x.id === com.id && x.status === 'payable'), 'the agent sees it');
+  assert.ok((await b.state()).notifications.some((n: any) => n.title === 'Vehicle released: full commission' && /18,000/.test(n.message)));
+});
+
+test('referrals: admin only; status set by hand; every change kept', async () => {
+  const ad = await admin();
+  assert.equal((await (await carlo()).post('/api/referrals', { referredBy: 'X', clientName: 'Y' })).status, 403);
+  assert.equal((await ad.post('/api/referrals', { referredBy: 'Carlo Santos' })).status, 400, 'client name required');
+  const r = (await ad.post('/api/referrals', { referredBy: 'Carlo Santos', clientName: 'Maria Lopez' })).data;
+  assert.equal(r.status, 'receivable');
+  assert.equal((await ad.post(`/api/referrals/${r.id}/status`, { status: 'paid' })).status, 400);
+  for (const st of ['processing', 'approved', 'disapproved']) assert.equal((await ad.post(`/api/referrals/${r.id}/status`, { status: st })).status, 200);
+  const saved = (await ad.state()).referrals.find((x: any) => x.id === r.id);
+  assert.equal(saved.status, 'disapproved');
+  assert.deepEqual(saved.history.map((h: any) => h.text), ['Added as receivable', 'receivable → processing', 'processing → approved', 'approved → disapproved']);
+  assert.equal((await (await carlo()).state()).referrals, undefined, 'agents do not get the list');
 });
 
 test('reassigning moves unearned commissions; 24-hour rule returns a waiting client to the pool', async () => {

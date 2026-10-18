@@ -302,6 +302,18 @@ export interface Commission {
   createdAt: string;
 }
 
+// A referral the admin keeps track of by hand: who referred which client, and where it stands.
+export type ReferralStatus = 'receivable' | 'processing' | 'approved' | 'disapproved';
+export interface Referral {
+  id: string;
+  referredBy: string;
+  clientName: string;
+  status: ReferralStatus;
+  history: { at: string; by: string; text: string }[];
+  createdBy: string;
+  createdAt: string;
+}
+
 // An agent's request to add, edit or remove a listing; only the admin can apply it.
 export interface ListingRequest {
   id: string;

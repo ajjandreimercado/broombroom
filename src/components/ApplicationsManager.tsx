@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { COMMISSION_RATE } from '../data/constants.ts';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
 import { PaymentReceipt, VehicleApplication } from '../types.ts';
@@ -230,11 +231,21 @@ const ReserveAction: React.FC<{ app: VehicleApplication; blocked: boolean }> = (
   );
 };
 
+// The agent's commission on this sale, set by the admin (digits only). Paid in full to the agent on release.
+const CommissionField: React.FC<{ app: VehicleApplication; value: string; onChange: (v: string) => void; agent?: string }> = ({ app, value, onChange, agent }) => (
+  <label className="block max-w-xs">
+    <span className="gb-label block mb-1.5">Agent commission (₱){agent ? ` · ${agent}` : ''}</span>
+    <input value={value} inputMode="numeric" maxLength={9} onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))} className="w-full px-3 py-2 text-[14px] tabular-nums bg-white border border-[#8C989F] text-[#141517]" />
+    <span className="mt-1 block text-[12px] text-[#4E585E]">Standard {COMMISSION_RATE * 100}% is {peso(Math.round(app.vehiclePrice * COMMISSION_RATE))}. Payable in full to the client’s agent on release.</span>
+  </label>
+);
+
 // Admin: approve after reading the information sheet, with optional credit investigation (C.I.) comments.
 const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const { updateApplicationStatus } = useApp();
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState('');
+  const [commission, setCommission] = useState(String(Math.round(app.vehiclePrice * COMMISSION_RATE)));
   if (!open)
     return (
       <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => setOpen(true)}>
@@ -247,9 +258,10 @@ const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
       className="w-full space-y-2 animate-fade-up"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (await updateApplicationStatus(app.id, 'approved', comments.trim() || undefined)) setOpen(false);
+        if (await updateApplicationStatus(app.id, 'approved', comments.trim() || undefined, Number(commission || 0))) setOpen(false);
       }}
     >
+      <CommissionField app={app} value={commission} onChange={setCommission} />
       <label className="block">
         <span className="gb-label block mb-1.5">C.I. comments (optional)</span>
         <textarea rows={2} value={comments} onChange={(e) => setComments(e.target.value)} className="w-full px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]" />
@@ -264,9 +276,11 @@ const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
 
 // Admin: release the vehicle, confirming it now has its OR and CR.
 const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
-  const { releaseVehicle } = useApp();
+  const { releaseVehicle, commissions } = useApp();
   const [open, setOpen] = useState(false);
   const [orcr, setOrcr] = useState(false);
+  const current = commissions.find((c) => c.applicationRef === app.referenceNo);
+  const [commission, setCommission] = useState(String(current?.amount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
   if (!open)
     return (
       <button className={`${btn.ink} flex items-center gap-1.5`} onClick={() => { setOrcr(false); setOpen(true); }}>
@@ -279,9 +293,10 @@ const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
       className="w-full space-y-2 animate-fade-up"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (orcr && (await releaseVehicle(app.id))) setOpen(false);
+        if (orcr && (await releaseVehicle(app.id, Number(commission || 0)))) setOpen(false);
       }}
     >
+      <CommissionField app={app} value={commission} onChange={setCommission} agent={current?.agentName} />
       <label className="flex items-start gap-2 text-[13.5px] text-[#141517] cursor-pointer">
         <input type="checkbox" checked={orcr} onChange={(e) => setOrcr(e.target.checked)} className="mt-0.5 w-4 h-4 accent-[#1D5FD1]" />
         This vehicle now has its OR and CR, and is ready to be released to {app.applicantName}.

@@ -21,6 +21,8 @@ import {
   ManualReceipt,
   SalesEntry,
   LedgerAccount,
+  Referral,
+  ReferralStatus,
 } from '../types.ts';
 import { api, uploadFile, ApiError } from '../api.ts';
 import type { InfoSheet } from '../components/infoSheet.ts';
@@ -73,6 +75,7 @@ export type AdminTab =
   | 'add_vehicle'
   | 'reports'
   | 'agent_reports'
+  | 'referrals'
   | 'conversations'
   | 'accounting'
   | 'acc_expenses'
@@ -134,6 +137,7 @@ interface ServerState {
   receipts?: ManualReceipt[];
   salesEntries?: SalesEntry[];
   ledgerAccounts?: LedgerAccount[];
+  referrals?: Referral[];
   agents?: string[];
   users?: AccountSummary[];
   myAgent?: string | null;
@@ -216,6 +220,7 @@ interface AppContextType {
   receipts: ManualReceipt[];
   salesEntries: SalesEntry[];
   ledgerAccounts: LedgerAccount[];
+  referrals: Referral[];
   leads: ClientLead[];
   notifications: AppNotification[];
   agents: string[];
@@ -261,10 +266,10 @@ interface AppContextType {
 
   // Applications
   createApplication: (input: ApplicationInput) => Promise<VehicleApplication | undefined>;
-  updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string) => Promise<boolean>;
+  updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string, commission?: number) => Promise<boolean>;
   reserveApplication: (id: string, payment: { amount: number; description: string; remarks?: string }, screenshot?: Blob & { name?: string }) => Promise<PaymentReceipt | undefined>;
   submitInfoSheet: (id: string, sheet: Omit<InfoSheet, 'sketchUrl'>, sketch?: Blob & { name?: string }) => Promise<boolean>;
-  releaseVehicle: (id: string) => Promise<boolean>;
+  releaseVehicle: (id: string, commission: number) => Promise<boolean>;
   withdrawApplication: (id: string) => Promise<boolean>;
   reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => Promise<boolean>;
   attachDocumentForClient: (appId: string, docIndex: number, file: File) => Promise<boolean>;
@@ -276,6 +281,8 @@ interface AppContextType {
   deleteReceipt: (id: string) => Promise<boolean>;
   addSalesEntry: (input: Omit<SalesEntry, 'id' | 'createdBy' | 'createdAt'>) => Promise<boolean>;
   deleteSalesEntry: (id: string) => Promise<boolean>;
+  addReferral: (input: Pick<Referral, 'referredBy' | 'clientName'>) => Promise<boolean>;
+  setReferralStatus: (id: string, status: ReferralStatus) => Promise<boolean>;
   saveLedgerAccount: (id: string | null, input: Pick<LedgerAccount, 'name' | 'amount'> & Partial<Pick<LedgerAccount, 'kind' | 'method'>>) => Promise<boolean>;
   deleteLedgerAccount: (id: string) => Promise<boolean>;
   takeOverConversation: (id: string) => Promise<boolean>;
@@ -691,8 +698,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     return app;
   };
-  const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note) =>
-    done(await run(() => api(`/applications/${id}/status`, { body: { status, note } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
+  const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note, commission) =>
+    done(await run(() => api(`/applications/${id}/status`, { body: { status, note, commission } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
   const reserveApplication: AppContextType['reserveApplication'] = (id, payment, screenshot) =>
     run(async () => {
       const up = screenshot ? await uploadFile(screenshot, screenshot.name || 'payment.jpg', 'private') : undefined;
@@ -705,8 +712,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return api(`/applications/${id}/info-sheet`, { body: { ...sheet, sketchFileId: up?.id } });
       }, ['Information sheet sent', 'Your application is now processing.'], 'Could not send the information sheet')
     );
-  const releaseVehicle = async (id: string) =>
-    done(await run(() => api(`/applications/${id}/release`, { body: { orcrConfirmed: true } }), ['Vehicle released', 'The sale is complete and the client was notified.']));
+  const releaseVehicle = async (id: string, commission: number) =>
+    done(await run(() => api(`/applications/${id}/release`, { body: { orcrConfirmed: true, commission } }), ['Vehicle released', 'The sale is complete; the agent’s full commission is now payable.']));
   const withdrawApplication = async (id: string) =>
     done(await run(() => api(`/applications/${id}/status`, { body: { status: 'withdrawn' } }), ['Application withdrawn', 'Your application has been canceled.']));
   const reviewDocument: AppContextType['reviewDocument'] = async (appId, i, approve, reason) =>
@@ -754,6 +761,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const saveLedgerAccount: AppContextType['saveLedgerAccount'] = async (id, input) =>
     done(await run(() => (id ? api(`/ledger-accounts/${id}`, { method: 'PATCH', body: input }) : api('/ledger-accounts', { body: input })), [id ? 'Account saved' : 'Account added']));
   const deleteLedgerAccount = async (id: string) => done(await run(() => api(`/ledger-accounts/${id}`, { method: 'DELETE' }), ['Account deleted']));
+  const addReferral: AppContextType['addReferral'] = async (input) => done(await run(() => api('/referrals', { body: input }), ['Referral added']));
+  const setReferralStatus: AppContextType['setReferralStatus'] = async (id, status) => done(await run(() => api(`/referrals/${id}/status`, { body: { status } }), ['Referral updated', `Now ${status}.`]));
   const deleteSalesEntry = async (id: string) => done(await run(() => api(`/sales-entries/${id}`, { method: 'DELETE' }), ['Sale removed']));
 
   // ----- Quotations -----
@@ -901,6 +910,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         receipts: data.receipts ?? [],
         salesEntries: data.salesEntries ?? [],
         ledgerAccounts: data.ledgerAccounts ?? [],
+        referrals: data.referrals ?? [],
         leads: data.leads ?? [],
         notifications: data.notifications ?? [],
         agents: data.agents ?? [],
@@ -955,6 +965,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteReceipt,
         addSalesEntry,
         deleteSalesEntry,
+        addReferral,
+        setReferralStatus,
         saveLedgerAccount,
         deleteLedgerAccount,
         takeOverConversation,

@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount } from '../src/types.ts';
+import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount, Referral } from '../src/types.ts';
 import { store } from './db.ts';
 import { users, publicUser, type User } from './auth.ts';
 import { notificationScope, ownerOf } from './services.ts';
@@ -53,7 +53,7 @@ export const buildState = async (me?: User) => {
   }
 
   // Admin: everything, plus the account list (never password hashes).
-  const [accounts, applications, conversations, leads, commissions, listingRequests, reports, quotations, expenses, credits, receipts, salesEntries, ledgerAccounts] = await Promise.all([
+  const [accounts, applications, conversations, leads, commissions, listingRequests, reports, quotations, expenses, credits, receipts, salesEntries, ledgerAccounts, referrals] = await Promise.all([
     users.all(),
     store.all<VehicleApplication>('applications', {}, NEWEST('submittedAt')),
     store.all<Conversation>('conversations', {}, NEWEST('updatedAt')),
@@ -67,6 +67,7 @@ export const buildState = async (me?: User) => {
     store.all<ManualReceipt>('receipts', {}, NEWEST('date')),
     store.all<SalesEntry>('sales_entries', {}, NEWEST('date')),
     store.all<LedgerAccount>('ledger_accounts', {}, { createdAt: 1 }),
+    store.all<Referral>('referrals', {}, NEWEST('createdAt')),
   ]);
   return {
     ...base,
@@ -85,5 +86,6 @@ export const buildState = async (me?: User) => {
     receipts,
     salesEntries,
     ledgerAccounts,
+    referrals,
   };
 };

@@ -278,7 +278,7 @@ export const createApp = () => {
     return i;
   };
   api.post('/applications', requireRole('buyer'), act((req) => svc.createApplication(me(req), body(req))));
-  api.post('/applications/:id/status', requireRole('buyer', 'admin'), act((req) => svc.setApplicationStatus(me(req), req.params.id, body(req).status, body(req).note)));
+  api.post('/applications/:id/status', requireRole('buyer', 'admin'), act((req) => svc.setApplicationStatus(me(req), req.params.id, body(req).status, body(req).note, me(req).role === 'admin' ? body(req).commission : undefined)));
   api.post(
     '/applications/:id/documents/:i/review',
     requireRole('admin'),
@@ -344,6 +344,8 @@ export const createApp = () => {
   api.post('/receipts', requireRole('admin'), act((req) => svc.createReceipt(me(req), body(req))));
   api.patch('/receipts/:id', requireRole('admin'), act((req) => svc.updateReceipt(me(req), req.params.id, body(req))));
   api.delete('/receipts/:id', requireRole('admin'), act((req) => svc.deleteReceipt(req.params.id)));
+  api.post('/referrals', requireRole('admin'), act((req) => svc.addReferral(me(req), body(req))));
+  api.post('/referrals/:id/status', requireRole('admin'), act((req) => svc.setReferralStatus(me(req), req.params.id, body(req).status)));
   api.post('/sales-entries', requireRole('admin'), act((req) => svc.addSalesEntry(me(req), body(req))));
   api.delete('/sales-entries/:id', requireRole('admin'), act((req) => svc.deleteSalesEntry(req.params.id)));
   api.post('/conversations/:id/takeover', requireRole('admin'), act((req) => svc.takeOverConversation(req.params.id)));

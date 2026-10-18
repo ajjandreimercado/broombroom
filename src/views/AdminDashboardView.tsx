@@ -5,6 +5,7 @@ import { ApplicationsManager, docSummary } from '../components/ApplicationsManag
 import { Commissions } from '../components/Commissions.tsx';
 import { AdminOverview } from '../components/admin/AdminOverview.tsx';
 import { ListingRequests } from '../components/admin/ListingRequests.tsx';
+import { Referrals } from '../components/admin/Referrals.tsx';
 import { FinancingReview } from '../components/admin/FinancingReview.tsx';
 import { ListingsManager } from '../components/admin/ListingsManager.tsx';
 import { AgentReports } from '../components/admin/AgentReports.tsx';
@@ -28,6 +29,7 @@ import {
   PlusCircle,
   Flag,
   BarChart3,
+  UserPlus,
   MessagesSquare,
   LineChart as LineChartIcon,
   Receipt,
@@ -43,7 +45,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 type NavItem = { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number };
 
 export const AdminDashboardView: React.FC = () => {
-  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations, leads } = useApp();
+  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations, leads, referrals } = useApp();
   const open = ['submitted', 'under_review', 'contacted'];
 
   // Grouped so the admin reads the sidebar as: what needs me, what I manage, who I oversee.
@@ -87,6 +89,7 @@ export const AdminDashboardView: React.FC = () => {
         { id: 'approvals', label: 'Agent requests', icon: ClipboardCheck, count: listingRequests.filter((r) => r.status === 'pending').length },
         { id: 'leads', label: 'Clients & leads', icon: Users, count: leads.filter((l) => !l.agentName).length },
         { id: 'agent_reports', label: 'Agent reports', icon: BarChart3 },
+        { id: 'referrals', label: 'Referrals', icon: UserPlus, count: referrals.filter((r) => r.status === 'receivable' || r.status === 'processing').length },
         { id: 'conversations', label: 'Conversations', icon: MessagesSquare, count: conversations.length },
         { id: 'accounts', label: 'Accounts', icon: UserCog },
       ],
@@ -156,6 +159,7 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'add_vehicle' && <AddVehicleForm />}
             {adminTab === 'reports' && <SafetyReports />}
             {adminTab === 'agent_reports' && <AgentReports />}
+            {adminTab === 'referrals' && <Referrals />}
             {adminTab === 'conversations' && <ConversationsMonitor />}
             {adminTab === 'accounting' && <AccountingOverview />}
             {adminTab === 'acc_expenses' && <VoucherPage kind="expense" />}
