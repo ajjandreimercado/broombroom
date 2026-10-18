@@ -1,5 +1,6 @@
-import React from 'react';
-import { ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { Maximize2 } from 'lucide-react';
+import { Lightbox } from '../components/Lightbox.tsx';
 
 const img = (file: string) => `${import.meta.env.BASE_URL}permits/${file}`;
 
@@ -60,7 +61,9 @@ const DOCS: { title: string; issuer: string; facts: [string, string][]; file: st
 ];
 
 // Client site: proof that Broom Broom is a registered, permitted business.
-export const PermitsView: React.FC = () => (
+export const PermitsView: React.FC = () => {
+  const [viewing, setViewing] = useState<number | null>(null); // which document is open in full
+  return (
   <div className="bg-[#F7F8F8]">
     <section className="border-b border-[#141517]">
       <div className="gb-container pt-12 sm:pt-16 pb-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
@@ -93,9 +96,9 @@ export const PermitsView: React.FC = () => (
     <section className="gb-container py-12 sm:py-16" aria-labelledby="documents-heading">
       <h2 id="documents-heading" className="font-display text-[clamp(1.6rem,2.8vw,2.2rem)] leading-none text-[#141517]">Documents</h2>
       <ul className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {DOCS.map((d) => (
+        {DOCS.map((d, i) => (
           <li key={d.file} className={`bg-white border border-[#C9D1D6] flex flex-col ${d.wide ? 'sm:col-span-2 lg:col-span-1' : ''}`}>
-            <a href={img(d.file)} target="_blank" rel="noopener" className="group block border-b border-[#C9D1D6] bg-[#EEF1F2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1D5FD1]">
+            <button type="button" onClick={() => setViewing(i)} aria-label={`View the full ${d.title}`} className="group block w-full border-b border-[#C9D1D6] bg-[#EEF1F2] cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1D5FD1]">
               <img
                 src={img(d.file)}
                 alt={`${d.title} issued to ${BUSINESS.name}`}
@@ -103,7 +106,7 @@ export const PermitsView: React.FC = () => (
                 decoding="async"
                 className={`w-full ${d.wide ? 'aspect-[16/7] object-contain p-4' : 'aspect-[3/4] object-cover object-top'} transition-opacity group-hover:opacity-90`}
               />
-            </a>
+            </button>
             <div className="p-4 flex-1 flex flex-col">
               <h3 className="font-semibold text-[15px] text-[#141517]">{d.title}</h3>
               <p className="text-[12.5px] text-[#4E585E]">{d.issuer}</p>
@@ -115,13 +118,23 @@ export const PermitsView: React.FC = () => (
                   </div>
                 ))}
               </dl>
-              <a href={img(d.file)} target="_blank" rel="noopener" className="mt-4 self-start inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1D5FD1] underline underline-offset-4">
-                View full document <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-              </a>
+              <button type="button" onClick={() => setViewing(i)} className="mt-4 self-start inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1D5FD1] underline underline-offset-4 cursor-pointer">
+                <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" /> View full document
+              </button>
             </div>
           </li>
         ))}
       </ul>
     </section>
+    {viewing !== null && (
+      <Lightbox
+        items={DOCS.map((d) => ({ kind: 'photo' as const, src: img(d.file) }))}
+        index={viewing}
+        title={DOCS[viewing].title}
+        onIndex={setViewing}
+        onClose={() => setViewing(null)}
+      />
+    )}
   </div>
-);
+  );
+};

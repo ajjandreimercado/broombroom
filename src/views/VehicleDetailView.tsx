@@ -5,9 +5,11 @@ import { portalUrl } from '../portals.ts';
 import { AnimatePresence, motion } from 'motion/react';
 import { EASE_OUT } from '../motion.ts';
 import { StoredVideo } from '../components/StoredVideo.tsx';
+import { Lightbox } from '../components/Lightbox.tsx';
 import { QuoteRequest } from '../components/QuoteRequest.tsx';
 import {
   Bookmark,
+  Maximize2,
   MessageSquare,
   ArrowUpRight,
   ShieldCheck,
@@ -54,6 +56,7 @@ export const VehicleDetailView: React.FC = () => {
   const inCompare = vehicle ? isInCompare(vehicle.id) : false;
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false); // full, uncropped photo
 
   // Loan calculator state
   const [downPaymentPercent, setDownPaymentPercent] = useState(25);
@@ -234,6 +237,19 @@ export const VehicleDetailView: React.FC = () => {
                   />
                   )}
                 </AnimatePresence>
+                {current.kind === 'photo' && (
+                  // The frame crops the photo; clicking it shows the whole photo.
+                  <button
+                    type="button"
+                    onClick={() => setViewerOpen(true)}
+                    aria-label={`View the full photo of ${vehicle.title}`}
+                    className="absolute inset-0 z-[5] cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-[#1D5FD1]"
+                  >
+                    <span className="absolute left-0 bottom-0 inline-flex items-center gap-1.5 px-3 py-2 bg-white/90 border-t border-r border-[#141517] text-[12.5px] font-semibold text-[#141517]">
+                      <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" /> View full photo
+                    </span>
+                  </button>
+                )}
                 <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
                   <Stamp label="Saved" show={saved} className="bg-white/85" />
                   <Stamp label="Compare" show={inCompare} className="bg-white/85" />
@@ -260,6 +276,7 @@ export const VehicleDetailView: React.FC = () => {
                   </div>
                 )}
               </div>
+              {viewerOpen && <Lightbox items={media} index={activeImageIndex} title={vehicle.title} onIndex={setActiveImageIndex} onClose={() => setViewerOpen(false)} />}
               {media.length > 1 && (
                 <div className="flex gap-2 mt-2 overflow-x-auto scrollbar-none">
                   {media.map((item, idx) => (
