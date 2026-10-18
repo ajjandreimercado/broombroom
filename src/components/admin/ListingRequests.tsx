@@ -13,7 +13,7 @@ const FIELD_LABEL: Partial<Record<keyof Vehicle, string>> = {
 const show = (k: keyof Vehicle, v: unknown) =>
   v === undefined || v === '' ? '-' : Array.isArray(v) ? `${v.length} attached` : k === 'price' ? peso(Number(v)) : k === 'mileage' ? `${Number(v).toLocaleString()} km` : String(v);
 
-// Admin: agents' requests to add, edit or remove a listing. Approving applies the change.
+// Admin: agents' requests to add or edit a listing (older removal requests still show). Approving applies the change.
 export const ListingRequests: React.FC = () => {
   const { listingRequests, decideListingRequest, vehicles } = useApp();
   const [filter, setFilter] = useState<ListingRequest['status']>('pending');
@@ -22,7 +22,7 @@ export const ListingRequests: React.FC = () => {
 
   return (
     <section className="space-y-5">
-      <SectionHeader title="Listing approvals" hint="Agents can’t post or change listings. They send requests here; approving one applies it to the marketplace." />
+      <SectionHeader title="Agent requests" hint="Agents can’t post or change listings. They send new listings and edits here, with what needs to change; approving one applies it to the marketplace." />
       <FilterTabs
         id="requests"
         value={filter}
@@ -34,7 +34,7 @@ export const ListingRequests: React.FC = () => {
         ]}
       />
       {rows.length === 0 ? (
-        <EmptyState title={filter === 'pending' ? 'No pending requests' : 'Nothing here yet'} body="Requests from agents to add, edit or remove listings appear in this list." />
+        <EmptyState title={filter === 'pending' ? 'No pending requests' : 'Nothing here yet'} body="Requests from agents to add or edit listings appear in this list." />
       ) : (
         <ul key={filter} className="animate-view-fade">
           {rows.map((r) => {

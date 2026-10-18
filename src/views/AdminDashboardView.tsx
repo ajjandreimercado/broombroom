@@ -52,7 +52,6 @@ export const AdminDashboardView: React.FC = () => {
       title: 'Work queue',
       items: [
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-        { id: 'approvals', label: 'Listing approvals', icon: ClipboardCheck, count: listingRequests.filter((r) => r.status === 'pending').length },
         { id: 'quotations', label: 'Quotations', icon: Calculator, count: quotations.filter((q) => q.status === 'requested').length },
         { id: 'applications', label: 'Applications', icon: FileText, count: applications.filter((a) => open.includes(a.status) || a.status === 'processing').length },
         {
@@ -85,6 +84,7 @@ export const AdminDashboardView: React.FC = () => {
     {
       title: 'Agents',
       items: [
+        { id: 'approvals', label: 'Agent requests', icon: ClipboardCheck, count: listingRequests.filter((r) => r.status === 'pending').length },
         { id: 'leads', label: 'Clients & leads', icon: Users, count: leads.filter((l) => !l.agentName).length },
         { id: 'agent_reports', label: 'Agent reports', icon: BarChart3 },
         { id: 'conversations', label: 'Conversations', icon: MessagesSquare, count: conversations.length },

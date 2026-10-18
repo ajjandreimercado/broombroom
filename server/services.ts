@@ -337,7 +337,7 @@ export const deleteVehicle = (id: string) =>
 export const submitListingRequest = (me: User, input: any) =>
   tx(async () => {
     const type = input?.type;
-    if (!['add', 'edit', 'remove'].includes(type)) bad('Unknown request type.');
+    if (!['add', 'edit'].includes(type)) bad('Agents can request a new listing or an edit.');
     let vehicleTitle: string;
     let changes: Partial<Vehicle> | undefined;
     if (type === 'add') {
@@ -363,7 +363,8 @@ export const submitListingRequest = (me: User, input: any) =>
       status: 'pending',
       createdAt: now(),
     });
-    await notify('admin', 'Listing request', `${me.name} asked to ${type} "${vehicleTitle}".`, 'approvals');
+    const what = type === 'add' ? `asked to add "${vehicleTitle}"` : `asked to change ${Object.keys(changes!).join(', ')} on "${vehicleTitle}"`;
+    await notify('admin', 'Agent request', `${me.name} ${what}.${req.note ? ` Note: ${req.note}` : ''}`, 'approvals');
     return req;
   });
 

@@ -449,6 +449,8 @@ test('listings: unsafe media URLs refused; "save hidden" stays hidden; agent req
   const agent = await carlo();
   const req = await agent.post('/api/listing-requests', { type: 'edit', vehicleId: hidden.data.id, changes: { price: 450000 }, note: 'Price drop' });
   assert.equal(req.status, 200);
+  assert.ok((await ad.state()).notifications.some((n: any) => n.message === 'Carlo Santos asked to change price on "Hidden Unit". Note: Price drop'), 'admin told what to change');
+  assert.equal((await agent.post('/api/listing-requests', { type: 'remove', vehicleId: hidden.data.id, note: 'Sold elsewhere' })).status, 400, 'agents cannot ask for removals');
   assert.equal((await agent.post('/api/listing-requests', { type: 'edit', vehicleId: hidden.data.id, changes: { price: 1 } })).status, 400, 'one pending request per listing');
   assert.equal((await ad.post(`/api/listing-requests/${req.data.id}/decide`, { approve: false })).status, 400, 'reject needs a reason');
   assert.equal((await ad.post(`/api/listing-requests/${req.data.id}/decide`, { approve: true })).status, 200);

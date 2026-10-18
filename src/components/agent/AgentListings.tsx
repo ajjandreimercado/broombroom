@@ -12,7 +12,7 @@ import { agentSlug } from '../leads.ts';
 const referralLink = (vehicleId: string, agentName: string) => portalUrl('buyer', `?vehicle=${vehicleId}&agent=${agentSlug(agentName)}`);
 import { Eye, Link2, PlusCircle } from 'lucide-react';
 
-type Panel = { kind: 'add' } | { kind: 'edit' | 'remove'; vehicle: Vehicle } | null;
+type Panel = { kind: 'add' } | { kind: 'edit'; vehicle: Vehicle } | null;
 
 // Agents can't change listings. Every agent sees all of them, shares them with a personal link, and sends change requests to the admin.
 export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) => {
@@ -92,7 +92,6 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
                     <Eye className="w-4 h-4" aria-hidden="true" /> View
                   </button>
                   <button className={btn.outline} disabled={pendingFor(v.id)} onClick={() => openEdit(v)}>Request edit</button>
-                  <button className={btn.outline} disabled={pendingFor(v.id)} onClick={() => { setNote(''); setPanel({ kind: 'remove', vehicle: v }); }}>Request removal</button>
                 </div>
               </li>
             ))}
@@ -125,7 +124,7 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
       <Drawer
         open={!!panel}
         onClose={() => setPanel(null)}
-        title={panel?.kind === 'add' ? 'Request a new listing' : panel?.kind === 'edit' ? 'Request an edit' : 'Request removal'}
+        title={panel?.kind === 'add' ? 'Request a new listing' : 'Request an edit'}
       >
         {panel?.kind === 'add' && <AddVehicleForm mode="request" onDone={() => setPanel(null)} />}
         {panel?.kind === 'edit' && (
@@ -143,22 +142,6 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
               <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Client feedback on the price" className={field} /></label>
             <p className="text-[12.5px] text-[#4E585E]">Only the fields you change are sent. Status changes are made by the admin.</p>
             <button type="submit" className={btn.primary}>Send request</button>
-          </form>
-        )}
-        {panel?.kind === 'remove' && (
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!note.trim()) return;
-              submitListingRequest({ type: 'remove', vehicleId: panel.vehicle.id, vehicleTitle: panel.vehicle.title, note: note.trim() });
-              setPanel(null);
-            }}
-          >
-            <p className="text-[14px] text-[#141517]">Ask the admin team to remove <strong>{panel.vehicle.title}</strong> from the marketplace.</p>
-            <label className="block"><span className="gb-label block mb-2">Reason</span>
-              <textarea rows={3} required value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. The owner pulled the unit" className={field} /></label>
-            <button type="submit" disabled={!note.trim()} className={btn.primary}>Send request</button>
           </form>
         )}
       </Drawer>

@@ -10,7 +10,7 @@ export const AdminOverview: React.FC = () => {
   const open = ['submitted', 'under_review', 'contacted'];
 
   const queue: { tab: AdminTab; label: string; count: number; detail: string }[] = [
-    { tab: 'approvals', label: 'Listing requests from agents', count: listingRequests.filter((r) => r.status === 'pending').length, detail: 'New listings, edits and removals waiting for approval' },
+    { tab: 'approvals', label: 'Agent requests', count: listingRequests.filter((r) => r.status === 'pending').length, detail: 'New listings and edits waiting for approval' },
     { tab: 'applications', label: 'Information sheets to process', count: applications.filter((a) => a.status === 'processing').length, detail: 'Read the sheet, then approve or disapprove' },
     { tab: 'applications', label: 'Applications to review', count: applications.filter((a) => open.includes(a.status)).length, detail: 'Reserve with the reservation payment, or decline with a reason' },
     { tab: 'financing', label: 'Client documents to check', count: applications.filter((a) => open.includes(a.status) && docSummary(a).tone !== 'good').length, detail: 'Cash and financing: approve or reject each document' },
