@@ -4,19 +4,21 @@ import { VehicleApplication } from '../types.ts';
 
 const STOPPED = ['declined', 'withdrawn'];
 
-// Approved and reserved, but not yet fully paid and released.
-export const isOngoing = (app: VehicleApplication) => app.status === 'approved';
+// The vehicle is held for the client (reserved, processing or approved) and not yet released.
+export const isOngoing = (app: VehicleApplication) => ['reserved', 'processing', 'approved'].includes(app.status);
 export const amountPaid = (app: VehicleApplication) => (app.payments ?? []).reduce((s, p) => s + p.amount, 0);
 
 // Where a client's purchase stands, from application to release. Built from the shared application record,
 // so it moves on its own when the admin acts in another tab (AppContext syncs storage across tabs).
 export const progressSteps = (app: VehicleApplication) => {
-  const approved = app.status === 'approved' || app.status === 'completed';
+  const reached = (...st: VehicleApplication['status'][]) => st.includes(app.status);
+  const reserved = reached('reserved', 'processing', 'approved', 'completed');
+  const sheetIn = reached('processing', 'approved', 'completed');
+  const approved = reached('approved', 'completed');
   const completed = app.status === 'completed';
   const docs = app.documents ?? [];
-  const docsDone = approved || (docs.length > 0 && docs.every((d) => d.status === 'approved'));
+  const docsDone = reserved || (docs.length > 0 && docs.every((d) => d.status === 'approved'));
   const missing = docs.filter((d) => !d.fileName).length;
-  const paid = app.payments?.length ?? 0;
   const steps = [
     { label: 'Application sent', detail: new Date(app.submittedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }), done: true },
     {
@@ -24,9 +26,10 @@ export const progressSteps = (app: VehicleApplication) => {
       detail: docsDone ? 'All approved' : missing ? `${missing} still to hand to the admin` : docs.some((d) => d.status === 'rejected') ? 'A document needs attention' : 'Admin is reviewing',
       done: docsDone,
     },
-    { label: 'Approved & reserved', detail: approved ? 'Vehicle held for you' : 'Waiting for approval', done: approved },
-    { label: 'Payment', detail: paid ? `${paid} payment${paid > 1 ? 's' : ''} received` : 'No payment yet', done: completed || paid > 0 },
-    { label: 'Released to you', detail: completed ? 'Sale completed' : 'After full payment and paperwork', done: completed },
+    { label: 'Reserved', detail: reserved ? 'Vehicle held for you · AR released' : 'After your documents are checked', done: reserved },
+    { label: 'Information sheet', detail: sheetIn ? 'Received' : reserved ? 'Please fill it in' : 'After the reservation', done: sheetIn },
+    { label: 'Approved', detail: approved ? 'Application approved' : sheetIn ? 'Admin is processing' : 'After the information sheet', done: approved },
+    { label: 'Released to you', detail: completed ? 'With OR and CR' : 'Once the OR and CR are ready', done: completed },
   ];
   const current = steps.findIndex((s) => !s.done);
   return { steps, current: current === -1 ? steps.length : current, stopped: STOPPED.includes(app.status) };
@@ -37,7 +40,7 @@ export const ApplicationProgress: React.FC<{ app: VehicleApplication; stacked?: 
   const { steps, current, stopped } = progressSteps(app);
   return (
     <div>
-      <ol className={`grid grid-cols-1 ${sm('sm:grid-cols-5 sm:gap-2')}`} aria-label="Purchase progress">
+      <ol className={`grid grid-cols-1 ${sm('sm:grid-cols-6 sm:gap-2')}`} aria-label="Purchase progress">
         {steps.map((s, i) => {
           const isCurrent = i === current && !stopped;
           return (

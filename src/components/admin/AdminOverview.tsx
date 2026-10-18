@@ -11,9 +11,10 @@ export const AdminOverview: React.FC = () => {
 
   const queue: { tab: AdminTab; label: string; count: number; detail: string }[] = [
     { tab: 'approvals', label: 'Listing requests from agents', count: listingRequests.filter((r) => r.status === 'pending').length, detail: 'New listings, edits and removals waiting for approval' },
-    { tab: 'applications', label: 'Applications to review', count: applications.filter((a) => open.includes(a.status)).length, detail: 'Approve to reserve the vehicle, or decline with a reason' },
+    { tab: 'applications', label: 'Information sheets to process', count: applications.filter((a) => a.status === 'processing').length, detail: 'Read the sheet, then approve or disapprove' },
+    { tab: 'applications', label: 'Applications to review', count: applications.filter((a) => open.includes(a.status)).length, detail: 'Reserve with the reservation payment, or decline with a reason' },
     { tab: 'financing', label: 'Client documents to check', count: applications.filter((a) => open.includes(a.status) && docSummary(a).tone !== 'good').length, detail: 'Cash and financing: approve or reject each document' },
-    { tab: 'applications', label: 'Approved sales to complete', count: applications.filter((a) => a.status === 'approved').length, detail: 'Mark completed once the vehicle is released' },
+    { tab: 'applications', label: 'Approved, ready to release', count: applications.filter((a) => a.status === 'approved').length, detail: 'Release once the OR and CR are ready' },
     { tab: 'commissions', label: 'Commissions ready to approve', count: commissions.filter((c) => c.status === 'receivable' && c.transactionCompleted).length, detail: 'Sale is complete; approve to make it payable' },
     { tab: 'commissions', label: 'Commissions to pay', count: commissions.filter((c) => c.status === 'payable').length, detail: 'Transfer the cash and attach the proof' },
     { tab: 'reports', label: 'Pending listing reports', count: reports.filter((r) => r.status === 'pending').length, detail: 'Dismiss or take the listing down' },

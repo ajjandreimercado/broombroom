@@ -19,7 +19,7 @@ const stateOf = (app: VehicleApplication): Exclude<Filter, 'all'> => {
 
 // Admin: approve each document a client sent (cash or financing), or reject it with the reason the client will read.
 export const FinancingReview: React.FC = () => {
-  const { applications, reviewDocument, updateApplicationStatus, attachDocumentForClient, showToast } = useApp();
+  const { applications, reviewDocument, attachDocumentForClient, showToast, navigateTo } = useApp();
   const [openId, setOpenId] = useState<string | null>(null);
   const [method, setMethod] = useState<'all' | 'cash' | 'financing'>('all');
   const financing = applications.filter((a) => method === 'all' || a.purchaseMethod === method);
@@ -150,9 +150,9 @@ export const FinancingReview: React.FC = () => {
                       </ul>
                     )}
                     {canApproveApp && (
-                      <button className={`${btn.primary} mb-5 flex items-center gap-1.5`} onClick={() => updateApplicationStatus(app.id, 'approved')}>
+                      <button className={`${btn.primary} mb-5 flex items-center gap-1.5`} onClick={() => navigateTo('admin', { adminTab: 'applications' })}>
                         <Check className="w-4 h-4" aria-hidden="true" />
-                        Approve application &amp; reserve
+                        All approved: reserve in Applications
                       </button>
                     )}
                   </div>

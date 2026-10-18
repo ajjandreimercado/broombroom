@@ -2,6 +2,7 @@ import { Commission, ManualReceipt, PaymentReceipt, Quotation, ReceiptLine, Vehi
 import { pesoWords } from './ar.ts';
 import { quoteFigures } from './quote.ts';
 import pdfLib from 'html2pdf.js/dist/html2pdf.bundle.min.js?url';
+import { AFFIRMATION, PURPOSES, SHEET, type SheetSection } from './infoSheet.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`;
@@ -300,3 +301,64 @@ ${tools(`Quotation-${q.quoteNo || 'draft'}.pdf`)}
 };
 export const openQuotation = (q: Quotation, win?: Window | null) => openPrintable(quotationHtml(q), win);
 export const downloadQuotationPdf = (q: Quotation) => downloadPdf(quotationHtml(q));
+
+// The client's Applicant's Information Sheet, laid out like the paper form, for the admin to read, download or print.
+export const openInfoSheet = (app: VehicleApplication, win?: Window | null) => {
+  const sheet = app.infoSheet;
+  if (!sheet) return false;
+  const a = sheet.answers;
+  const val = (k: string) => esc(a[k] || '');
+  const section = (s: SheetSection) => {
+    if (s.kind === 'dependents')
+      return sheet.dependents.length
+        ? `<h2>${esc(s.title)}</h2><table class="grid"><tr><th>Name</th><th style="width:12%">Age</th><th>Where studying (year & course)</th></tr>${sheet.dependents
+            .map((d) => `<tr><td>${esc(d.name)}</td><td>${esc(d.age)}</td><td>${esc(d.studying)}</td></tr>`)
+            .join('')}</table>`
+        : '';
+    if (s.kind === 'purpose')
+      return `<h2>${esc(s.title)}</h2><p class="checks">${PURPOSES.map((p) => `<span>${sheet.purposes.includes(p) ? '☑' : '☐'} ${esc(p)}</span>`).join('')}${sheet.purposeOther ? ` <span>(${esc(sheet.purposeOther)})</span>` : ''}</p>`;
+    if (s.kind === 'affirm') return '';
+    const rows = (s.fields ?? []).filter((f) => a[f.key]);
+    if (!rows.length) return '';
+    return `<h2>${esc(s.title)}</h2><table class="kv">${rows.map((f) => `<tr><th>${esc(f.label)}</th><td>${val(f.key)}</td></tr>`).join('')}</table>`;
+  };
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Information sheet ${esc(app.referenceNo)}</title>
+<style>
+  @page { size: letter; margin: 0.6in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; font-size: 10.5pt; }
+  .sheet { max-width: 7.3in; margin: 24px auto; padding: 0 16px; }
+  .logo { text-align: center; } .logo img { height: 44px; }
+  h1 { text-align: center; font-size: 15pt; margin: 10px 0 4px; letter-spacing: .03em; }
+  .meta { display: flex; justify-content: space-between; gap: 12px; font-size: 9.5pt; margin: 8px 0 12px; }
+  h2 { font-size: 10.5pt; text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 4px; border-bottom: 1.5px solid #000; padding-bottom: 2px; }
+  table { width: 100%; border-collapse: collapse; }
+  .kv th { text-align: left; font-weight: 400; color: #333; width: 38%; padding: 3px 8px 3px 0; vertical-align: top; border-bottom: 1px solid #ddd; }
+  .kv td { padding: 3px 0; border-bottom: 1px solid #ddd; white-space: pre-wrap; }
+  .grid th, .grid td { border: 1px solid #000; padding: 3px 6px; text-align: left; }
+  .checks span { display: inline-block; margin-right: 14px; }
+  .affirm { margin-top: 14px; font-size: 9.5pt; line-height: 1.4; }
+  .signs { display: flex; gap: 40px; margin-top: 18px; text-align: center; }
+  .signs div { flex: 1; } .signs p { margin: 0; } .line { border-top: 1px solid #000; padding-top: 3px; font-weight: 700; font-size: 9pt; }
+  .sketch img { max-width: 100%; max-height: 320px; border: 1px solid #999; }
+  @media print { .sheet { margin: 0; padding: 0; } }
+</style></head>
+<body><div class="sheet">
+  <div class="logo"><img src="${esc(logoUrl())}" alt="Broom Broom"></div>
+  <h1>APPLICANT'S INFORMATION SHEET</h1>
+  <div class="meta"><span><b>Application:</b> ${esc(app.referenceNo)} · ${esc(app.vehicleTitle)}</span><span><b>Date:</b> ${esc(date(app.infoSheetSubmittedAt))}</span></div>
+  ${SHEET.map(section).join('')}
+  ${sheet.sketchUrl ? `<h2>Sketch</h2><p class="sketch"><img src="${esc(abs(sheet.sketchUrl))}" alt="Sketch / map to the applicant's home"></p>` : ''}
+  <p class="affirm"><b>Agent:</b> ${esc(app.sellerName)}</p>
+  <p class="affirm">${esc(AFFIRMATION)}</p>
+  <div class="signs">
+    <div><p>${esc(sheet.signature)}</p><p class="line">APPLICANT'S SIGNATURE</p></div>
+    <div><p>${esc(sheet.spouseSignature || '')}</p><p class="line">SPOUSE / SURETY SIGNATURE</p></div>
+  </div>
+  ${app.ciComments ? `<h2>C.I. comments</h2><p style="white-space:pre-wrap">${esc(app.ciComments)}</p>` : ''}
+</div>
+${tools(`Information-sheet-${app.referenceNo}.pdf`)}
+</body></html>`;
+  return openPrintable(html, win);
+};

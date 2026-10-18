@@ -491,7 +491,7 @@ export const AccountView: React.FC = () => {
                                 <span className="tabular-nums text-xs font-bold text-[#6B767D]">
                                   {app.referenceNo}
                                 </span>
-                                <StatusMark status={app.status} />
+                                <StatusMark status={app.status === 'completed' ? 'Released' : app.status} />
                                 {isOngoing(app) && <StatusMark status="Ongoing" />}
                               </div>
                               <h3 className="font-bold text-[#141517] text-sm mt-1">
@@ -523,6 +523,14 @@ export const AccountView: React.FC = () => {
                             )}
                           </div>
                         </div>
+                        {app.status === 'reserved' && (
+                          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#E8F0FC] border-l-2 border-[#1D5FD1]">
+                            <p className="text-[13px] text-[#141517]"><strong>The vehicle is reserved for you.</strong> Next: fill in the Applicant's Information Sheet.</p>
+                            <button onClick={() => navigateTo('info_sheet', { applicationId: app.id })} className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[13px] font-semibold cursor-pointer">
+                              Fill in information sheet
+                            </button>
+                          </div>
+                        )}
                         <ApplicationProgress app={app} />
                         </div>
                       );

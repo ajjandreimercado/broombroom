@@ -1,3 +1,4 @@
+import type { InfoSheet } from './components/infoSheet.ts';
 export type VehicleCategory = 'all' | 'cars' | 'motorcycles' | 'trucks' | 'ebikes' | 'scooters' | 'atvs';
 
 export type VehicleCondition = 'New' | 'Surplus / 2nd hand';
@@ -57,6 +58,8 @@ export type ApplicationStatus =
   | 'submitted'
   | 'under_review'
   | 'contacted'
+  | 'reserved' // the admin reserved the car (reservation AR issued); the client fills in the information sheet
+  | 'processing' // information sheet in; the admin approves or disapproves
   | 'approved'
   | 'declined'
   | 'withdrawn'
@@ -96,7 +99,14 @@ export interface VehicleApplication {
   payments?: PaymentReceipt[];
   quotationNo?: string; // the client applied from this quotation
   viaAgentLink?: string; // the agent whose apply link the client used
-  financingApprovedAt?: string; // financing: when the bank or financing company approved the loan (the commission is receivable from then)
+  financingApprovedAt?: string; // financing: approved (with the application)
+  reservedAt?: string;
+  infoSheet?: InfoSheet; // the Applicant's Information Sheet, filled in by the client after the reservation
+  infoSheetSubmittedAt?: string;
+  ciComments?: string; // the admin's credit investigation comments, given when approving
+  approvedAt?: string;
+  releasedAt?: string; // vehicle released to the client, with its OR and CR
+  orcrConfirmed?: boolean;
 }
 
 // A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).

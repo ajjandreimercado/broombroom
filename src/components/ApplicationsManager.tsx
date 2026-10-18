@@ -2,15 +2,13 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
 import { PaymentReceipt, VehicleApplication } from '../types.ts';
-import { openAcknowledgementReceipt, openImage, reserveWindow } from './receipt.ts';
+import { openAcknowledgementReceipt, openImage, openInfoSheet, reserveWindow } from './receipt.ts';
 import { dataUrlToBlob } from '../api.ts';
-import { isOngoing, amountPaid } from './ApplicationProgress.tsx';
+import { amountPaid } from './ApplicationProgress.tsx';
 import { photoDataUrl } from '../media.ts';
 import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
-import { Check, PhoneCall, PackageCheck, Paperclip, Pencil, Plus, X, Landmark } from 'lucide-react';
+import { Check, PhoneCall, PackageCheck, Paperclip, Pencil, Plus, X, FileText } from 'lucide-react';
 
-type Filter = 'review' | 'approved' | 'completed' | 'closed' | 'all';
-const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'contacted'];
 
 export const docSummary = (app: VehicleApplication) => {
   const docs = app.documents || [];
@@ -198,25 +196,129 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   );
 };
 
-// Admin: move each client application from review to approval (reserves the car) to a completed sale.
+// Admin: the reservation payment (released as an AR in the client's name) that reserves the vehicle.
+const ReserveAction: React.FC<{ app: VehicleApplication; blocked: boolean }> = ({ app, blocked }) => {
+  const { reserveApplication } = useApp();
+  const [open, setOpen] = useState(false);
+  if (!open)
+    return (
+      <button className={`${btn.primary} flex items-center gap-1.5`} disabled={blocked} onClick={() => setOpen(true)}>
+        <Check className="w-4 h-4" aria-hidden="true" />
+        Reserve
+      </button>
+    );
+  return (
+    <div className="w-full space-y-1.5">
+      <p className="text-[13px] font-semibold text-[#141517]">Reservation payment: an acknowledgement receipt is released to {app.applicantName}.</p>
+      <PaymentLineForm
+        defaultDescription={`Reservation fee for ${app.vehicleTitle}`}
+        submitLabel="Reserve & release AR"
+        onCancel={() => setOpen(false)}
+        onSubmit={async (v, shot) => {
+          const win = reserveWindow(); // opened during the click so the browser allows it
+          const receipt = await reserveApplication(app.id, { amount: v.amount, description: v.description, remarks: v.remarks || undefined }, shot);
+          if (!receipt) {
+            win?.close();
+            return false;
+          }
+          setOpen(false);
+          openAcknowledgementReceipt({ ...app, payments: [...(app.payments ?? []), receipt] }, receipt, win);
+          return true;
+        }}
+      />
+    </div>
+  );
+};
+
+// Admin: approve after reading the information sheet, with optional credit investigation (C.I.) comments.
+const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
+  const { updateApplicationStatus } = useApp();
+  const [open, setOpen] = useState(false);
+  const [comments, setComments] = useState('');
+  if (!open)
+    return (
+      <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => setOpen(true)}>
+        <Check className="w-4 h-4" aria-hidden="true" />
+        Approve
+      </button>
+    );
+  return (
+    <form
+      className="w-full space-y-2 animate-fade-up"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (await updateApplicationStatus(app.id, 'approved', comments.trim() || undefined)) setOpen(false);
+      }}
+    >
+      <label className="block">
+        <span className="gb-label block mb-1.5">C.I. comments (optional)</span>
+        <textarea rows={2} value={comments} onChange={(e) => setComments(e.target.value)} className="w-full px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]" />
+      </label>
+      <div className="flex gap-2">
+        <button type="submit" className={btn.primary}>Approve application</button>
+        <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
+      </div>
+    </form>
+  );
+};
+
+// Admin: release the vehicle, confirming it now has its OR and CR.
+const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
+  const { releaseVehicle } = useApp();
+  const [open, setOpen] = useState(false);
+  const [orcr, setOrcr] = useState(false);
+  if (!open)
+    return (
+      <button className={`${btn.ink} flex items-center gap-1.5`} onClick={() => { setOrcr(false); setOpen(true); }}>
+        <PackageCheck className="w-4 h-4" aria-hidden="true" />
+        Release vehicle
+      </button>
+    );
+  return (
+    <form
+      className="w-full space-y-2 animate-fade-up"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (orcr && (await releaseVehicle(app.id))) setOpen(false);
+      }}
+    >
+      <label className="flex items-start gap-2 text-[13.5px] text-[#141517] cursor-pointer">
+        <input type="checkbox" checked={orcr} onChange={(e) => setOrcr(e.target.checked)} className="mt-0.5 w-4 h-4 accent-[#1D5FD1]" />
+        This vehicle now has its OR and CR, and is ready to be released to {app.applicantName}.
+      </label>
+      <div className="flex gap-2">
+        <button type="submit" disabled={!orcr} className={btn.ink}>Confirm release</button>
+        <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
+      </div>
+    </form>
+  );
+};
+
+type Filter = 'review' | 'reserved' | 'processing' | 'approved' | 'completed' | 'closed' | 'all';
+const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'contacted'];
+
+// Admin: review -> reserve (reservation AR) -> the client's information sheet -> approve -> release with OR/CR.
 export const ApplicationsManager: React.FC = () => {
-  const { applications, updateApplicationStatus, approveFinancing, navigateTo } = useApp();
+  const { applications, updateApplicationStatus, navigateTo, showToast } = useApp();
   const [filter, setFilter] = useState<Filter>('review');
 
   const matches = (f: Filter, a: VehicleApplication) =>
     f === 'all' ||
     (f === 'review' && OPEN.includes(a.status)) ||
+    (f === 'reserved' && a.status === 'reserved') ||
+    (f === 'processing' && a.status === 'processing') ||
     (f === 'approved' && a.status === 'approved') ||
     (f === 'completed' && a.status === 'completed') ||
     (f === 'closed' && (a.status === 'declined' || a.status === 'withdrawn'));
   const count = (f: Filter) => applications.filter((a) => matches(f, a)).length;
   const rows = applications.filter((a) => matches(filter, a));
+  const viewSheet = (app: VehicleApplication) => !openInfoSheet(app) && showToast('Allow pop-ups', 'Your browser blocked the sheet window. Allow pop-ups for this site and try again.', 'error');
 
   return (
     <section className="space-y-5">
       <SectionHeader
         title="Applications"
-        hint="Approving an application reserves the vehicle for that client. Financing applications need every document approved first. Confirming a partial payment releases a numbered acknowledgement receipt (AR) to the client."
+        hint="Review the documents, then reserve the vehicle with the reservation payment (an AR is released to the client). The client then fills in the Applicant's Information Sheet; read it and approve or disapprove. Once the vehicle has its OR and CR, release it."
       />
       <FilterTabs
         id="applications"
@@ -224,8 +326,10 @@ export const ApplicationsManager: React.FC = () => {
         onChange={setFilter}
         options={[
           { value: 'review', label: 'To review', count: count('review') },
+          { value: 'reserved', label: 'Reserved', count: count('reserved') },
+          { value: 'processing', label: 'Processing', count: count('processing') },
           { value: 'approved', label: 'Approved', count: count('approved') },
-          { value: 'completed', label: 'Completed', count: count('completed') },
+          { value: 'completed', label: 'Released', count: count('completed') },
           { value: 'closed', label: 'Declined', count: count('closed') },
           { value: 'all', label: 'All', count: applications.length },
         ]}
@@ -244,8 +348,7 @@ export const ApplicationsManager: React.FC = () => {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[12.5px] tabular-nums text-[#4E585E]">{app.referenceNo}{app.quotationNo ? ` · from ${app.quotationNo}` : ''}</span>
-                      <StatusMark status={app.status} />
-                      {isOngoing(app) && <StatusMark status="Ongoing" />}
+                      <StatusMark status={app.status === 'completed' ? 'Released' : app.status} />
                       <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[#141517]">
                         {app.purchaseMethod === 'cash' ? 'Cash' : `Financing · ${app.financingTermMonths ?? '-'} mo`}
                       </span>
@@ -265,17 +368,11 @@ export const ApplicationsManager: React.FC = () => {
 
                 {app.notes && <p className="text-[13px] text-[#2A2E31] max-w-[70ch]">Client note: “{app.notes}”</p>}
                 {app.sellerNotes && <p className="text-[13px] text-[#2A2E31] max-w-[70ch]">Admin note: “{app.sellerNotes}”</p>}
+                {app.ciComments && <p className="text-[13px] text-[#2A2E31] max-w-[70ch]">C.I. comments: “{app.ciComments}”</p>}
 
                 {OPEN.includes(app.status) && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      className={`${btn.primary} flex items-center gap-1.5`}
-                      disabled={docsBlock}
-                      onClick={() => updateApplicationStatus(app.id, 'approved')}
-                    >
-                      <Check className="w-4 h-4" aria-hidden="true" />
-                      Approve &amp; reserve
-                    </button>
+                    <ReserveAction app={app} blocked={docsBlock} />
                     {app.status !== 'contacted' && (
                       <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => updateApplicationStatus(app.id, 'contacted')}>
                         <PhoneCall className="w-4 h-4" aria-hidden="true" />
@@ -284,40 +381,49 @@ export const ApplicationsManager: React.FC = () => {
                     )}
                     <ReasonAction label="Decline" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
                     {docsBlock && (
-                      <button
-                        onClick={() => navigateTo('admin', { adminTab: 'financing' })}
-                        className="text-[13px] font-semibold text-[#1D5FD1] underline underline-offset-4 cursor-pointer"
-                      >
+                      <button onClick={() => navigateTo('admin', { adminTab: 'financing' })} className="text-[13px] font-semibold text-[#1D5FD1] underline underline-offset-4 cursor-pointer">
                         Review documents first
                       </button>
                     )}
                   </div>
                 )}
+                {app.status === 'reserved' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[12.5px] font-medium text-[#B4690E]">Reserved · waiting for the client's information sheet.</span>
+                    <ReasonAction label="Cancel reservation" confirmLabel="Cancel & free the car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
+                  </div>
+                )}
+                {app.status === 'processing' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => viewSheet(app)}>
+                      <FileText className="w-4 h-4" aria-hidden="true" /> View information sheet
+                    </button>
+                    <ApproveAction app={app} />
+                    <ReasonAction label="Disapprove" confirmLabel="Disapprove & free the car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
+                  </div>
+                )}
                 {app.status === 'approved' && (
                   <div className="flex flex-wrap items-center gap-2">
-                    {/* Financing: the bank approves the loan before the sale can complete (and before the commission counts). */}
-                    {app.purchaseMethod === 'financing' && !app.financingApprovedAt ? (
-                      <>
-                        <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => approveFinancing(app.id)}>
-                          <Landmark className="w-4 h-4" aria-hidden="true" />
-                          Financing approved by bank
-                        </button>
-                        <span className="text-[12.5px] font-medium text-[#B4690E]">Waiting for the bank's approval. The agent's commission counts once it is recorded.</span>
-                      </>
-                    ) : (
-                      <button className={`${btn.ink} flex items-center gap-1.5`} onClick={() => updateApplicationStatus(app.id, 'completed')}>
-                        <PackageCheck className="w-4 h-4" aria-hidden="true" />
-                        Mark sale completed
+                    <ReleaseAction app={app} />
+                    {app.infoSheet && (
+                      <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => viewSheet(app)}>
+                        <FileText className="w-4 h-4" aria-hidden="true" /> Information sheet
                       </button>
                     )}
-                    {app.financingApprovedAt && <span className="text-[12.5px] font-medium text-[#1B7F35]">Financing approved by the bank</span>}
-                    <ReasonAction label="Cancel approval" confirmLabel="Cancel & release car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
+                    <ReasonAction label="Cancel approval" confirmLabel="Cancel & free the car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
                     <span className="text-[12.5px] text-[#4E585E] tabular-nums">
-                      Reserved · payment ongoing: {peso(amountPaid(app))} of {peso(app.vehiclePrice)} received
+                      Approved · paid so far: {peso(amountPaid(app))} of {peso(app.vehiclePrice)}
                     </span>
                   </div>
                 )}
-                {app.status === 'completed' && <p className="text-[12.5px] text-[#1B7F35] font-medium">Sale completed · vehicle released to the client.</p>}
+                {app.status === 'completed' && (
+                  <p className="text-[12.5px] text-[#1B7F35] font-medium">
+                    Released{app.releasedAt ? ` ${shortDate(app.releasedAt)}` : ''} with OR and CR · sale completed.
+                    {app.infoSheet && (
+                      <button className="ml-3 text-[#1D5FD1] underline underline-offset-4 cursor-pointer" onClick={() => viewSheet(app)}>Information sheet</button>
+                    )}
+                  </p>
+                )}
                 <PartialPayments app={app} />
               </li>
             );

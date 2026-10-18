@@ -5,7 +5,7 @@ import { HttpError, sessionUser, requireRole, startSession, endSession, portalOf
 import { buildState } from './state.ts';
 import { eventStream, broadcastChange } from './events.ts';
 import * as svc from './services.ts';
-import { sendMail, resubmitEmail, supportEmail } from './mailer.ts';
+import { sendMail, resubmitEmail, supportEmail, infoSheetEmail } from './mailer.ts';
 import { CONTACT_EMAIL } from '../src/data/constants.ts';
 import { verifyGoogleToken } from './google.ts';
 
@@ -291,7 +291,18 @@ export const createApp = () => {
   api.post('/applications/:id/documents/:i/resubmit', requireRole('buyer'), act((req) => svc.resubmitDocument(me(req), req.params.id, idx(req), body(req).fileId)));
   api.post('/applications/:id/documents/:i/file', requireRole('admin'), act((req) => svc.attachDocumentForClient(me(req), req.params.id, idx(req), body(req).fileId)));
   api.post('/applications/:id/payments', requireRole('admin'), act((req) => svc.addPayment(me(req), req.params.id, body(req))));
-  api.post('/applications/:id/financing-approved', requireRole('admin'), act((req) => svc.approveFinancing(req.params.id)));
+  api.post(
+    '/applications/:id/reserve',
+    requireRole('admin'),
+    act(async (req) => {
+      const { receipt, email } = await svc.reserveApplication(me(req), req.params.id, body(req));
+      // Sent after the change is saved; the client also gets an in-app notice.
+      void sendMail(infoSheetEmail({ ...email, link: `${clientSiteUrl(req)}/?infosheet=${encodeURIComponent(email.appId)}` }));
+      return receipt;
+    })
+  );
+  api.post('/applications/:id/info-sheet', requireRole('buyer'), act((req) => svc.submitInfoSheet(me(req), req.params.id, body(req))));
+  api.post('/applications/:id/release', requireRole('admin'), act((req) => svc.releaseVehicle(req.params.id, body(req))));
   api.patch('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.updatePayment(me(req), req.params.id, req.params.arNo, body(req))));
   api.delete('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.deletePayment(req.params.id, req.params.arNo)));
 

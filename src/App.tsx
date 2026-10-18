@@ -23,6 +23,7 @@ import { HowItWorksView } from './views/HowItWorksView.tsx';
 import { HelpView } from './views/HelpView.tsx';
 import { LegalView } from './views/LegalView.tsx';
 import { PermitsView } from './views/PermitsView.tsx';
+import { InfoSheetView } from './views/InfoSheetView.tsx';
 import { SetPassword } from './components/SetPassword.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
@@ -121,6 +122,8 @@ const AppContent: React.FC = () => {
         return <HowItWorksView />;
       case 'permits':
         return <PermitsView />;
+      case 'info_sheet':
+        return currentUser ? <InfoSheetView /> : <SignInPrompt text="Sign in to fill in your information sheet." onSignIn={() => setAuthModalOpen(true)} />;
       default:
         return SHARED_VIEWS.includes(currentView) ? renderShared() : <MarketplaceView />;
     }

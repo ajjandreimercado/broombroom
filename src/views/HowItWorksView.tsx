@@ -44,7 +44,7 @@ export const HowItWorksView: React.FC = () => {
     {
       num: '05',
       title: 'Transparent Settlement',
-      desc: 'Once the admin team approves your application, the vehicle is reserved for you. Settle the payment or complete your financing, and receive an acknowledgement receipt for each payment.',
+      desc: 'Once your documents are checked, the vehicle is reserved for you with a reservation payment, and you fill in the Applicant\'s Information Sheet. Every payment gets an acknowledgement receipt.',
       icon: CreditCard,
     },
     {

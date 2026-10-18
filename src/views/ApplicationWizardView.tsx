@@ -555,7 +555,7 @@ export const ApplicationWizardView: React.FC = () => {
                 </section>
 
                 <p className="text-[13px] text-[#2A2E31] bg-white border border-[#C9D1D6] px-4 py-3">
-                  Once the admin team approves your application, this vehicle is <strong>reserved</strong> for you automatically.
+                  Once the admin team has checked your documents, the vehicle is <strong>reserved</strong> for you with a reservation payment, and you fill in an information sheet.
                   {purchaseMethod === 'financing' && ' Financing documents are checked first.'}
                 </p>
 

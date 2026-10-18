@@ -54,7 +54,7 @@ export const AdminDashboardView: React.FC = () => {
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
         { id: 'approvals', label: 'Listing approvals', icon: ClipboardCheck, count: listingRequests.filter((r) => r.status === 'pending').length },
         { id: 'quotations', label: 'Quotations', icon: Calculator, count: quotations.filter((q) => q.status === 'requested').length },
-        { id: 'applications', label: 'Applications', icon: FileText, count: applications.filter((a) => open.includes(a.status)).length },
+        { id: 'applications', label: 'Applications', icon: FileText, count: applications.filter((a) => open.includes(a.status) || a.status === 'processing').length },
         {
           id: 'financing',
           label: 'Documents',

@@ -46,7 +46,7 @@ export const SellerDashboardView: React.FC = () => {
   const pendingCommissions = commissions.filter((c) => c.status !== 'paid');
   const paidTotal = commissions.filter((c) => c.status === 'paid').reduce((sum, c) => sum + c.amount, 0);
   const pendingTotal = pendingCommissions.reduce((sum, c) => sum + c.amount, 0);
-  const inProgress = applications.filter((a) => a.sellerName === me && ['submitted', 'under_review', 'contacted', 'approved'].includes(a.status)).length;
+  const inProgress = applications.filter((a) => a.sellerName === me && ['submitted', 'under_review', 'contacted', 'reserved', 'processing', 'approved'].includes(a.status)).length;
   // Closed sales = completed transactions on the agent's commissions, by when they were completed.
   const closedByPeriod = useMemo(() => {
     const now = new Date();

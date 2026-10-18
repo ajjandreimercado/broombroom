@@ -11,7 +11,7 @@ const TERMS: { h: string; p: string }[] = [
   },
   {
     h: '2. Applications and payments',
-    p: 'Applying is free and charges nothing online. An application tells us you want to buy the vehicle; it is not a sale. The admin team reviews it and your documents, and the vehicle is reserved for you only once your application is approved. Payments are made directly with Broom Broom, and each payment we receive is acknowledged with a numbered acknowledgement receipt.',
+    p: 'Applying is free and charges nothing online. An application tells us you want to buy the vehicle; it is not a sale. The admin team reviews it and your documents; the vehicle is held for you once it is reserved with a reservation payment. After you fill in the Applicant’s Information Sheet, the application is approved or disapproved, and the vehicle is released with its OR and CR. Payments are made directly with Broom Broom, and each payment we receive is acknowledged with a numbered acknowledgement receipt.',
   },
   {
     h: '3. Quotations and financing',

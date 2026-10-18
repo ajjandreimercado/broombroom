@@ -121,6 +121,18 @@ const approveDocs = async (ad: Awaited<ReturnType<typeof admin>>, appId: string)
   const app = (await ad.state()).applications.find((a: any) => a.id === appId);
   for (const [i, d] of (app.documents ?? []).entries()) if (d.fileName && d.status !== 'approved') await ad.post(`/api/applications/${appId}/documents/${i}/review`, { approve: true });
 };
+// The flow: reserve (reservation AR) -> client's information sheet -> approve -> release with OR/CR.
+const SHEET_OK = {
+  answers: { 'applicant.firstName': 'Juan', 'applicant.lastName': 'Cruz', 'applicant.birthDate': '1990-01-31', 'applicant.civilStatus': 'Single', 'applicant.presentAddress': '1 Test St, Butuan City', 'residence.type': 'Own house & lot', 'residence.cellphone': '0917 000 0000' },
+  dependents: [], purposes: ['Personal / family use'], affirmed: true, signature: 'Juan Cruz',
+};
+const reserve = (ad: Awaited<ReturnType<typeof admin>>, appId: string, amount = 5000) => ad.post(`/api/applications/${appId}/reserve`, { amount });
+const toApproved = async (ad: Awaited<ReturnType<typeof admin>>, c: Awaited<ReturnType<typeof newClient>>, appId: string) => {
+  await approveDocs(ad, appId);
+  assert.equal((await reserve(ad, appId)).status, 200);
+  assert.equal((await c.post(`/api/applications/${appId}/info-sheet`, SHEET_OK)).status, 200);
+  assert.equal((await ad.post(`/api/applications/${appId}/status`, { status: 'approved' })).status, 200);
+};
 const apply = async (c: Awaited<ReturnType<typeof newClient>>, vehicleId: string, extra: any = {}) =>
   c.post('/api/applications', { vehicleId, purchaseMethod: 'cash', documents: await docs(c, ['id-signature']), address, ...extra });
 // A new listing for each test that needs one (no application can hold it yet).
@@ -213,7 +225,7 @@ test('public visitors only see active listings', async () => {
 });
 
 // ---------------- applications ----------------
-test('financing: needs 2 uploads; documents approved first; approval reserves the car; the bank approval makes the commission receivable', async () => {
+test('financing: needs 2 uploads; documents first; reserve -> information sheet -> approve makes the commission receivable', async () => {
   const c = await newClient();
   const ad = await admin();
   const v = await freeVehicle();
@@ -224,7 +236,8 @@ test('financing: needs 2 uploads; documents approved first; approval reserves th
   assert.equal(app.documents.filter((d: any) => d.fileName).length, 2);
   assert.equal(app.sellerName, 'Broom Broom sales team'); // pool lead, nobody owns them yet
 
-  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 400);
+  assert.equal((await reserve(ad, app.id)).status, 400, 'documents first');
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 400, 'not straight from review');
   // admin files the missing documents the client handed in, then approves all ten
   for (let i = 0; i < 10; i++) {
     if (!app.documents[i].fileName) {
@@ -237,26 +250,44 @@ test('financing: needs 2 uploads; documents approved first; approval reserves th
   const after = (await c.state()).applications.find((a: any) => a.id === app.id);
   assert.equal((await c.get(after.documents.find((d: any) => d.addedByAdmin).url)).status, 200);
 
-  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 200);
+  assert.equal((await c.post(`/api/applications/${app.id}/reserve`, { amount: 5000 })).status, 403, 'admins only');
+  const r = await reserve(ad, app.id, 20000);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.match(r.data.arNo, /^\d{4}-\d{4}$/);
   const s = await ad.state();
   assert.equal(s.vehicles.find((x: any) => x.id === v.id).status, 'reserved');
-  // financing: no commission until the bank approves the loan
-  assert.equal(s.commissions.filter((x: any) => x.applicationRef === app.referenceNo).length, 0);
-  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'completed' })).status, 400, 'not before the bank approves');
-  assert.equal((await c.post(`/api/applications/${app.id}/financing-approved`)).status, 403, 'admins only');
-  assert.equal((await ad.post(`/api/applications/${app.id}/financing-approved`)).status, 200);
-  assert.equal((await ad.post(`/api/applications/${app.id}/financing-approved`)).status, 200, 'twice is harmless');
+  const reserved = s.applications.find((a: any) => a.id === app.id);
+  assert.equal(reserved.status, 'reserved');
+  assert.equal(reserved.payments.length, 1, 'the reservation AR');
+  assert.ok(outbox.some((m: any) => m.to === c.email && /infosheet=/.test(m.html)), 'client emailed the sheet link');
+  assert.equal(s.commissions.filter((x: any) => x.applicationRef === app.referenceNo).length, 0, 'no commission before approval');
+  // the same car can't be reserved twice
+  const other = await newClient();
+  assert.equal((await apply(other, v.id)).status, 400);
+
+  // information sheet: the client's own, checked, then processing
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 400, 'sheet first');
+  assert.equal((await other.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 403);
+  const bad = await c.post(`/api/applications/${app.id}/info-sheet`, { ...SHEET_OK, affirmed: false });
+  assert.equal(bad.status, 400);
+  assert.match(bad.json.error, /Affirmation/);
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, { ...SHEET_OK, answers: { ...SHEET_OK.answers, 'applicant.civilStatus': 'Complicated' } })).status, 400);
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 200);
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 400, 'only once');
+  const proc = (await ad.state()).applications.find((a: any) => a.id === app.id);
+  assert.equal(proc.status, 'processing');
+  assert.equal(proc.infoSheet.answers['applicant.firstName'], 'Juan');
+
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true })).status, 400, 'approve first');
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved', note: 'Good standing' })).status, 200);
   const s2 = await ad.state();
   const coms = s2.commissions.filter((x: any) => x.applicationRef === app.referenceNo);
   assert.equal(coms.length, 1, 'one commission');
   assert.equal(coms[0].status, 'receivable');
   assert.equal(coms[0].amount, Math.round(v.price * 0.03));
-  assert.ok(s2.applications.find((a: any) => a.id === app.id).financingApprovedAt);
-  assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Financing approved'));
-
-  // the same car can't be reserved twice
-  const other = await newClient();
-  assert.equal((await apply(other, v.id)).status, 400);
+  const approved = s2.applications.find((a: any) => a.id === app.id);
+  assert.ok(approved.financingApprovedAt);
+  assert.equal(approved.ciComments, 'Good standing');
 
   // commission can't be approved before the sale completes
   assert.equal((await ad.post(`/api/commissions/${coms[0].id}/approve`)).status, 400);
@@ -267,18 +298,17 @@ test('decline needs a reason, frees the car and drops the receivable commission'
   const ad = await admin();
   const v = await freeVehicle();
   const app = (await apply(c, v.id)).data;
-  const early = await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' });
+  const early = await reserve(ad, app.id);
   assert.equal(early.status, 400, "a cash buyer's ID is checked first");
   assert.match(early.json.error, /Approve every document/);
-  await approveDocs(ad, app.id);
-  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 200);
+  await toApproved(ad, c, app.id);
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'declined' })).status, 400);
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'declined', note: 'Could not verify ID' })).status, 200);
   const s = await ad.state();
   assert.equal(s.vehicles.find((x: any) => x.id === v.id).status, 'available');
   assert.equal(s.commissions.filter((x: any) => x.applicationRef === app.referenceNo).length, 0);
   // finished applications can't be reopened
-  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 400);
+  assert.equal((await reserve(ad, app.id)).status, 400);
   // a client can only withdraw, and only their own
   const other = await newClient();
   const app2 = (await apply(other, v.id)).data;
@@ -292,8 +322,7 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
   const ad = await admin();
   const v = await freeVehicle();
   const app = (await apply(c, v.id)).data;
-  await approveDocs(ad, app.id);
-  await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' });
+  await toApproved(ad, c, app.id); // the reservation AR is the first payment
   const shot = (await ad.upload(PNG, 'image/png', 'gcash.png')).data.id;
   const p1 = await ad.post(`/api/applications/${app.id}/payments`, { amount: 50000, description: 'Reservation', fileId: shot });
   const p2 = await ad.post(`/api/applications/${app.id}/payments`, { amount: 1000.5, description: 'Partial' });
@@ -302,8 +331,13 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
   assert.equal((await ad.post(`/api/applications/${app.id}/payments`, { amount: v.price, description: 'Too much' })).status, 400);
   assert.equal((await c.get(p1.data.attachment)).status, 200); // the client can open their payment screenshot
 
-  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'completed' })).status, 200);
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'completed' })).status, 400, 'release has its own step');
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, {})).status, 400, 'OR/CR must be confirmed');
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true })).status, 200);
   let s = await ad.state();
+  const rel = s.applications.find((a: any) => a.id === app.id);
+  assert.equal(rel.status, 'completed');
+  assert.equal(rel.orcrConfirmed, true);
   assert.equal(s.vehicles.find((x: any) => x.id === v.id).status, 'sold');
   const com = s.commissions.find((x: any) => x.applicationRef === app.referenceNo);
   assert.equal(com.transactionCompleted, true);
@@ -351,8 +385,7 @@ test('reassigning moves unearned commissions; 24-hour rule returns a waiting cli
   const v = await freeVehicle();
   const app = (await apply(c, v.id, { ref: 'carlo-santos' })).data;
   assert.equal(app.sellerName, 'Carlo Santos');
-  await approveDocs(ad, app.id);
-  await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' });
+  await toApproved(ad, c, app.id);
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Nobody Here' })).status, 400);
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Bea Villanueva' })).status, 200);
   let s = await ad.state();

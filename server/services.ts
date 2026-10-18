@@ -30,6 +30,7 @@ import { accountBalance, creditAvailable } from '../src/components/accounting/le
 import { store, tx, nextNumber, raw, opts, files } from './db.ts';
 import { users, HttpError, validPassword, PASSWORD_RULE, type User } from './auth.ts';
 import type { GoogleProfile } from './google.ts';
+import { cleanInfoSheet, type InfoSheet } from '../src/components/infoSheet.ts';
 
 // ---------- small helpers ----------
 const now = () => new Date().toISOString();
@@ -322,7 +323,9 @@ export const setVehicleStatus = (id: string, status: unknown) =>
     return store.put('vehicles', { ...v, status: status as VehicleStatus });
   });
 
-const isReserved = async (vehicleId: string) => !!(await store.one('applications', { vehicleId, status: 'approved' }));
+// Statuses that hold the vehicle for a client.
+const HOLDING: ApplicationStatus[] = ['reserved', 'processing', 'approved'];
+const isReserved = async (vehicleId: string) => !!(await store.one('applications', { vehicleId, status: { $in: HOLDING } }));
 
 export const deleteVehicle = (id: string) =>
   tx(async () => {
@@ -427,11 +430,14 @@ export const resolveReport = (id: string, action: unknown) =>
 
 // ---------- applications ----------
 const OPEN: ApplicationStatus[] = ['submitted', 'under_review', 'contacted'];
+// Review -> reserved (reservation AR) -> processing (information sheet in) -> approved -> completed (released with OR/CR).
 const NEXT: Record<ApplicationStatus, ApplicationStatus[]> = {
   draft: [],
-  submitted: ['under_review', 'contacted', 'approved', 'declined', 'withdrawn'],
-  under_review: ['contacted', 'approved', 'declined', 'withdrawn'],
-  contacted: ['under_review', 'approved', 'declined', 'withdrawn'],
+  submitted: ['under_review', 'contacted', 'reserved', 'declined', 'withdrawn'],
+  under_review: ['contacted', 'reserved', 'declined', 'withdrawn'],
+  contacted: ['under_review', 'reserved', 'declined', 'withdrawn'],
+  reserved: ['processing', 'declined', 'withdrawn'],
+  processing: ['approved', 'declined', 'withdrawn'],
   approved: ['completed', 'declined', 'withdrawn'],
   completed: [],
   declined: [],
@@ -442,7 +448,7 @@ export const createApplication = (me: User, input: any) =>
   tx(async () => {
     const v = need(await store.get<Vehicle>('vehicles', idOf(input?.vehicleId)), 'Listing');
     if (v.status !== 'available') bad('This vehicle is no longer available.');
-    if (await store.one('applications', { applicantId: me.id, vehicleId: v.id, status: { $in: [...OPEN, 'approved'] } })) bad('You already have an open application for this vehicle.');
+    if (await store.one('applications', { applicantId: me.id, vehicleId: v.id, status: { $in: [...OPEN, ...HOLDING] } })) bad('You already have an open application for this vehicle.');
     const method = input.purchaseMethod;
     if (method !== 'cash' && method !== 'financing') bad('Choose cash or financing.');
 
@@ -558,16 +564,58 @@ const addReceivable = async (app: VehicleApplication) => {
   await notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It becomes payable once the transaction is complete.`, 'commissions', agent);
 };
 
-// Admin: the bank or financing company approved the client's loan. Only then is the agent's commission receivable.
-export const approveFinancing = (id: string) =>
+// Admin: reserve the vehicle for the client. Their documents must be approved; the reservation payment is confirmed
+// and released as an acknowledgement receipt in the client's name. The client then fills in the information sheet.
+export const reserveApplication = (me: User, id: string, input: any) =>
   tx(async () => {
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
-    if (app.purchaseMethod !== 'financing') bad('Only financing applications need the bank\'s approval.');
-    if (app.status !== 'approved') bad('Approve the application first; then record the bank\'s approval.');
-    if (app.financingApprovedAt) return app;
-    const saved = await store.put<VehicleApplication>('applications', { ...app, financingApprovedAt: now() });
-    await addReceivable(saved);
-    await notify('client', 'Financing approved', `The bank approved your financing for the ${app.vehicleTitle} (${app.referenceNo}).`, 'applications', app.applicantId);
+    if (!NEXT[app.status]?.includes('reserved')) bad(`An application that is ${app.status.replace('_', ' ')} cannot be reserved.`);
+    if ((app.documents || []).some((d) => d.status !== 'approved')) bad('Approve every document before reserving the vehicle.');
+    const vehicle = await store.get<Vehicle>('vehicles', app.vehicleId);
+    if (!vehicle || vehicle.status === 'sold') bad('This vehicle is no longer available.');
+    if (await store.one('applications', { vehicleId: app.vehicleId, status: { $in: HOLDING }, id: { $ne: app.id } })) bad('This vehicle is already reserved for another client.');
+    await store.put('vehicles', { ...vehicle!, status: 'reserved' });
+    await store.put<VehicleApplication>('applications', { ...app, status: 'reserved', reservedAt: now() });
+    const receipt = await addPayment(me, app.id, { amount: input?.amount, description: input?.description || `Reservation fee for ${app.vehicleTitle}`, remarks: input?.remarks, fileId: input?.fileId });
+    await notify('client', 'Vehicle reserved', `The ${app.vehicleTitle} is reserved for you (${app.referenceNo}). Next: fill in the Applicant's Information Sheet in My Applications.`, 'applications', app.applicantId);
+    const client = await users.byId(app.applicantId);
+    return { receipt, email: { to: client?.email ?? app.applicantEmail, name: app.applicantName, appId: app.id, referenceNo: app.referenceNo, vehicle: app.vehicleTitle } };
+  });
+
+// Client: the Applicant's Information Sheet, after the reservation. Sending it moves the application to processing.
+export const submitInfoSheet = (me: User, id: string, input: any) =>
+  tx(async () => {
+    const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
+    if (app.applicantId !== me.id) forbidden();
+    if (app.status !== 'reserved') bad(app.infoSheet ? 'Your information sheet is already in.' : 'The information sheet opens once the vehicle is reserved for you.');
+    const sheet = cleanInfoSheet(input);
+    if (typeof sheet === 'string') bad(sheet);
+    const sketch = input?.sketchFileId ? await attachUpload(input.sketchFileId, me, me.id, IMG) : undefined;
+    const saved = await store.put<VehicleApplication>('applications', {
+      ...app,
+      status: 'processing',
+      infoSheet: { ...(sheet as InfoSheet), sketchUrl: sketch ? fileUrl(sketch._id) : undefined },
+      infoSheetSubmittedAt: now(),
+    });
+    await notify('admin', 'Information sheet submitted', `${app.applicantName} sent the information sheet for ${app.referenceNo}. Review it, then approve or disapprove.`, 'applications');
+    return saved;
+  });
+
+// Admin: release the vehicle to the client, confirming it now has its OR and CR. Completes the sale.
+export const releaseVehicle = (id: string, input: any) =>
+  tx(async () => {
+    const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
+    if (app.status !== 'approved') bad('Only an approved application can be released.');
+    if (input?.orcrConfirmed !== true) bad('Confirm that the vehicle now has its OR and CR.');
+    const vehicle = await store.get<Vehicle>('vehicles', app.vehicleId);
+    if (vehicle) await store.put('vehicles', { ...vehicle, status: 'sold' });
+    const owner = await ownerOf(app.applicantId);
+    for (const c of await store.all<Commission>('commissions', { applicationRef: app.referenceNo }))
+      await store.put('commissions', { ...c, agentName: owner ?? c.agentName, transactionCompleted: true, completedAt: now() });
+    const saved = await store.put<VehicleApplication>('applications', { ...app, status: 'completed', releasedAt: now(), orcrConfirmed: true });
+    await releaseLock(saved);
+    await notify('agent', 'Sale completed', `The ${app.vehicleTitle} was released to ${app.applicantName}. Your commission can now be approved for payout.`, 'commissions', owner ?? app.sellerName);
+    await notify('client', 'Vehicle released', `Your ${app.vehicleTitle} has been released to you with its OR and CR. Thank you for choosing Broom Broom.`, 'applications', app.applicantId);
     return saved;
   });
 
@@ -583,35 +631,27 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
       if (vehicle) await store.put('vehicles', { ...vehicle, status: s });
     };
 
+    // Reserving, the information sheet and the release have their own steps (they need more than a status).
+    if (status === 'reserved') bad('Reserve the vehicle with the reservation payment.');
+    if (status === 'processing') bad('The application moves to processing when the client sends the information sheet.');
+    if (status === 'completed') bad('Release the vehicle, confirming its OR and CR.');
+
+    let extra: Partial<VehicleApplication> = {};
     if (status === 'approved') {
-      // Cash or financing: the admin checks the client's documents first.
-      const docs = app.documents || [];
-      if (docs.some((d) => d.status !== 'approved')) bad('Approve every document before approving this application.');
-      if (!vehicle || vehicle.status === 'sold') bad('This vehicle is no longer available.');
-      if (vehicle!.status === 'reserved' && (await store.one('applications', { vehicleId: app.vehicleId, status: 'approved', id: { $ne: app.id } })))
-        bad('This vehicle is already reserved for another client.');
-      await setVehicle('reserved'); // Rule: an approved application reserves the vehicle.
-      // Cash: the commission is receivable now. Financing: once the bank approves the loan (approveFinancing).
-      if (app.purchaseMethod !== 'financing') await addReceivable(app);
-      await notify('client', 'Application approved', `${app.referenceNo} was approved. The ${app.vehicleTitle} is now reserved for you.${app.purchaseMethod === 'financing' ? ' Next: the bank reviews your financing.' : ''}`, 'applications', app.applicantId);
-    } else if (status === 'completed') {
-      if (app.purchaseMethod === 'financing' && !app.financingApprovedAt) bad('Record the bank\'s financing approval before completing this sale.');
-      await setVehicle('sold');
-      const owner = await ownerOf(app.applicantId);
-      for (const c of await store.all<Commission>('commissions', { applicationRef: app.referenceNo }))
-        await store.put('commissions', { ...c, agentName: owner ?? c.agentName, transactionCompleted: true, completedAt: now() });
-      await notify('agent', 'Sale completed', `The ${app.vehicleTitle} sale to ${app.applicantName} is complete. Your commission can now be approved for payout.`, 'commissions', owner ?? app.sellerName);
-      await notify('client', 'Purchase completed', `The ${app.vehicleTitle} has been released to you. Thank you for choosing Broom Broom.`, 'applications', app.applicantId);
+      // After the information sheet: the commission is receivable from now (cash and financing).
+      await addReceivable(app);
+      extra = { approvedAt: now(), ciComments: reason || undefined, ...(app.purchaseMethod === 'financing' ? { financingApprovedAt: now() } : {}) };
+      await notify('client', 'Application approved', `${app.referenceNo} for the ${app.vehicleTitle} was approved. We will tell you when the vehicle is ready for release.`, 'applications', app.applicantId);
     } else if (status === 'declined' || status === 'withdrawn') {
-      if (app.status === 'approved') await setVehicle('available');
+      if (HOLDING.includes(app.status)) await setVehicle('available');
       await store.removeWhere('commissions', { applicationRef: app.referenceNo, status: 'receivable' });
-      if (status === 'declined') await notify('client', 'Application declined', `${app.referenceNo} was declined.${reason ? ` Reason: ${reason}` : ''}`, 'applications', app.applicantId);
+      if (status === 'declined') await notify('client', app.status === 'processing' ? 'Application disapproved' : 'Application declined', `${app.referenceNo} was ${app.status === 'processing' ? 'disapproved' : 'declined'}.${reason ? ` Reason: ${reason}` : ''}`, 'applications', app.applicantId);
       else await notify('admin', 'Application withdrawn', `${app.applicantName} withdrew ${app.referenceNo}.`, 'applications');
     } else {
       await notify('client', 'Application update', `${app.referenceNo} is now ${status.replace('_', ' ')}.`, 'applications', app.applicantId);
     }
-    const saved = await store.put('applications', { ...app, status, sellerNotes: reason || app.sellerNotes });
-    if (['completed', 'declined', 'withdrawn'].includes(status)) await releaseLock(saved);
+    const saved = await store.put('applications', { ...app, ...extra, status, sellerNotes: status === 'approved' ? app.sellerNotes : reason || app.sellerNotes });
+    if (['declined', 'withdrawn'].includes(status)) await releaseLock(saved);
     return saved;
   });
 

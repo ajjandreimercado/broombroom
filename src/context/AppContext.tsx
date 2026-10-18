@@ -23,6 +23,7 @@ import {
   LedgerAccount,
 } from '../types.ts';
 import { api, uploadFile, ApiError } from '../api.ts';
+import type { InfoSheet } from '../components/infoSheet.ts';
 import { GUIDES } from '../data/guides.ts';
 
 export type CurrentView =
@@ -38,6 +39,7 @@ export type CurrentView =
   | 'guide_detail'
   | 'how_it_works'
   | 'permits'
+  | 'info_sheet'
   | 'help'
   | 'terms'
   | 'privacy';
@@ -260,7 +262,9 @@ interface AppContextType {
   // Applications
   createApplication: (input: ApplicationInput) => Promise<VehicleApplication | undefined>;
   updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string) => Promise<boolean>;
-  approveFinancing: (id: string) => Promise<boolean>;
+  reserveApplication: (id: string, payment: { amount: number; description: string; remarks?: string }, screenshot?: Blob & { name?: string }) => Promise<PaymentReceipt | undefined>;
+  submitInfoSheet: (id: string, sheet: Omit<InfoSheet, 'sketchUrl'>, sketch?: Blob & { name?: string }) => Promise<boolean>;
+  releaseVehicle: (id: string) => Promise<boolean>;
   withdrawApplication: (id: string) => Promise<boolean>;
   reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => Promise<boolean>;
   attachDocumentForClient: (appId: string, docIndex: number, file: File) => Promise<boolean>;
@@ -376,9 +380,11 @@ const takeVia = (vehicleId: string) => {
 };
 // The re-submission email links to /?resubmit=<application id>: open that application in My Applications.
 const linkedApplicationId = PORTAL === 'buyer' ? params.get('resubmit') : null;
+// The reservation email links to /?infosheet=<application id>: open the information sheet form.
+const linkedSheetId = PORTAL === 'buyer' ? params.get('infosheet') : null;
 // Direct links to the info pages: /?page=privacy, /?page=terms, /?page=help, /?page=permits.
 const linkedPage = PORTAL === 'buyer' ? (['privacy', 'terms', 'help', 'permits'] as const).find((p) => p === params.get('page')) : undefined;
-const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : linkedPage ?? 'intro';
+const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedSheetId ? 'info_sheet' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : linkedPage ?? 'intro';
 
 const EMPTY: ServerState = { me: null, vehicles: [] };
 
@@ -391,7 +397,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [sellerTab, setSellerTab] = useState<SellerTab>('dashboard');
   const [adminTab, setAdminTab] = useState<AdminTab>('dashboard');
   const [selectedQuotationId, setSelectedQuotationId] = useState<string | null>(null);
-  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(linkedApplicationId);
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(linkedSheetId ?? linkedApplicationId);
 
   // Modals
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
@@ -687,8 +693,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
   const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note) =>
     done(await run(() => api(`/applications/${id}/status`, { body: { status, note } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
-  const approveFinancing = async (id: string) =>
-    done(await run(() => api(`/applications/${id}/financing-approved`, { body: {} }), ['Financing approved', "The agent's commission is now receivable."]));
+  const reserveApplication: AppContextType['reserveApplication'] = (id, payment, screenshot) =>
+    run(async () => {
+      const up = screenshot ? await uploadFile(screenshot, screenshot.name || 'payment.jpg', 'private') : undefined;
+      return api<PaymentReceipt>(`/applications/${id}/reserve`, { body: { ...payment, fileId: up?.id } });
+    }, ['Vehicle reserved', 'The reservation AR was released and the client was asked to fill in the information sheet.'], 'Could not reserve');
+  const submitInfoSheet: AppContextType['submitInfoSheet'] = async (id, sheet, sketch) =>
+    done(
+      await run(async () => {
+        const up = sketch ? await uploadFile(sketch, sketch.name || 'sketch.jpg', 'private') : undefined;
+        return api(`/applications/${id}/info-sheet`, { body: { ...sheet, sketchFileId: up?.id } });
+      }, ['Information sheet sent', 'Your application is now processing.'], 'Could not send the information sheet')
+    );
+  const releaseVehicle = async (id: string) =>
+    done(await run(() => api(`/applications/${id}/release`, { body: { orcrConfirmed: true } }), ['Vehicle released', 'The sale is complete and the client was notified.']));
   const withdrawApplication = async (id: string) =>
     done(await run(() => api(`/applications/${id}/status`, { body: { status: 'withdrawn' } }), ['Application withdrawn', 'Your application has been canceled.']));
   const reviewDocument: AppContextType['reviewDocument'] = async (appId, i, approve, reason) =>
@@ -923,7 +941,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         createApplication,
         updateApplicationStatus,
-        approveFinancing,
+        reserveApplication,
+        submitInfoSheet,
+        releaseVehicle,
         withdrawApplication,
         reviewDocument,
         attachDocumentForClient,
