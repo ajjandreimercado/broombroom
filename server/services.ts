@@ -537,6 +537,40 @@ export const createApplication = (me: User, input: any) =>
     return app;
   });
 
+// The agent's commission on a sale, receivable until the sale completes. Once per application.
+const addReceivable = async (app: VehicleApplication) => {
+  if (await store.one('commissions', { applicationRef: app.referenceNo })) return;
+  const amount = Math.round(app.vehiclePrice * COMMISSION_RATE);
+  const agent = (await ownerOf(app.applicantId)) ?? app.sellerName;
+  await store.put<Commission>('commissions', {
+    id: newId('com'),
+    agentName: agent,
+    applicationRef: app.referenceNo,
+    vehicleTitle: app.vehicleTitle,
+    clientName: app.applicantName,
+    salePrice: app.vehiclePrice,
+    rate: COMMISSION_RATE,
+    amount,
+    status: 'receivable',
+    transactionCompleted: false,
+    createdAt: now(),
+  });
+  await notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It becomes payable once the transaction is complete.`, 'commissions', agent);
+};
+
+// Admin: the bank or financing company approved the client's loan. Only then is the agent's commission receivable.
+export const approveFinancing = (id: string) =>
+  tx(async () => {
+    const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
+    if (app.purchaseMethod !== 'financing') bad('Only financing applications need the bank\'s approval.');
+    if (app.status !== 'approved') bad('Approve the application first; then record the bank\'s approval.');
+    if (app.financingApprovedAt) return app;
+    const saved = await store.put<VehicleApplication>('applications', { ...app, financingApprovedAt: now() });
+    await addReceivable(saved);
+    await notify('client', 'Financing approved', `The bank approved your financing for the ${app.vehicleTitle} (${app.referenceNo}).`, 'applications', app.applicantId);
+    return saved;
+  });
+
 export const setApplicationStatus = (me: User, id: string, status: ApplicationStatus, note?: unknown) =>
   tx(async () => {
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
@@ -557,26 +591,11 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
       if (vehicle!.status === 'reserved' && (await store.one('applications', { vehicleId: app.vehicleId, status: 'approved', id: { $ne: app.id } })))
         bad('This vehicle is already reserved for another client.');
       await setVehicle('reserved'); // Rule: an approved application reserves the vehicle.
-      if (!(await store.one('commissions', { applicationRef: app.referenceNo }))) {
-        const amount = Math.round(app.vehiclePrice * COMMISSION_RATE);
-        const agent = (await ownerOf(app.applicantId)) ?? app.sellerName;
-        await store.put<Commission>('commissions', {
-          id: newId('com'),
-          agentName: agent,
-          applicationRef: app.referenceNo,
-          vehicleTitle: app.vehicleTitle,
-          clientName: app.applicantName,
-          salePrice: app.vehiclePrice,
-          rate: COMMISSION_RATE,
-          amount,
-          status: 'receivable',
-          transactionCompleted: false,
-          createdAt: now(),
-        });
-        await notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It becomes payable once the transaction is complete.`, 'commissions', agent);
-      }
-      await notify('client', 'Application approved', `${app.referenceNo} was approved. The ${app.vehicleTitle} is now reserved for you.`, 'applications', app.applicantId);
+      // Cash: the commission is receivable now. Financing: once the bank approves the loan (approveFinancing).
+      if (app.purchaseMethod !== 'financing') await addReceivable(app);
+      await notify('client', 'Application approved', `${app.referenceNo} was approved. The ${app.vehicleTitle} is now reserved for you.${app.purchaseMethod === 'financing' ? ' Next: the bank reviews your financing.' : ''}`, 'applications', app.applicantId);
     } else if (status === 'completed') {
+      if (app.purchaseMethod === 'financing' && !app.financingApprovedAt) bad('Record the bank\'s financing approval before completing this sale.');
       await setVehicle('sold');
       const owner = await ownerOf(app.applicantId);
       for (const c of await store.all<Commission>('commissions', { applicationRef: app.referenceNo }))

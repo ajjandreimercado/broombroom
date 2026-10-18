@@ -213,7 +213,7 @@ test('public visitors only see active listings', async () => {
 });
 
 // ---------------- applications ----------------
-test('financing: needs 2 uploads; approval needs every document approved; approval reserves the car and creates a commission', async () => {
+test('financing: needs 2 uploads; documents approved first; approval reserves the car; the bank approval makes the commission receivable', async () => {
   const c = await newClient();
   const ad = await admin();
   const v = await freeVehicle();
@@ -240,16 +240,26 @@ test('financing: needs 2 uploads; approval needs every document approved; approv
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 200);
   const s = await ad.state();
   assert.equal(s.vehicles.find((x: any) => x.id === v.id).status, 'reserved');
-  const com = s.commissions.find((x: any) => x.applicationRef === app.referenceNo);
-  assert.equal(com.status, 'receivable');
-  assert.equal(com.amount, Math.round(v.price * 0.03));
+  // financing: no commission until the bank approves the loan
+  assert.equal(s.commissions.filter((x: any) => x.applicationRef === app.referenceNo).length, 0);
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'completed' })).status, 400, 'not before the bank approves');
+  assert.equal((await c.post(`/api/applications/${app.id}/financing-approved`)).status, 403, 'admins only');
+  assert.equal((await ad.post(`/api/applications/${app.id}/financing-approved`)).status, 200);
+  assert.equal((await ad.post(`/api/applications/${app.id}/financing-approved`)).status, 200, 'twice is harmless');
+  const s2 = await ad.state();
+  const coms = s2.commissions.filter((x: any) => x.applicationRef === app.referenceNo);
+  assert.equal(coms.length, 1, 'one commission');
+  assert.equal(coms[0].status, 'receivable');
+  assert.equal(coms[0].amount, Math.round(v.price * 0.03));
+  assert.ok(s2.applications.find((a: any) => a.id === app.id).financingApprovedAt);
+  assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Financing approved'));
 
   // the same car can't be reserved twice
   const other = await newClient();
   assert.equal((await apply(other, v.id)).status, 400);
 
   // commission can't be approved before the sale completes
-  assert.equal((await ad.post(`/api/commissions/${com.id}/approve`)).status, 400);
+  assert.equal((await ad.post(`/api/commissions/${coms[0].id}/approve`)).status, 400);
 });
 
 test('decline needs a reason, frees the car and drops the receivable commission', async () => {

@@ -7,7 +7,7 @@ import { dataUrlToBlob } from '../api.ts';
 import { isOngoing, amountPaid } from './ApplicationProgress.tsx';
 import { photoDataUrl } from '../media.ts';
 import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
-import { Check, PhoneCall, PackageCheck, Paperclip, Pencil, Plus, X } from 'lucide-react';
+import { Check, PhoneCall, PackageCheck, Paperclip, Pencil, Plus, X, Landmark } from 'lucide-react';
 
 type Filter = 'review' | 'approved' | 'completed' | 'closed' | 'all';
 const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'contacted'];
@@ -200,7 +200,7 @@ const PartialPayments: React.FC<{ app: VehicleApplication }> = ({ app }) => {
 
 // Admin: move each client application from review to approval (reserves the car) to a completed sale.
 export const ApplicationsManager: React.FC = () => {
-  const { applications, updateApplicationStatus, navigateTo } = useApp();
+  const { applications, updateApplicationStatus, approveFinancing, navigateTo } = useApp();
   const [filter, setFilter] = useState<Filter>('review');
 
   const matches = (f: Filter, a: VehicleApplication) =>
@@ -295,10 +295,22 @@ export const ApplicationsManager: React.FC = () => {
                 )}
                 {app.status === 'approved' && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <button className={`${btn.ink} flex items-center gap-1.5`} onClick={() => updateApplicationStatus(app.id, 'completed')}>
-                      <PackageCheck className="w-4 h-4" aria-hidden="true" />
-                      Mark sale completed
-                    </button>
+                    {/* Financing: the bank approves the loan before the sale can complete (and before the commission counts). */}
+                    {app.purchaseMethod === 'financing' && !app.financingApprovedAt ? (
+                      <>
+                        <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => approveFinancing(app.id)}>
+                          <Landmark className="w-4 h-4" aria-hidden="true" />
+                          Financing approved by bank
+                        </button>
+                        <span className="text-[12.5px] font-medium text-[#B4690E]">Waiting for the bank's approval. The agent's commission counts once it is recorded.</span>
+                      </>
+                    ) : (
+                      <button className={`${btn.ink} flex items-center gap-1.5`} onClick={() => updateApplicationStatus(app.id, 'completed')}>
+                        <PackageCheck className="w-4 h-4" aria-hidden="true" />
+                        Mark sale completed
+                      </button>
+                    )}
+                    {app.financingApprovedAt && <span className="text-[12.5px] font-medium text-[#1B7F35]">Financing approved by the bank</span>}
                     <ReasonAction label="Cancel approval" confirmLabel="Cancel & release car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
                     <span className="text-[12.5px] text-[#4E585E] tabular-nums">
                       Reserved · payment ongoing: {peso(amountPaid(app))} of {peso(app.vehiclePrice)} received

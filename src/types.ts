@@ -96,6 +96,7 @@ export interface VehicleApplication {
   payments?: PaymentReceipt[];
   quotationNo?: string; // the client applied from this quotation
   viaAgentLink?: string; // the agent whose apply link the client used
+  financingApprovedAt?: string; // financing: when the bank or financing company approved the loan (the commission is receivable from then)
 }
 
 // A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).

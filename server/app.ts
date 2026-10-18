@@ -291,6 +291,7 @@ export const createApp = () => {
   api.post('/applications/:id/documents/:i/resubmit', requireRole('buyer'), act((req) => svc.resubmitDocument(me(req), req.params.id, idx(req), body(req).fileId)));
   api.post('/applications/:id/documents/:i/file', requireRole('admin'), act((req) => svc.attachDocumentForClient(me(req), req.params.id, idx(req), body(req).fileId)));
   api.post('/applications/:id/payments', requireRole('admin'), act((req) => svc.addPayment(me(req), req.params.id, body(req))));
+  api.post('/applications/:id/financing-approved', requireRole('admin'), act((req) => svc.approveFinancing(req.params.id)));
   api.patch('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.updatePayment(me(req), req.params.id, req.params.arNo, body(req))));
   api.delete('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.deletePayment(req.params.id, req.params.arNo)));
 
