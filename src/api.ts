@@ -53,4 +53,15 @@ export const uploadFile = async (file: Blob, name: string, visibility: 'public' 
   return read(res);
 };
 
-export const dataUrlToBlob = async (dataUrl: string) => (await fetch(dataUrl)).blob();
+// Decoded here rather than with fetch(dataUrl): the site's Content-Security-Policy does not allow fetching data: URLs.
+export const dataUrlToBlob = async (dataUrl: string) => {
+  const comma = dataUrl.indexOf(',');
+  const head = dataUrl.slice(0, comma);
+  const body = dataUrl.slice(comma + 1);
+  const type = /^data:([^;,]+)/.exec(head)?.[1] ?? 'application/octet-stream';
+  if (!head.endsWith(';base64')) return new Blob([decodeURIComponent(body)], { type });
+  const bin = atob(body);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
+};
