@@ -286,6 +286,8 @@ interface AppContextType {
 
   // Messaging
   startOrOpenConversation: (vehicleId: string) => Promise<string>;
+  // A new message to the client's agent: about a listing, or a general question ('' vehicle). Returns the chat id.
+  writeToAgent: (vehicleId: string, text: string) => Promise<string>;
   sendMessage: (conversationId: string, text: string) => Promise<boolean>;
   sendApplyLink: (conversationId: string, vehicleId: string) => Promise<boolean>;
   applyThroughAgent: (vehicleId: string, agentSlug: string) => void;
@@ -758,6 +760,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (conv) clearRef();
     return conv?.id ?? '';
   };
+  const writeToAgent = async (vehicleId: string, text: string) => {
+    const conv = await run(() => api<Conversation>('/conversations', { body: { vehicleId, text, ref: takeRef() } }), ['Message sent'], 'Message not sent');
+    if (conv) clearRef();
+    return conv?.id ?? '';
+  };
   const sendMessage = async (conversationId: string, text: string) =>
     done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { text } }), undefined, 'Message not sent'));
   const sendApplyLink = async (conversationId: string, vehicleId: string) =>
@@ -930,6 +937,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         payCommission,
 
         startOrOpenConversation,
+        writeToAgent,
         sendMessage,
         sendApplyLink,
         applyThroughAgent,

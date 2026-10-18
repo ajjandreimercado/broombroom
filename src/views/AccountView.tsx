@@ -29,6 +29,7 @@ import {
   ArrowLeftRight,
   Sparkles,
   Calculator,
+  Plus,
 } from 'lucide-react';
 
 export const AccountView: React.FC = () => {
@@ -43,6 +44,8 @@ export const AccountView: React.FC = () => {
     conversations,
     activeConversationId,
     setActiveConversationId,
+    writeToAgent,
+    myAgent,
     sendMessage,
     applyThroughAgent,
     notifications: allNotifications,
@@ -71,6 +74,11 @@ export const AccountView: React.FC = () => {
 
   // Messaging State
   const [chatInput, setChatInput] = useState('');
+  // "New message" to the agent: about a listing or a general question.
+  const [composing, setComposing] = useState(false);
+  const [composeAbout, setComposeAbout] = useState('');
+  const [composeText, setComposeText] = useState('');
+  const [composeBusy, setComposeBusy] = useState(false);
 
   // Settings State
   const [currentPass, setCurrentPass] = useState('');
@@ -523,19 +531,25 @@ export const AccountView: React.FC = () => {
               <div className="bg-white rounded-[2px] border border-[#C9D1D6] overflow-hidden h-[620px] flex flex-col md:flex-row">
                 {/* Conversation List */}
                 <div className="w-full md:w-80 border-r border-[#C9D1D6] flex flex-col bg-[#F7F8F8]/50 max-h-48 md:max-h-none shrink-0">
-                  <div className="p-4 border-b border-[#C9D1D6] font-bold text-xs uppercase tracking-wider text-[#2A2E31] tabular-nums">
-                    Direct Inquiries ({conversations.length})
+                  <div className="p-3 pl-4 border-b border-[#C9D1D6] flex items-center justify-between gap-2">
+                    <span className="font-bold text-xs uppercase tracking-wider text-[#2A2E31] tabular-nums">Conversations ({conversations.length})</span>
+                    <button
+                      onClick={() => { setComposing(true); setComposeAbout(''); setComposeText(''); }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[12px] font-semibold rounded-[2px] cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" aria-hidden="true" /> New message
+                    </button>
                   </div>
                   <div className="flex-1 overflow-y-auto divide-y divide-[#DDE3E6]">
                     {conversations.length === 0 ? (
                       <div className="p-6 text-center text-xs text-[#4E585E]">
-                        No conversations yet. Inquire directly on any vehicle page to connect with agents.
+                        No conversations yet. Use New message, or Message on any listing.
                       </div>
                     ) : (
                       conversations.map((conv) => (
                         <div
                           key={conv.id}
-                          onClick={() => setActiveConversationId(conv.id)}
+                          onClick={() => { setActiveConversationId(conv.id); setComposing(false); }}
                           className={`p-4 cursor-pointer transition-colors ${
                             selectedConversation?.id === conv.id
                               ? 'bg-white outline outline-1 outline-[#141517] -outline-offset-1'
@@ -562,16 +576,62 @@ export const AccountView: React.FC = () => {
 
                 {/* Chat Thread */}
                 <div className="flex-1 flex flex-col h-full bg-white">
-                  {selectedConversation ? (
+                  {composing ? (
+                    <form
+                      className="flex-1 flex flex-col p-5 gap-4"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!composeText.trim() || composeBusy) return;
+                        setComposeBusy(true);
+                        const id = await writeToAgent(composeAbout, composeText.trim());
+                        setComposeBusy(false);
+                        if (!id) return;
+                        setActiveConversationId(id);
+                        setComposing(false);
+                      }}
+                    >
+                      <div>
+                        <p className="text-[15px] font-bold text-[#141517]">New message</p>
+                        <p className="text-xs text-[#4E585E] mt-0.5">{myAgent ? `To ${myAgent}, your agent.` : 'To the Broom Broom sales team. An agent will reply.'}</p>
+                      </div>
+                      <label className="block">
+                        <span className="gb-label block mb-1.5">About</span>
+                        <select value={composeAbout} onChange={(e) => setComposeAbout(e.target.value)} className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer">
+                          <option value="">A general question</option>
+                          {vehicles.filter((v) => v.status === 'available' || v.status === 'reserved').map((v) => (
+                            <option key={v.id} value={v.id}>{v.title}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block flex-1 flex flex-col">
+                        <span className="gb-label block mb-1.5">Message</span>
+                        <textarea
+                          required
+                          autoFocus
+                          maxLength={2000}
+                          value={composeText}
+                          onChange={(e) => setComposeText(e.target.value)}
+                          placeholder="Ask about a unit, a viewing, financing, your application..."
+                          className="w-full flex-1 min-h-[120px] px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
+                        />
+                      </label>
+                      <div className="flex gap-3">
+                        <button type="submit" disabled={!composeText.trim() || composeBusy} className="px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:bg-[#8C989F] text-white text-[13px] font-semibold rounded-[2px] cursor-pointer">
+                          {composeBusy ? 'Sending…' : 'Send'}
+                        </button>
+                        <button type="button" onClick={() => setComposing(false)} className="px-3 py-2.5 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
+                      </div>
+                    </form>
+                  ) : selectedConversation ? (
                     <>
                       {/* Chat Header */}
                       <div className="p-4 border-b border-[#C9D1D6] flex items-center justify-between bg-[#F7F8F8]/50">
                         <div className="flex items-center gap-3">
-                          <img
-                            src={selectedConversation.vehicleImage}
-                            alt=""
-                            className="w-12 h-9 rounded-[2px] object-cover bg-[#141517] border border-gray-800"
-                          />
+                          {selectedConversation.vehicleImage ? (
+                            <img src={selectedConversation.vehicleImage} alt="" className="w-12 h-9 rounded-[2px] object-cover bg-[#141517] border border-gray-800" />
+                          ) : (
+                            <span className="w-12 h-9 rounded-[2px] grid place-items-center bg-[#EEF1F2] text-[#4E585E]" aria-hidden="true"><MessageSquare className="w-4 h-4" /></span>
+                          )}
                           <div>
                             <p className="text-xs font-bold text-[#141517]">
                               {selectedConversation.sellerName}
@@ -582,15 +642,17 @@ export const AccountView: React.FC = () => {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() =>
-                            navigateTo('vehicle_detail', { vehicleId: selectedConversation.vehicleId })
-                          }
-                          className="text-xs font-semibold text-[#4E585E] hover:text-[#1D5FD1] flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <span>Listing</span>
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
+                        {selectedConversation.vehicleId && (
+                          <button
+                            onClick={() =>
+                              navigateTo('vehicle_detail', { vehicleId: selectedConversation.vehicleId })
+                            }
+                            className="text-xs font-semibold text-[#4E585E] hover:text-[#1D5FD1] flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span>Listing</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
 
                       {/* Messages Flow */}

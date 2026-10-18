@@ -303,7 +303,7 @@ export const createApp = () => {
   api.post('/commissions/:id/pay', requireRole('admin'), act((req) => svc.payCommission(me(req), req.params.id, body(req).fileId)));
 
   // ---------- chat ----------
-  api.post('/conversations', requireRole('buyer'), act((req) => svc.startConversation(me(req), body(req).vehicleId, body(req).ref)));
+  api.post('/conversations', requireRole('buyer'), act((req) => svc.startConversation(me(req), body(req).vehicleId, body(req).ref, body(req).text)));
   api.post('/conversations/:id/messages', requireRole('buyer', 'seller', 'admin'), act((req) => svc.sendMessage(me(req), req.params.id, body(req))));
   api.post('/conversations/:id/read', requireRole('buyer', 'seller', 'admin'), act((req) => svc.markConversationRead(me(req), req.params.id)));
 

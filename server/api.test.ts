@@ -739,3 +739,46 @@ test('change email: an address held by a client can be freed and given to an adm
   assert.equal(u.id, second.data.id, 'the Google account now opens the admin account');
   assert.equal((await client('admin').login('company@test.local', 'TempAdmin123')).status, 401, 'its temporary password was retired');
 });
+
+test('conversations: claiming a client starts a chat with the agent; clients can write to their agent about anything', async () => {
+  const ca = await carlo();
+  // a client who only applied (no chat yet) gets one when an agent claims them
+  const c = await newClient();
+  const v = await freeVehicle();
+  await apply(c, v.id);
+  assert.equal((await c.state()).conversations.length, 0);
+  assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
+  let convs = (await c.state()).conversations;
+  assert.equal(convs.length, 1);
+  assert.equal(convs[0].sellerName, 'Carlo Santos');
+  assert.equal(convs[0].vehicleId, v.id, 'about the vehicle they applied for');
+  assert.match(convs[0].messages.at(-1).text, /I'm Carlo Santos, your Broom Broom agent/);
+  assert.equal(convs[0].messages.at(-1).isSeller, true);
+  assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Your agent'));
+  assert.ok((await ca.state()).conversations.some((x: any) => x.id === convs[0].id), 'the agent sees it');
+
+  // a client who already chatted gets the introduction in that chat
+  const c2 = await newClient();
+  const conv = (await c2.post('/api/conversations', { vehicleId: v.id })).data;
+  await ca.post(`/api/leads/${c2.id}/claim`);
+  const after = (await c2.state()).conversations;
+  assert.equal(after.length, 1);
+  assert.equal(after[0].id, conv.id);
+  assert.equal(after[0].messages.length, 2);
+
+  // the client writes to their agent without a listing: a general chat, reused next time
+  assert.equal((await c.post('/api/conversations', { text: '' })).status, 400, 'needs a message');
+  const g = await c.post('/api/conversations', { text: 'Do you accept trade-ins?' });
+  assert.equal(g.status, 200, JSON.stringify(g.json));
+  assert.equal(g.data.vehicleId, '');
+  assert.equal(g.data.vehicleTitle, 'General inquiry');
+  assert.equal(g.data.sellerName, 'Carlo Santos', 'goes to their agent');
+  const g2 = await c.post('/api/conversations', { text: 'Also, what are your hours?' });
+  assert.equal(g2.data.id, g.data.id, 'same general chat');
+  assert.equal(g2.data.messages.length, 2);
+  // about a listing, with their own first message
+  const other = await freeVehicle();
+  const l = await c.post('/api/conversations', { vehicleId: other.id, text: 'Is the price negotiable?' });
+  assert.equal(l.data.messages[0].text, 'Is the price negotiable?');
+  assert.equal((await ca.state()).conversations.filter((x: any) => x.buyerId === c.id).length, 3);
+});

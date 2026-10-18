@@ -166,6 +166,7 @@ export const claimLead = (me: User, clientId: string) =>
     const at = now();
     await store.put('leads', { ...lead, agentName: me.name, source: 'pool', claimedAt: at, escalatedAt: undefined, history: [...lead.history, { at, text: `Claimed by ${me.name}` }] });
     await moveClient(lead.clientId, me.name);
+    await introduceAgent(lead.clientId, me.name);
     await notify('admin', 'Lead claimed', `${me.name} claimed ${lead.clientName} (${lead.interest}).`, 'leads');
     return lead.clientName;
   });
@@ -905,30 +906,73 @@ export const payCommission = (me: User, id: string, fileId: unknown) =>
   });
 
 // ---------- chat ----------
-export const startConversation = (me: User, vehicleId: unknown, ref: unknown) =>
+// A chat that is not about one listing (vehicleId '').
+export const GENERAL_TOPIC = 'General inquiry';
+
+// A client opens a chat with their agent (or the sales team, before they have one): about a listing, or a general
+// question when vehicleId is empty. With a message it is sent as the first message (or added to the existing chat).
+export const startConversation = (me: User, vehicleId: unknown, ref: unknown, message?: unknown) =>
   tx(async () => {
-    const v = need(await store.get<Vehicle>('vehicles', idOf(vehicleId)), 'Listing');
-    const existing = await store.one<Conversation>('conversations', { buyerId: me.id, vehicleId: v.id });
-    if (existing) return existing;
-    const owner = await touchLead(me, v.title, true, ref);
+    const v = vehicleId ? need(await store.get<Vehicle>('vehicles', idOf(vehicleId)), 'Listing') : undefined;
+    const first = text(message, 'Message', 2000, false);
+    const existing = await store.one<Conversation>('conversations', { buyerId: me.id, vehicleId: v?.id ?? '' });
+    if (existing) {
+      if (first) await sendMessage(me, existing.id, { text: first });
+      return (await store.get<Conversation>('conversations', existing.id))!;
+    }
+    if (!v && !first) bad('Write your message.');
+    const owner = await touchLead(me, v?.title ?? GENERAL_TOPIC, true, ref);
     const at = now();
+    const t = first || `Hi${owner ? ` ${owner}` : ''}, I am interested in the ${v!.title}. Is it still available for a viewing?`;
     return store.put<Conversation>('conversations', {
       id: newId('conv'),
-      vehicleId: v.id,
-      vehicleTitle: v.title,
-      vehiclePrice: v.price,
-      vehicleImage: v.images[0],
+      vehicleId: v?.id ?? '',
+      vehicleTitle: v?.title ?? GENERAL_TOPIC,
+      vehiclePrice: v?.price ?? 0,
+      vehicleImage: v?.images[0] ?? '',
       buyerId: me.id,
       buyerName: me.name,
       sellerId: owner ? agentSlug(owner) : 'team',
       sellerName: owner ?? TEAM_NAME,
-      lastMessage: `Inquiry regarding ${v.title}`,
+      lastMessage: t,
       updatedAt: at,
       unreadBuyer: 0,
       unreadSeller: 1,
-      messages: [{ id: newId('msg'), senderId: me.id, senderName: me.name, text: `Hi${owner ? ` ${owner}` : ''}, I am interested in the ${v.title}. Is it still available for a viewing?`, timestamp: at, isSeller: false }],
+      messages: [{ id: newId('msg'), senderId: me.id, senderName: me.name, text: t, timestamp: at, isSeller: false }],
     });
   });
+
+// When an agent takes a client, the agent's introduction starts (or continues) their chat: in the client's latest
+// chat, or a new one about the vehicle they applied for or asked a quotation on (else a general chat).
+// The introduction does not count as a reply for the 24-hour rule: the client's own questions still need an answer.
+const introduceAgent = async (clientId: string, agent: string) => {
+  const client = await users.byId(clientId);
+  if (!client) return;
+  let conv = (await store.all<Conversation>('conversations', { buyerId: clientId }, { updatedAt: -1 }))[0];
+  if (!conv) {
+    const app = (await store.all<VehicleApplication>('applications', { applicantId: clientId }, { submittedAt: -1 }))[0];
+    const quote = (await store.all<Quotation>('quotations', { clientId }, { requestedAt: -1 }))[0];
+    const vid = app?.vehicleId ?? quote?.vehicleId;
+    const v = vid ? await store.get<Vehicle>('vehicles', vid) : undefined;
+    conv = {
+      id: newId('conv'), vehicleId: v?.id ?? '', vehicleTitle: v?.title ?? GENERAL_TOPIC, vehiclePrice: v?.price ?? 0, vehicleImage: v?.images[0] ?? '',
+      buyerId: clientId, buyerName: client.name, sellerId: agentSlug(agent), sellerName: agent, lastMessage: '', updatedAt: now(), unreadBuyer: 0, unreadSeller: 0, messages: [],
+    };
+  }
+  const at = now();
+  const t = `Hi ${client.name.split(' ')[0]}! I'm ${agent}, your Broom Broom agent${conv.vehicleId ? ` for the ${conv.vehicleTitle}` : ''}. I can help you with viewings, quotations and your application. How can I help?`;
+  const agentId = (await users.agents()).find((a) => a.name === agent)?.id ?? agentSlug(agent);
+  await store.put<Conversation>('conversations', {
+    ...conv,
+    sellerId: agentSlug(agent),
+    sellerName: agent,
+    lastMessage: t,
+    updatedAt: at,
+    unreadBuyer: conv.unreadBuyer + 1,
+    messages: [...conv.messages, { id: newId('msg'), senderId: agentId, senderName: agent, text: t, timestamp: at, isSeller: true }],
+  });
+  await notify('client', 'Your agent', `${agent} is now your Broom Broom agent and sent you a message.`, 'messages', clientId);
+};
 
 // input: { text } or, from the client's agent, { applyVehicleId, text? } for an apply link.
 export const sendMessage = (me: User, convId: string, input: any) =>
