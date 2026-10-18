@@ -152,7 +152,7 @@ export const IntroView: React.FC = () => {
               aria-label={`View ${heroVehicle.title}`}
             >
               <div className="relative flex-1 min-h-[280px] sm:min-h-[360px] overflow-hidden bg-[#EEF1F2]">
-                <img src={heroVehicle.images[0]} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <img src={heroVehicle.images[0]} alt="" className="absolute inset-0 w-full h-full object-contain" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 border-t border-[#141517] bg-white">
                 <div className="p-4 sm:col-span-2 border-b border-[#C9D1D6]">

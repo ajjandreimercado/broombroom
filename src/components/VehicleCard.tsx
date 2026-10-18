@@ -97,7 +97,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
           ref={imgRef}
           src={vehicle.images[0]}
           alt={vehicle.title}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
           loading="lazy"
         />
         <div className="absolute top-3 right-3 flex flex-col items-end gap-2">

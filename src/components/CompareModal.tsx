@@ -404,7 +404,7 @@ export const CompareModal: React.FC = () => {
                             <img
                               src={vehicle.images[0]}
                               alt={vehicle.title}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-contain"
                             />
                             {/* Score bubble */}
                             {evaluation && (
