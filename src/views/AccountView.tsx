@@ -46,6 +46,7 @@ export const AccountView: React.FC = () => {
     setActiveConversationId,
     writeToAgent,
     myAgent,
+    markConversationRead,
     sendMessage,
     applyThroughAgent,
     notifications: allNotifications,
@@ -133,6 +134,11 @@ export const AccountView: React.FC = () => {
   const selectedConversation =
     conversations.find((c) => c.id === activeConversationId) || conversations[0];
 
+  // The open chat is read (the Messages count drops); new messages in it are seen as they arrive.
+  useEffect(() => {
+    if (accountTab === 'messages' && !composing && selectedConversation && selectedConversation.unreadBuyer > 0) markConversationRead(selectedConversation.id);
+  }, [accountTab, composing, selectedConversation?.id, selectedConversation?.unreadBuyer]);
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !selectedConversation) return;
@@ -163,7 +169,7 @@ export const AccountView: React.FC = () => {
     { id: 'compare', label: 'Compare Vehicles', icon: ArrowLeftRight, badge: comparedVehicleIds.length || undefined },
     { id: 'applications', label: 'My Applications', icon: FileText, badge: userApplications.length },
     { id: 'quotations', label: 'My Quotations', icon: Calculator, badge: quotations.filter((q) => q.clientId === currentUser?.id).length || undefined },
-    { id: 'messages', label: 'Messages', icon: MessageSquare, badge: conversations.length },
+    { id: 'messages', label: 'Messages', icon: MessageSquare, badge: conversations.filter((c) => c.unreadBuyer > 0).length },
     { id: 'recently_viewed', label: 'Recently Viewed', icon: Clock },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: notifications.filter((n) => !n.read).length },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -560,6 +566,9 @@ export const AccountView: React.FC = () => {
                             <span className="font-bold text-[#141517] truncate">
                               {conv.sellerName}
                             </span>
+                            {conv.unreadBuyer > 0 && (
+                          <span className="ml-auto shrink-0 min-w-[20px] h-5 px-1.5 grid place-items-center bg-[#1D5FD1] text-white text-[11px] font-bold tabular-nums rounded-full" aria-label={`${conv.unreadBuyer} unread`}>{conv.unreadBuyer}</span>
+                        )}
                             <span className="text-[10px] text-[#6B767D] tabular-nums">
                               {new Date(conv.updatedAt).toLocaleDateString()}
                             </span>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
 import { portalUrl } from '../portals.ts';
@@ -34,6 +34,7 @@ export const SellerDashboardView: React.FC = () => {
     sendApplyLink,
     leads,
     applications,
+    markConversationRead,
   } = useApp();
 
   // Every agent can sell every listing; chats and commissions are only for the agent's own clients.
@@ -72,6 +73,11 @@ export const SellerDashboardView: React.FC = () => {
   const [linkVehicleId, setLinkVehicleId] = useState('');
   const linkVehicle = available.find((v) => v.id === linkVehicleId) ? linkVehicleId : available.find((v) => v.id === selectedConv?.vehicleId)?.id || available[0]?.id || '';
 
+  // The open chat is read: new messages in it are seen as they arrive.
+  useEffect(() => {
+    if (sellerTab === 'messages' && selectedConv && selectedConv.unreadSeller > 0) markConversationRead(selectedConv.id);
+  }, [sellerTab, selectedConv?.id, selectedConv?.unreadSeller]);
+
   const handleSendSellerReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!sellerChatText.trim() || !selectedConv) return;
@@ -83,7 +89,8 @@ export const SellerDashboardView: React.FC = () => {
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'sales_report', label: 'Sales Report', icon: BarChart3 },
     { id: 'leads', label: 'Leads', icon: Users, count: openLeads },
-    { id: 'messages', label: 'Client Chats', icon: MessageSquare, count: conversations.length },
+    // Chats with messages the agent has not read yet; opening a chat marks it read.
+    { id: 'messages', label: 'Client Chats', icon: MessageSquare, count: conversations.filter((c) => c.unreadSeller > 0).length },
     { id: 'commissions', label: 'Commissions', icon: Wallet, count: pendingCommissions.length },
     { id: 'vehicles', label: 'Listings', icon: Car, count: sellerVehicles.length },
   ];
@@ -258,7 +265,12 @@ export const SellerDashboardView: React.FC = () => {
                           selectedConv?.id === conv.id ? 'bg-white font-bold outline outline-1 outline-[#141517] -outline-offset-1' : 'hover:bg-[#EEF1F2]/70'
                         }`}
                       >
-                        <p className="text-[#141517] font-bold">{conv.buyerName}</p>
+                        <p className="flex items-center gap-2 text-[#141517] font-bold">
+                          <span className="truncate">{conv.buyerName}</span>
+                          {conv.unreadSeller > 0 && (
+                          <span className="ml-auto shrink-0 min-w-[20px] h-5 px-1.5 grid place-items-center bg-[#1D5FD1] text-white text-[11px] font-bold tabular-nums rounded-full" aria-label={`${conv.unreadSeller} unread`}>{conv.unreadSeller}</span>
+                        )}
+                        </p>
                         <p className="text-[11px] text-[#4E585E] font-normal truncate mt-0.5">
                           {conv.vehicleTitle}
                         </p>

@@ -260,6 +260,7 @@ interface AppContextType {
   // Applications
   createApplication: (input: ApplicationInput) => Promise<VehicleApplication | undefined>;
   updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string) => Promise<boolean>;
+  approveFinancing: (id: string) => Promise<boolean>;
   withdrawApplication: (id: string) => Promise<boolean>;
   reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => Promise<boolean>;
   attachDocumentForClient: (appId: string, docIndex: number, file: File) => Promise<boolean>;
@@ -686,6 +687,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
   const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note) =>
     done(await run(() => api(`/applications/${id}/status`, { body: { status, note } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
+  const approveFinancing = async (id: string) =>
+    done(await run(() => api(`/applications/${id}/financing-approved`, { body: {} }), ['Financing approved', "The agent's commission is now receivable."]));
   const withdrawApplication = async (id: string) =>
     done(await run(() => api(`/applications/${id}/status`, { body: { status: 'withdrawn' } }), ['Application withdrawn', 'Your application has been canceled.']));
   const reviewDocument: AppContextType['reviewDocument'] = async (appId, i, approve, reason) =>
@@ -781,6 +784,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     done(await run(() => api(`/conversations/${id}/takeover`, { body: {} }), ['Chat taken over', 'You can now reply to the client.']));
   const endTakeover = async (id: string) => done(await run(() => api(`/conversations/${id}/end-takeover`, { body: {} }), ['Handed back', 'The agent answers this chat again.']));
   const markConversationRead = (conversationId: string) => {
+    const field = PORTAL === 'seller' ? 'unreadSeller' : 'unreadBuyer';
+    setData((d) => ({ ...d, conversations: d.conversations?.map((c) => (c.id === conversationId ? { ...c, [field]: 0 } : c)) }));
     api(`/conversations/${conversationId}/read`, { body: {} }).catch(() => {});
   };
 
@@ -918,6 +923,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         createApplication,
         updateApplicationStatus,
+        approveFinancing,
         withdrawApplication,
         reviewDocument,
         attachDocumentForClient,
