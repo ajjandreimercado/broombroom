@@ -116,6 +116,11 @@ const docs = async (c: Awaited<ReturnType<typeof newClient>>, keys: string[]) =>
   return out;
 };
 const address = { street: '1 Test St', city: 'Taguig', province: 'Metro Manila', region: 'NCR', postalCode: '1634' };
+// The admin approves every document on an application (cash or financing) before approving the application.
+const approveDocs = async (ad: Awaited<ReturnType<typeof admin>>, appId: string) => {
+  const app = (await ad.state()).applications.find((a: any) => a.id === appId);
+  for (const [i, d] of (app.documents ?? []).entries()) if (d.fileName && d.status !== 'approved') await ad.post(`/api/applications/${appId}/documents/${i}/review`, { approve: true });
+};
 const apply = async (c: Awaited<ReturnType<typeof newClient>>, vehicleId: string, extra: any = {}) =>
   c.post('/api/applications', { vehicleId, purchaseMethod: 'cash', documents: await docs(c, ['id-signature']), address, ...extra });
 // A new listing for each test that needs one (no application can hold it yet).
@@ -252,6 +257,10 @@ test('decline needs a reason, frees the car and drops the receivable commission'
   const ad = await admin();
   const v = await freeVehicle();
   const app = (await apply(c, v.id)).data;
+  const early = await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' });
+  assert.equal(early.status, 400, "a cash buyer's ID is checked first");
+  assert.match(early.json.error, /Approve every document/);
+  await approveDocs(ad, app.id);
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 200);
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'declined' })).status, 400);
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'declined', note: 'Could not verify ID' })).status, 200);
@@ -273,6 +282,7 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
   const ad = await admin();
   const v = await freeVehicle();
   const app = (await apply(c, v.id)).data;
+  await approveDocs(ad, app.id);
   await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' });
   const shot = (await ad.upload(PNG, 'image/png', 'gcash.png')).data.id;
   const p1 = await ad.post(`/api/applications/${app.id}/payments`, { amount: 50000, description: 'Reservation', fileId: shot });
@@ -331,6 +341,7 @@ test('reassigning moves unearned commissions; 24-hour rule returns a waiting cli
   const v = await freeVehicle();
   const app = (await apply(c, v.id, { ref: 'carlo-santos' })).data;
   assert.equal(app.sellerName, 'Carlo Santos');
+  await approveDocs(ad, app.id);
   await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' });
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Nobody Here' })).status, 400);
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Bea Villanueva' })).status, 200);

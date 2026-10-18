@@ -550,10 +550,9 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
     };
 
     if (status === 'approved') {
-      if (app.purchaseMethod === 'financing') {
-        const docs = app.documents || [];
-        if (!docs.length || docs.some((d) => d.status !== 'approved')) bad('Approve every financing document before approving this application.');
-      }
+      // Cash or financing: the admin checks the client's documents first.
+      const docs = app.documents || [];
+      if (docs.some((d) => d.status !== 'approved')) bad('Approve every document before approving this application.');
       if (!vehicle || vehicle.status === 'sold') bad('This vehicle is no longer available.');
       if (vehicle!.status === 'reserved' && (await store.one('applications', { vehicleId: app.vehicleId, status: 'approved', id: { $ne: app.id } })))
         bad('This vehicle is already reserved for another client.');
@@ -612,7 +611,7 @@ export const reviewDocument = (appId: string, i: number, approve: boolean, reaso
     const documents = app.documents!.map((x, k) => (k === i ? { ...x, status: approve ? ('approved' as const) : ('rejected' as const), reason: why } : x));
     await store.put('applications', { ...app, documents });
     if (approve) {
-      if (documents.every((x) => x.status === 'approved')) await notify('client', 'Documents approved', `All financing documents for ${app.referenceNo} were approved.`, 'applications', app.applicantId);
+      if (documents.every((x) => x.status === 'approved')) await notify('client', 'Documents approved', `All documents for ${app.referenceNo} were approved.`, 'applications', app.applicantId);
       return null;
     }
     await notify('client', 'Document needs attention', `${d.label} for ${app.referenceNo} was not accepted: ${why}. Upload a new copy from My Applications.`, 'applications', app.applicantId);

@@ -237,7 +237,7 @@ export const ApplicationsManager: React.FC = () => {
         <ul key={filter} className="animate-view-fade">
           {rows.map((app) => {
             const docs = docSummary(app);
-            const docsBlock = app.purchaseMethod === 'financing' && docs.tone !== 'good';
+            const docsBlock = docs.tone !== 'good' && (app.documents?.length ?? 0) > 0; // cash or financing: documents first
             return (
               <li key={app.id} className="py-5 border-b border-[#C9D1D6] space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">

@@ -57,9 +57,9 @@ export const AdminDashboardView: React.FC = () => {
         { id: 'applications', label: 'Applications', icon: FileText, count: applications.filter((a) => open.includes(a.status)).length },
         {
           id: 'financing',
-          label: 'Financing',
+          label: 'Documents',
           icon: Landmark,
-          count: applications.filter((a) => a.purchaseMethod === 'financing' && open.includes(a.status) && docSummary(a).tone !== 'good').length,
+          count: applications.filter((a) => open.includes(a.status) && docSummary(a).tone !== 'good').length,
         },
         { id: 'commissions', label: 'Commissions', icon: Wallet, count: commissions.filter((c) => c.status !== 'paid').length },
       ],

@@ -17,11 +17,12 @@ const stateOf = (app: VehicleApplication): Exclude<Filter, 'all'> => {
   return OPEN.includes(app.status) ? 'review' : 'approved';
 };
 
-// Admin: approve each financing document, or reject it with the reason the client will read.
+// Admin: approve each document a client sent (cash or financing), or reject it with the reason the client will read.
 export const FinancingReview: React.FC = () => {
   const { applications, reviewDocument, updateApplicationStatus, attachDocumentForClient, showToast } = useApp();
   const [openId, setOpenId] = useState<string | null>(null);
-  const financing = applications.filter((a) => a.purchaseMethod === 'financing');
+  const [method, setMethod] = useState<'all' | 'cash' | 'financing'>('all');
+  const financing = applications.filter((a) => method === 'all' || a.purchaseMethod === method);
   const [filter, setFilter] = useState<Filter>('review');
   const rows = filter === 'all' ? financing : financing.filter((a) => stateOf(a) === filter);
   const count = (f: Exclude<Filter, 'all'>) => financing.filter((a) => stateOf(a) === f).length;
@@ -29,9 +30,15 @@ export const FinancingReview: React.FC = () => {
   return (
     <section className="space-y-5">
       <SectionHeader
-        title="Financing documents"
-        hint="Open an application to see the documents the client submitted. Upload anything the client hands in directly. A rejected document needs a reason, which the client sees right away. Once every document is approved, the application can be approved."
-      />
+        title="Client documents"
+        hint="Cash and financing applications. Open one to see the documents the client submitted. Upload anything the client hands in directly. A rejected document needs a reason, which the client sees and is emailed. Once every document is approved, the application can be approved."
+      >
+        <select value={method} onChange={(e) => setMethod(e.target.value as typeof method)} aria-label="Payment method" className="px-3 py-2 text-[13px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer">
+          <option value="all">Cash and financing</option>
+          <option value="cash">Cash only</option>
+          <option value="financing">Financing only</option>
+        </select>
+      </SectionHeader>
       <FilterTabs
         id="financing"
         value={filter}
@@ -45,7 +52,7 @@ export const FinancingReview: React.FC = () => {
       />
 
       {rows.length === 0 ? (
-        <EmptyState title="Nothing to review" body="Financing applications with documents waiting for a decision appear here." />
+        <EmptyState title="Nothing to review" body="Cash and financing applications with documents waiting for a decision appear here." />
       ) : (
         <ul key={filter} className="animate-view-fade border-b border-[#C9D1D6]">
           {rows.map((app) => {
@@ -64,10 +71,12 @@ export const FinancingReview: React.FC = () => {
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-[12.5px] tabular-nums text-[#4E585E]">{app.referenceNo}</span>
                       <StatusMark status={app.status} />
+                      <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[#141517]">{app.purchaseMethod === 'cash' ? 'Cash' : 'Financing'}</span>
                     </span>
                     <span className="block mt-1.5 font-semibold text-[15px] text-[#141517]">{app.applicantName}</span>
                     <span className="block text-[13px] text-[#2A2E31] tabular-nums">
-                      {app.vehicleTitle} · {peso(app.vehiclePrice)} · {app.financingTermMonths ?? '-'} months
+                      {app.vehicleTitle} · {peso(app.vehiclePrice)}
+                      {app.purchaseMethod === 'financing' ? ` · ${app.financingTermMonths ?? '-'} months` : ' · cash settlement'}
                       {app.downPayment ? ` · ${peso(app.downPayment)} down` : ''}
                     </span>
                     <span className="block text-[12px] text-[#6B767D]">Submitted {shortDate(app.submittedAt)}</span>
