@@ -7,6 +7,9 @@ import { StoredVideo } from './StoredVideo.tsx';
 import { ImagePlus, X } from 'lucide-react';
 
 
+// Number fields are plain text boxes (no up/down arrows): only the digits typed count; commas are shown for reading.
+const digits = (v: string, max: number) => Number(v.replace(/\D/g, '').slice(0, max)) || 0;
+
 // Admins post listings straight to the marketplace (or edit one: `editing`); agents use the same form to request one.
 export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Vehicle; onDone?: () => void }> = ({ mode = 'admin', editing, onDone }) => {
   const { createVehicleListing, updateVehicleListing, submitListingRequest, navigateTo, showToast } = useApp();
@@ -77,6 +80,8 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
       showToast('Validation Error', 'Vehicle title and brand are required.', 'error');
       return;
     }
+    if (!(price > 0)) return showToast('Enter the price', 'Type the price in pesos, e.g. 1200000.', 'error');
+    if (year < 1950 || year > new Date().getFullYear() + 1) return showToast('Check the year', 'Enter the model year, e.g. 2023.', 'error');
 
     const data: Partial<Vehicle> = {
       title: title.trim(),
@@ -203,9 +208,11 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                     <div>
                       <label htmlFor="listing-field-5" className="gb-label block mb-2">Year *</label>
                       <input id="listing-field-5"
-                        type="number"
-                        value={year}
-                        onChange={(e) => setYear(Number(e.target.value))}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={year || ''}
+                        onChange={(e) => setYear(digits(e.target.value, 4))}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                         required
                       />
@@ -216,9 +223,11 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                     <div>
                       <label htmlFor="listing-field-6" className="gb-label block mb-2">Price (₱) *</label>
                       <input id="listing-field-6"
-                        type="number"
-                        value={price}
-                        onChange={(e) => setPrice(Number(e.target.value))}
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="e.g. 1,200,000"
+                        value={price ? price.toLocaleString('en-PH') : ''}
+                        onChange={(e) => setPrice(digits(e.target.value, 11))}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                         required
                       />
@@ -227,9 +236,11 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                     <div>
                       <label htmlFor="listing-field-7" className="gb-label block mb-2">Mileage (km)</label>
                       <input id="listing-field-7"
-                        type="number"
-                        value={mileage}
-                        onChange={(e) => setMileage(Number(e.target.value))}
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="e.g. 15,000"
+                        value={mileage ? mileage.toLocaleString('en-PH') : ''}
+                        onChange={(e) => setMileage(digits(e.target.value, 9))}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                       />
                     </div>
