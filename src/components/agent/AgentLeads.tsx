@@ -9,7 +9,7 @@ const SOURCE: Record<ClientLead['source'], string> = { link: 'Came through your 
 
 // Agent: claim new clients from the shared pool, and keep track of the clients who are yours.
 export const AgentLeads: React.FC = () => {
-  const { leads, claimLead, currentUser, conversations, navigateTo, setActiveConversationId } = useApp();
+  const { leads, claimLead, openClientChat, currentUser, conversations, navigateTo, setActiveConversationId } = useApp();
   const me = currentUser?.name;
   const [view, setView] = useState<'open' | 'mine'>('open');
   const [now, setNow] = useState(Date.now());
@@ -25,11 +25,14 @@ export const AgentLeads: React.FC = () => {
       .filter((c) => c.buyerId === clientId)
       .flatMap((c) => c.messages.filter((m) => !m.isSeller))
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0]?.text;
-  const openChat = (clientId: string) => {
-    const conv = conversations.filter((c) => c.buyerId === clientId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-    if (conv) setActiveConversationId(conv.id);
+  // The agent starts the conversation: claiming (or Message client) opens the chat, created if the client had none.
+  const goToChat = (conversationId: string | null) => {
+    if (!conversationId) return;
+    setActiveConversationId(conversationId);
     navigateTo('seller', { sellerTab: 'messages' });
   };
+  const openChat = async (clientId: string) => goToChat(await openClientChat(clientId));
+  const claim = async (clientId: string) => goToChat(await claimLead(clientId));
 
   return (
     <section className="space-y-5">
@@ -62,7 +65,7 @@ export const AgentLeads: React.FC = () => {
                     {line && <p className="text-[12.5px] text-[#4E585E] truncate max-w-[60ch]">“{line}”</p>}
                     <p className="text-[12px] text-[#6B767D] tabular-nums">Waiting {duration(now - new Date(l.pooledAt ?? l.createdAt).getTime())}</p>
                   </div>
-                  <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-center`} onClick={() => claimLead(l.clientId)}>
+                  <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-center`} onClick={() => claim(l.clientId)}>
                     <Hand className="w-4 h-4" aria-hidden="true" /> Claim client
                   </button>
                 </li>
@@ -95,7 +98,7 @@ export const AgentLeads: React.FC = () => {
                     )}
                   </div>
                   <button className={`${btn.outline} flex items-center gap-1.5 self-start sm:self-center`} onClick={() => openChat(l.clientId)}>
-                    <MessageSquare className="w-4 h-4" aria-hidden="true" /> Open chat
+                    <MessageSquare className="w-4 h-4" aria-hidden="true" /> Message client
                   </button>
                 </li>
               );

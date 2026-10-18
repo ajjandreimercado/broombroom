@@ -166,9 +166,9 @@ export const claimLead = (me: User, clientId: string) =>
     const at = now();
     await store.put('leads', { ...lead, agentName: me.name, source: 'pool', claimedAt: at, escalatedAt: undefined, history: [...lead.history, { at, text: `Claimed by ${me.name}` }] });
     await moveClient(lead.clientId, me.name);
-    await introduceAgent(lead.clientId, me.name);
+    const conversationId = await introduceAgent(lead.clientId, me.name);
     await notify('admin', 'Lead claimed', `${me.name} claimed ${lead.clientName} (${lead.interest}).`, 'leads');
-    return lead.clientName;
+    return { clientName: lead.clientName, conversationId };
   });
 
 // Admin: give a client to an agent, or put them back in Open leads (null). Also used by the 24-hour rule.
@@ -949,9 +949,9 @@ export const startConversation = (me: User, vehicleId: unknown, ref: unknown, me
 // When an agent takes a client, the agent's introduction starts (or continues) their chat: in the client's latest
 // chat, or a new one about the vehicle they applied for or asked a quotation on (else a general chat).
 // The introduction does not count as a reply for the 24-hour rule: the client's own questions still need an answer.
-const introduceAgent = async (clientId: string, agent: string) => {
+const introduceAgent = async (clientId: string, agent: string): Promise<string | undefined> => {
   const client = await users.byId(clientId);
-  if (!client) return;
+  if (!client) return undefined;
   let conv = (await store.all<Conversation>('conversations', { buyerId: clientId }, { updatedAt: -1 }))[0];
   if (!conv) {
     const app = (await store.all<VehicleApplication>('applications', { applicantId: clientId }, { submittedAt: -1 }))[0];
@@ -976,7 +976,18 @@ const introduceAgent = async (clientId: string, agent: string) => {
     messages: [...conv.messages, { id: newId('msg'), senderId: agentId, senderName: agent, text: t, timestamp: at, isSeller: true }],
   });
   await notify('client', 'Your agent', `${agent} is now your Broom Broom agent and sent you a message.`, 'messages', clientId);
+  return conv.id;
 };
+
+// The agent opens a chat with one of their clients: their latest chat together, or a new one started with the agent's
+// introduction (e.g. a client the admin assigned who never wrote). The agent does not wait for the client to write.
+export const agentConversation = (me: User, clientId: string) =>
+  tx(async () => {
+    const lead = need(await store.get<ClientLead>('leads', idOf(clientId)), 'Client');
+    if (lead.agentName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
+    const existing = (await store.all<Conversation>('conversations', { buyerId: lead.clientId, sellerName: me.name }, { updatedAt: -1 }))[0];
+    return { conversationId: existing?.id ?? (await introduceAgent(lead.clientId, me.name)) };
+  });
 
 // input: { text } or, from the client's agent, { applyVehicleId, text? } for an apply link.
 export const sendMessage = (me: User, convId: string, input: any) =>

@@ -802,3 +802,24 @@ test('editing a listing: details, photos and videos change; removing every photo
   assert.equal((await ad.patch(`/api/vehicles/${v.id}`, { price: -5 })).status, 400);
   assert.equal((await (await carlo()).patch(`/api/vehicles/${v.id}`, { price: 1 })).status, 403, 'admins only');
 });
+
+test('agents start the chat: claiming returns it, and Message client opens or starts one for their own clients', async () => {
+  const ca = await carlo();
+  const c = await newClient();
+  await c.post('/api/quotations', { vehicleId: (await freeVehicle()).id, method: 'cash', termMonths: 36 });
+  const claimed = await ca.post(`/api/leads/${c.id}/claim`);
+  assert.equal(claimed.status, 200);
+  const convId = claimed.data.conversationId;
+  assert.ok(convId, 'the claim returns the chat it started');
+  assert.equal((await ca.post(`/api/leads/${c.id}/conversation`)).data.conversationId, convId, 'Message client opens the same chat');
+  assert.equal((await (await bea()).post(`/api/leads/${c.id}/conversation`)).status, 403, 'not her client');
+  // a client the admin assigned (no chat yet): Message client starts one with the agent's introduction
+  const d = await newClient();
+  await apply(d, (await freeVehicle()).id);
+  await (await admin()).post(`/api/leads/${d.id}/assign`, { agentName: 'Carlo Santos' });
+  const started = await ca.post(`/api/leads/${d.id}/conversation`);
+  assert.equal(started.status, 200);
+  const conv = (await d.state()).conversations.find((x: any) => x.id === started.data.conversationId);
+  assert.equal(conv.sellerName, 'Carlo Santos');
+  assert.match(conv.messages[0].text, /your Broom Broom agent/);
+});

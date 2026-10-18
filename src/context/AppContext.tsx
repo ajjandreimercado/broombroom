@@ -307,7 +307,9 @@ interface AppContextType {
   adminResolveReport: (reportId: string, action: 'dismiss' | 'unpublish_vehicle') => Promise<boolean>;
 
   // Leads
-  claimLead: (clientId: string) => Promise<boolean>;
+  // Both return the chat with that client (started with the agent's introduction when there was none).
+  claimLead: (clientId: string) => Promise<string | null>;
+  openClientChat: (clientId: string) => Promise<string | null>;
   assignLead: (clientId: string, agentName: string | null) => Promise<boolean>;
   unlockLead: (clientId: string) => Promise<boolean>;
 
@@ -810,7 +812,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ----- Leads -----
   const claimLead = async (clientId: string) =>
-    done(await run(() => api(`/leads/${encodeURIComponent(clientId)}/claim`, { body: {} }), ['Client claimed', 'Their chats are now in Client Chats.'], 'Could not claim'));
+    (await run(() => api<{ conversationId?: string }>(`/leads/${encodeURIComponent(clientId)}/claim`, { body: {} }), ['Client claimed', 'Your introduction was sent. Say hello in the chat.'], 'Could not claim'))?.conversationId ?? null;
+  const openClientChat = async (clientId: string) =>
+    (await run(() => api<{ conversationId?: string }>(`/leads/${encodeURIComponent(clientId)}/conversation`, { body: {} }), undefined, 'Could not open the chat'))?.conversationId ?? null;
   const unlockLead = async (clientId: string) =>
     done(await run(() => api(`/leads/${clientId}/unlock`, { body: {} }), ['Client unlocked', 'You can now reassign them.']));
   const assignLead = async (clientId: string, agentName: string | null) =>
@@ -955,6 +959,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         adminResolveReport,
 
         claimLead,
+        openClientChat,
         assignLead,
         unlockLead,
 

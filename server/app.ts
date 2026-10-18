@@ -314,6 +314,7 @@ export const createApp = () => {
   // ---------- leads ----------
   api.post('/leads/:clientId/claim', requireRole('seller'), act((req) => svc.claimLead(me(req), req.params.clientId)));
   api.post('/leads/:clientId/unlock', requireRole('admin'), act((req) => svc.unlockLead(req.params.clientId)));
+  api.post('/leads/:clientId/conversation', requireRole('seller'), act((req) => svc.agentConversation(me(req), req.params.clientId)));
   api.post(
     '/leads/:clientId/assign',
     requireRole('admin'),
