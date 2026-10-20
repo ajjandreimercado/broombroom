@@ -567,7 +567,7 @@ export const createApplication = (me: User, input: any) =>
       await store.put('quotations', { ...quote, status: 'accepted', applicationRef: app.referenceNo });
       await notify('admin', 'Quotation accepted', `${me.name} applied for the ${v.title} using ${quote.quoteNo} (${app.referenceNo}).`, 'applications');
     }
-    await notify('client', 'Application received', `Your application ${app.referenceNo} for ${app.vehicleTitle} is with the admin team for review.`, 'applications', me.id);
+    await notify('client', 'Application received', `Your application ${app.referenceNo} for the ${app.vehicleTitle} is complete. Nothing more to fill in for now: we will notify you when the vehicle is reserved and your quotation is ready.`, 'applications', me.id);
     if (owner) await notify('agent', 'Your client applied', `${app.applicantName} applied for the ${app.vehicleTitle} (${method}).`, 'messages', owner);
     await notify('admin', 'Application to review', `${app.referenceNo}: ${app.applicantName} applied for the ${app.vehicleTitle}.`, 'applications');
     return app;
@@ -600,7 +600,7 @@ export const submitInfoSheet = (me: User, id: string, input: any) =>
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
     if (app.applicantId !== me.id) forbidden();
     if (app.status !== 'reserved') bad(app.infoSheet ? 'Your information sheet is already in.' : 'The information sheet opens once the vehicle is reserved for you.');
-    if (!(await store.one('quotations', { ...quoteFilter(app), status: 'returned' }))) bad('Sign and send back your quotation first (My Quotations).');
+    if (!(await store.one('quotations', { ...quoteFilter(app), status: 'confirmed' }))) bad('The information sheet opens once the admin team confirms your signed quotation.');
     const sheet = cleanInfoSheet(input);
     if (typeof sheet === 'string') bad(sheet);
     const sketch = input?.sketchFileId ? await attachUpload(input.sketchFileId, me, me.id, IMG) : undefined;
@@ -939,7 +939,7 @@ export const quoteApplication = (id: string) =>
   tx(async () => {
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
     if (app.status !== 'reserved') bad('A quotation is made after the vehicle is reserved and before processing.');
-    if (await store.one('quotations', { ...quoteFilter(app), status: { $in: ['requested', 'sent', 'returned'] } })) bad('This application already has a quotation.');
+    if (await store.one('quotations', { ...quoteFilter(app), status: { $in: ['requested', 'sent', 'returned', 'confirmed'] } })) bad('This application already has a quotation.');
     const v = need(await store.get<Vehicle>('vehicles', app.vehicleId), 'Listing');
     const me = need(await users.byId(app.applicantId), 'Client');
     const method = app.purchaseMethod;
@@ -1014,7 +1014,7 @@ export const saveQuotation = (me: User, id: string, input: any, send: boolean) =
       if (!/^\d{4}-\d{2}-\d{2}$/.test(updated.validUntil) || updated.validUntil < daysFromToday(0)) bad('Set a "valid until" date from today onward.');
       updated.quoteNo = q.quoteNo ?? `QT-${year()}-${pad4(await nextNumber(`qt-${year()}`))}`;
       updated.status = q.status === 'accepted' ? 'accepted' : 'sent'; // a returned one goes back to the client to sign again
-      if (q.status === 'returned') Object.assign(updated, { conforme: undefined, clientReply: undefined, returnedAt: undefined });
+      if (q.status === 'returned' || q.status === 'confirmed') Object.assign(updated, { status: 'sent', conforme: undefined, clientReply: undefined, returnedAt: undefined, confirmedAt: undefined });
       updated.sentAt = now();
       updated.preparedBy = me.name;
       await notify(
@@ -1033,7 +1033,7 @@ export const returnQuotation = (me: User, id: string, input: any) =>
   tx(async () => {
     const q = need(await store.get<Quotation>('quotations', idOf(id)), 'Quotation');
     if (q.clientId !== me.id) forbidden();
-    if (q.status !== 'sent') bad(q.status === 'returned' ? 'You already sent this quotation back.' : 'This quotation cannot be signed now.');
+    if (q.status !== 'sent') bad(q.status === 'returned' || q.status === 'confirmed' ? 'You already sent this quotation back.' : 'This quotation cannot be signed now.');
     if (isExpired(q)) bad('This quotation has expired. Ask your agent for an updated one.');
     const saved = await store.put<Quotation>('quotations', {
       ...q,
@@ -1042,10 +1042,21 @@ export const returnQuotation = (me: User, id: string, input: any) =>
       clientReply: text(input?.note, 'Note', 1000, false) || undefined,
       returnedAt: now(),
     });
-    await notify('admin', 'Quotation returned', `${me.name} signed and sent back ${q.quoteNo} for the ${q.vehicleTitle}${saved.clientReply ? ` with a note: ${saved.clientReply}` : ''}.`, 'applications');
-    const app = await store.one<VehicleApplication>('applications', q.applicationRef ? { referenceNo: q.applicationRef, status: 'reserved' } : { applicantId: me.id, vehicleId: q.vehicleId, status: 'reserved' });
-    if (app) await notify('client', 'Quotation received', `Thank you. Next: fill in the Applicant's Information Sheet for ${app.referenceNo}.`, 'applications', me.id);
-    return { quotation: saved, email: app ? { to: me.email, name: me.name, appId: app.id, referenceNo: app.referenceNo, vehicle: app.vehicleTitle } : undefined };
+    await notify('admin', 'Quotation returned', `${me.name} signed and sent back ${q.quoteNo} for the ${q.vehicleTitle}${saved.clientReply ? ` with a note: ${saved.clientReply}` : ''}. Review it: confirm it as final, or edit and resend it.`, 'applications');
+    await notify('client', 'Quotation sent back', `Thank you. The admin team is reviewing ${q.quoteNo}; we will tell you when it is confirmed.`, 'quotations', me.id);
+    return { quotation: saved, email: undefined };
+  });
+
+// Admin: accept the client's signed quotation as final. Then the client fills in the information sheet.
+export const confirmQuotation = (id: string) =>
+  tx(async () => {
+    const q = need(await store.get<Quotation>('quotations', idOf(id)), 'Quotation');
+    if (q.status !== 'returned') bad('Only a quotation the client signed and sent back can be confirmed.');
+    const saved = await store.put<Quotation>('quotations', { ...q, status: 'confirmed', confirmedAt: now() });
+    const app = await store.one<VehicleApplication>('applications', q.applicationRef ? { referenceNo: q.applicationRef, status: 'reserved' } : { applicantId: q.clientId, vehicleId: q.vehicleId, status: 'reserved' });
+    const client = await users.byId(q.clientId);
+    await notify('client', 'Quotation confirmed', `${q.quoteNo} is final.${app ? ` Next: fill in the Applicant's Information Sheet for ${app.referenceNo}.` : ''}`, 'applications', q.clientId);
+    return { quotation: saved, email: app && client ? { to: client.email, name: client.name, appId: app.id, referenceNo: app.referenceNo, vehicle: app.vehicleTitle } : undefined };
   });
 
 // ---------- commissions: payable (from the release) -> paid (with proof) ----------

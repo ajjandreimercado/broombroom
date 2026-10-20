@@ -364,7 +364,8 @@ export interface Expense {
 export interface Quotation {
   id: string;
   quoteNo?: string; // QT-2026-0001, given when first sent
-  status: 'requested' | 'sent' | 'returned' | 'accepted'; // returned: the client signed it (conforme) and sent it back
+  // returned: the client signed it (conforme) and sent it back for review; confirmed: the admin accepted it as final.
+  status: 'requested' | 'sent' | 'returned' | 'confirmed' | 'accepted';
   requestedAt: string;
   sentAt?: string;
   validUntil?: string; // yyyy-mm-dd; a sent quotation past this date is expired
@@ -399,6 +400,7 @@ export interface Quotation {
   conforme?: string; // the client's typed full name, signing the quotation
   clientReply?: string; // the client's note when sending it back
   returnedAt?: string;
+  confirmedAt?: string;
 }
 
 // Which agent a client belongs to. One per client: every chat, application and commission follows it.

@@ -529,13 +529,14 @@ export const AccountView: React.FC = () => {
                         {app.status === 'reserved' && (() => {
                           // After the reservation: the admin sends a quotation, the client signs it back, then the information sheet.
                           const quote = quoteFor(quotations, app);
-                          const signed = quote?.status === 'returned';
+                          const signed = quote?.status === 'confirmed';
+                          const inReview = quote?.status === 'returned';
                           const toSign = quote?.status === 'sent';
                           return (
                             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#E8F0FC] border-l-2 border-[#1D5FD1]">
                               <p className="text-[13px] text-[#141517]">
                                 <strong>The vehicle is reserved for you.</strong>{' '}
-                                {signed ? "Next: fill in the Applicant's Information Sheet." : toSign ? 'Next: check and sign your quotation.' : 'Next: the admin team sends you a quotation.'}
+                                {signed ? "Your quotation is confirmed. Next: fill in the Applicant's Information Sheet." : inReview ? 'Your signed quotation is with the admin team for review.' : toSign ? 'Next: check and sign your quotation.' : 'Next: the admin team sends you a quotation.'}
                               </p>
                               {(signed || toSign) && (
                                 <button

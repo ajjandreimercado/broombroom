@@ -331,7 +331,14 @@ export const createApp = () => {
     '/quotations/:id/return',
     requireRole('buyer'),
     act(async (req) => {
-      const { quotation, email } = await svc.returnQuotation(me(req), req.params.id, body(req));
+      return (await svc.returnQuotation(me(req), req.params.id, body(req))).quotation;
+    })
+  );
+  api.post(
+    '/quotations/:id/confirm',
+    requireRole('admin'),
+    act(async (req) => {
+      const { quotation, email } = await svc.confirmQuotation(req.params.id);
       // Sent after the change is saved; the client also gets an in-app notice.
       if (email) void sendMail(infoSheetEmail({ ...email, link: `${clientSiteUrl(req)}/?infosheet=${encodeURIComponent(email.appId)}` }));
       return quotation;

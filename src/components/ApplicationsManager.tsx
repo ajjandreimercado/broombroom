@@ -345,7 +345,7 @@ const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'cont
 
 // Admin: review -> reserve (reservation AR) -> the client's information sheet -> approve -> release with OR/CR.
 export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 'review' }) => {
-  const { applications, quotations, updateApplicationStatus, createQuotation, navigateTo, showToast } = useApp();
+  const { applications, quotations, updateApplicationStatus, createQuotation, confirmQuotation, navigateTo, showToast } = useApp();
   const [filter, setFilter] = useState<Filter>(initial);
 
   const matches = (f: Filter, a: VehicleApplication) =>
@@ -439,6 +439,11 @@ export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 
                 )}
                 {app.status === 'reserved' && (
                   <div className="flex flex-wrap items-center gap-2">
+                    {quoteOf(app)?.status === 'returned' && (
+                      <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => confirmQuotation(quoteOf(app)!.id)}>
+                        <Check className="w-4 h-4" aria-hidden="true" /> Confirm quotation
+                      </button>
+                    )}
                     {quoteOf(app) ? (
                       <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => setFilter('quotations')}>
                         <FileText className="w-4 h-4" aria-hidden="true" /> Open quotation
@@ -454,7 +459,8 @@ export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 
                         if (!q) return 'Reserved · next: create the quotation and send it to the client.';
                         if (q.status === 'requested') return 'Quotation drafted · check it and send it to the client.';
                         if (q.status === 'sent') return 'Quotation sent · waiting for the client to sign it and send it back.';
-                        return `Quotation returned, signed by ${q.conforme}${q.clientReply ? ` (note: “${q.clientReply}”)` : ''} · waiting for the information sheet.`;
+                        if (q.status === 'returned') return `Quotation returned, signed by ${q.conforme}${q.clientReply ? ` (note: “${q.clientReply}”)` : ''} · review it: confirm, or edit and resend.`;
+                        return 'Quotation confirmed · waiting for the client’s information sheet.';
                       })()}
                     </span>
                     <ReasonAction label="Cancel reservation" confirmLabel="Cancel & free the car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />

@@ -86,7 +86,9 @@ export const MyQuotations: React.FC = () => {
                         {q.status === 'requested'
                           ? 'The admin team is preparing your quotation.'
                           : q.status === 'returned'
-                          ? `You signed it as ${q.conforme} and sent it back${q.returnedAt ? ` on ${new Date(q.returnedAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}.`
+                          ? `You signed it as ${q.conforme} and sent it back. The admin team is reviewing it.`
+                          : q.status === 'confirmed'
+                          ? `Confirmed as final${q.confirmedAt ? ` on ${new Date(q.confirmedAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}. Next: fill in your information sheet in My Applications.`
                           : q.status === 'accepted'
                           ? `You applied with this quotation${q.applicationRef ? ` (${q.applicationRef})` : ''}.`
                           : expired

@@ -51,4 +51,4 @@ export const quoteFor = (quotations: Quotation[], app: VehicleApplication) =>
   quotations.find((q) => !q.applicationRef && q.clientId === app.applicantId && q.vehicleId === app.vehicleId);
 
 export const quoteLabel = (q: Quotation) =>
-  q.status === 'requested' ? 'Being prepared' : q.status === 'returned' ? 'Signed & returned' : q.status === 'accepted' ? 'Accepted' : isExpired(q) ? 'Expired' : 'Sent';
+  q.status === 'requested' ? 'Being prepared' : q.status === 'returned' ? 'Signed, under review' : q.status === 'confirmed' ? 'Confirmed' : q.status === 'accepted' ? 'Accepted' : isExpired(q) ? 'Expired' : 'Sent';

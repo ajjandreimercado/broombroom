@@ -19,7 +19,7 @@ export const progressSteps = (app: VehicleApplication, quotations: Quotation[] =
   const approved = reached('approved', 'completed');
   const completed = app.status === 'completed';
   const quote = quoteFor(quotations, app);
-  const quoted = quote?.status === 'returned' || quote?.status === 'accepted';
+  const quoted = quote?.status === 'confirmed' || quote?.status === 'accepted';
   const docs = app.documents ?? [];
   const docsDone = reserved || (docs.length > 0 && docs.every((d) => d.status === 'approved'));
   const missing = docs.filter((d) => !d.fileName).length;
@@ -31,7 +31,7 @@ export const progressSteps = (app: VehicleApplication, quotations: Quotation[] =
       done: docsDone,
     },
     { label: 'Reserved', detail: reserved ? 'Vehicle held for you · AR released' : 'After your documents are checked', done: reserved },
-    { label: 'Quotation', detail: quoted ? 'Signed and sent back' : quote?.status === 'sent' ? 'Sign it in My Quotations' : reserved ? 'Admin is preparing it' : 'After the reservation', done: quoted || sheetIn },
+    { label: 'Quotation', detail: quoted ? 'Confirmed' : quote?.status === 'returned' ? 'Signed · admin is reviewing it' : quote?.status === 'sent' ? 'Sign it in My Quotations' : reserved ? 'Admin is preparing it' : 'After the reservation', done: quoted || sheetIn },
     { label: 'Information sheet', detail: sheetIn ? 'Received' : quoted ? 'Please fill it in' : 'After the quotation', done: sheetIn },
     { label: 'Approved', detail: approved ? 'Application approved' : sheetIn ? 'Admin is processing' : 'After the information sheet', done: approved },
     { label: 'Released to you', detail: completed ? 'With OR and CR' : 'Once the OR and CR are ready', done: completed },

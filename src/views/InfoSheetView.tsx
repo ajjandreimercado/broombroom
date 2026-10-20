@@ -108,7 +108,7 @@ export const InfoSheetView: React.FC = () => {
 
   const back = () => navigateTo('account', { accountTab: 'applications' });
   // The sheet opens once the client signed their quotation and sent it back.
-  const signed = !!app && quoteFor(quotations, app)?.status === 'returned';
+  const signed = !!app && quoteFor(quotations, app)?.status === 'confirmed';
   if (!app || app.status !== 'reserved' || !signed) {
     return (
       <section className="gb-container py-16">
@@ -117,7 +117,7 @@ export const InfoSheetView: React.FC = () => {
             {app?.infoSheet
               ? 'Your information sheet is already in.'
               : app?.status === 'reserved'
-              ? 'The information sheet opens once you sign your quotation and send it back (My Quotations).'
+              ? 'The information sheet opens once the admin team confirms your signed quotation.'
               : 'The information sheet opens once the vehicle is reserved for you.'}
           </p>
           <button onClick={back} className="mt-5 px-6 py-3 bg-[#141517] text-white text-[14px] font-semibold cursor-pointer">My Applications</button>

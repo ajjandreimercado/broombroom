@@ -102,7 +102,7 @@ export const ApplicationWizardView: React.FC = () => {
 
   const [error, setError] = useState('');
 
-  if (vehicle && !applyLinkFor(vehicle.id)) {
+  if (vehicle && !confirmedApp && !applyLinkFor(vehicle.id)) { // the link is used up once sent: the confirmation still shows
     return (
       <div className="min-h-screen bg-[#F7F8F8] flex items-center justify-center p-6">
         <div className="text-center max-w-sm">
@@ -621,9 +621,9 @@ export const ApplicationWizardView: React.FC = () => {
                 </div>
 
                 <div>
-                  <h2 className="text-2xl font-bold text-[#141517]">Application Dispatched</h2>
+                  <h2 className="text-2xl font-bold text-[#141517]">Application complete</h2>
                   <p className="text-xs text-[#4E585E] mt-1 max-w-sm mx-auto">
-                    Your interest application has been logged directly with {confirmedApp.sellerName}.
+                    Thank you. {confirmedApp.sellerName} and the admin team have it. Nothing more to fill in for now: we will notify you when your vehicle is reserved and your quotation is ready.
                   </p>
                 </div>
 
@@ -642,7 +642,7 @@ export const ApplicationWizardView: React.FC = () => {
                   </div>
                   <div className="flex justify-between text-[#2A2E31]">
                     <span className="text-[#6B767D]">Next step:</span>
-                    <span className="font-bold text-[#141517]">Admin review, then reservation</span>
+                    <span className="font-bold text-[#141517]">Wait for the reservation and your quotation</span>
                   </div>
                   <div className="flex justify-between text-[#2A2E31]">
                     <span className="text-[#6B767D]">Documents:</span>

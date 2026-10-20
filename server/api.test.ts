@@ -133,6 +133,7 @@ const signQuote = async (ad: Awaited<ReturnType<typeof admin>>, c: Awaited<Retur
   assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: {}, send: true })).status, 200);
   const r = await c.post(`/api/quotations/${q.id}/return`, { conforme: 'Juan Cruz' });
   assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal((await ad.post(`/api/quotations/${q.id}/confirm`)).status, 200);
   return q.id as string;
 };
 const toApproved = async (ad: Awaited<ReturnType<typeof admin>>, c: Awaited<ReturnType<typeof newClient>>, appId: string) => {
@@ -528,11 +529,23 @@ test('quotations: the admin makes one from a reserved application; numbered when
   assert.equal(back.conforme, 'Client Name');
   assert.equal(back.clientReply, 'Please use 36 months');
   assert.ok((await ad.state()).notifications.some((n: any) => n.title === 'Quotation returned'));
+  // the admin reviews it: the client cannot fill in the sheet before it is confirmed, nor confirm it themselves
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 400, 'not before the admin confirms');
+  assert.equal((await c.post(`/api/quotations/${q.id}/confirm`)).status, 403, 'admins only');
   // the admin changes and resends it: the client signs again
   const resend = (await ad.patch(`/api/quotations/${q.id}`, { changes: { remarks: 'x' }, send: true })).data;
   assert.equal(resend.quoteNo, sent.quoteNo);
   assert.equal(resend.status, 'sent');
   assert.equal(resend.conforme, undefined);
+  assert.equal((await ad.post(`/api/quotations/${q.id}/confirm`)).status, 400, 'only a returned one');
+  // the client signs the revised one; the admin confirms it as final; now the sheet opens
+  assert.equal((await c.post(`/api/quotations/${q.id}/return`, { conforme: 'Client Name' })).status, 200);
+  const sentMails = outbox.length;
+  assert.equal((await ad.post(`/api/quotations/${q.id}/confirm`)).status, 200);
+  assert.equal((await ad.state()).quotations.find((x: any) => x.id === q.id).status, 'confirmed');
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(outbox.slice(sentMails).some((m: any) => m.to === c.email && /infosheet=/.test(m.html)), 'the sheet link is emailed on confirmation');
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 200);
 });
 
 // ---------------- accounting & listings ----------------
@@ -1033,6 +1046,7 @@ test('two applications for the same car: each has its own quotation; the release
   assert.equal(q2.clientName, 'Kent Magtibay', 'the name on this application');
   await ad.patch(`/api/quotations/${q2.id}`, { changes: {}, send: true });
   assert.equal((await c.post(`/api/quotations/${q2.id}/return`, { conforme: 'Kent Magtibay' })).status, 200);
+  assert.equal((await ad.post(`/api/quotations/${q2.id}/confirm`)).status, 200);
   assert.equal((await c.post(`/api/applications/${second.id}/info-sheet`, SHEET_OK)).status, 200);
   assert.equal((await ad.post(`/api/applications/${second.id}/status`, { status: 'approved', commission: 40000 })).status, 200);
   assert.equal((await ad.post(`/api/applications/${second.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);

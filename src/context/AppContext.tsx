@@ -291,6 +291,7 @@ interface AppContextType {
   // Quotations
   createQuotation: (applicationId: string) => Promise<boolean>;
   returnQuotation: (id: string, conforme: string, note: string) => Promise<boolean>;
+  confirmQuotation: (id: string) => Promise<boolean>;
   saveQuotation: (id: string, changes: Partial<Quotation>, send: boolean) => Promise<Quotation | undefined>;
 
   // Commissions
@@ -772,7 +773,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ----- Quotations -----
   const returnQuotation: AppContextType['returnQuotation'] = async (id, conforme, note) =>
-    done(await run(() => api(`/quotations/${id}/return`, { body: { conforme, note } }), ['Quotation sent back', 'Next: fill in the Applicant’s Information Sheet in My Applications.'], 'Could not send the quotation back'));
+    done(await run(() => api(`/quotations/${id}/return`, { body: { conforme, note } }), ['Quotation sent back', 'The admin team reviews it and tells you when it is confirmed.'], 'Could not send the quotation back'));
+  const confirmQuotation = async (id: string) =>
+    done(await run(() => api(`/quotations/${id}/confirm`, { body: {} }), ['Quotation confirmed', 'The client was asked to fill in the information sheet.']));
   const createQuotation = async (applicationId: string) =>
     done(await run(() => api(`/applications/${applicationId}/quotation`, { body: {} }), ['Quotation created', 'Check the figures in Quotations, then send it to the client.']));
   const saveQuotation: AppContextType['saveQuotation'] = (id, changes, send) =>
@@ -997,6 +1000,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         createQuotation,
         returnQuotation,
+        confirmQuotation,
         saveQuotation,
 
         payCommission,

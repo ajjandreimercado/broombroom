@@ -52,15 +52,15 @@ export const sendMail = async (mail: Mail): Promise<boolean> => {
 export const infoSheetEmail = (o: { to: string; name: string; referenceNo: string; vehicle: string; link: string }): Mail => ({
   to: o.to,
   toName: o.name,
-  subject: `Quotation received: fill in your information sheet`,
-  text: [`Hi ${o.name},`, '', `Thank you for signing your quotation for the ${o.vehicle} (${o.referenceNo}).`, 'Next, please fill in the Applicant\'s Information Sheet:', o.link, '', 'Broom Broom'].join('\n'),
+  subject: `Quotation confirmed: fill in your information sheet`,
+  text: [`Hi ${o.name},`, '', `Your quotation for the ${o.vehicle} (${o.referenceNo}) is confirmed.`, 'Next, please fill in the Applicant\'s Information Sheet:', o.link, '', 'Broom Broom'].join('\n'),
   html: `<!doctype html><html><body style="margin:0;background:#F7F8F8;font-family:Arial,Helvetica,sans-serif;color:#141517">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #C9D1D6">
 <tr><td style="background:#141517;color:#ffffff;padding:16px 24px;font-size:18px;font-weight:bold">Broom Broom</td></tr>
 <tr><td style="padding:24px">
 <p style="margin:0 0 12px;font-size:16px">Hi ${esc(o.name)},</p>
-<p style="margin:0 0 16px;font-size:15px;line-height:1.5">Thank you for signing your quotation for the <strong>${esc(o.vehicle)}</strong> (${esc(o.referenceNo)}). Next, please fill in the Applicant's Information Sheet.</p>
+<p style="margin:0 0 16px;font-size:15px;line-height:1.5">Your quotation for the <strong>${esc(o.vehicle)}</strong> (${esc(o.referenceNo)}) is confirmed. Next, please fill in the Applicant's Information Sheet.</p>
 <p style="margin:0 0 24px"><a href="${esc(o.link)}" style="display:inline-block;background:#1D5FD1;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 20px">Fill in the information sheet</a></p>
 <p style="margin:0;font-size:12px;color:#4E585E;line-height:1.5">If the button does not work, copy this link into your browser:<br>${esc(o.link)}</p>
 </td></tr></table></td></tr></table></body></html>`,

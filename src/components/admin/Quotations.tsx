@@ -7,9 +7,9 @@ import { downloadQuotationXlsx } from '../quoteExcel.ts';
 import { QUOTE_TERMS, daysFromToday, DEFAULT_VALID_DAYS, quoteFigures, quoteLabel, isExpired } from '../quote.ts';
 import { money } from '../accounting/ledger.ts';
 import { Drawer, EmptyState, FilterTabs, SectionHeader, btn, shortDate } from './ui.tsx';
-import { Download, FileSpreadsheet, FileText, Send } from 'lucide-react';
+import { Check, Download, FileSpreadsheet, FileText, Send } from 'lucide-react';
 
-type Filter = 'requested' | 'sent' | 'returned' | 'accepted' | 'all';
+type Filter = 'requested' | 'sent' | 'returned' | 'confirmed' | 'accepted' | 'all';
 
 const input = 'w-full px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]';
 const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode; className?: string }> = ({ label, hint, children, className = '' }) => (
@@ -176,7 +176,7 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
 
 // Admin: quotations made from reserved applications: drafts to send, sent ones, and the ones the client signed back.
 export const Quotations: React.FC = () => {
-  const { quotations, showToast } = useApp();
+  const { quotations, showToast, confirmQuotation } = useApp();
   const [filter, setFilter] = useState<Filter>('requested');
   const [openId, setOpenId] = useState<string | null>(null);
   const rows = filter === 'all' ? quotations : quotations.filter((q) => q.status === filter);
@@ -187,7 +187,7 @@ export const Quotations: React.FC = () => {
     <section className="space-y-5">
       <SectionHeader
         title="Quotations"
-        hint="Made with “Create quotation” on a reserved application. Fill in the unit details and the price, then send it. The client signs it and sends it back; then they fill in the information sheet."
+        hint="Made with “Create quotation” on a reserved application. Fill in the details and send it. The client signs it and sends it back; review it here: confirm it as final, or edit and resend it until you agree. Once confirmed, the client fills in the information sheet."
       />
       <FilterTabs
         id="quotations"
@@ -196,7 +196,8 @@ export const Quotations: React.FC = () => {
         options={[
           { value: 'requested', label: 'To send', count: count('requested') },
           { value: 'sent', label: 'Sent', count: count('sent') },
-          { value: 'returned', label: 'Returned', count: count('returned') },
+          { value: 'returned', label: 'To review', count: count('returned') },
+          { value: 'confirmed', label: 'Confirmed', count: count('confirmed') },
           { value: 'all', label: 'All', count: quotations.length },
         ]}
       />
@@ -235,6 +236,11 @@ export const Quotations: React.FC = () => {
                   </span>
                 </button>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pb-3.5 -mt-1">
+                  {q.status === 'returned' && (
+                    <button onClick={() => confirmQuotation(q.id)} className={`${btn.primary} inline-flex items-center gap-1.5`}>
+                      <Check className="w-3.5 h-3.5" aria-hidden="true" /> Confirm as final
+                    </button>
+                  )}
                   <button onClick={() => setOpenId(q.id)} className={`${q.status === 'requested' ? btn.primary : btn.outline} inline-flex items-center gap-1.5`}>
                     <Send className="w-3.5 h-3.5" aria-hidden="true" /> {q.status === 'requested' ? 'Check & send to client' : 'Edit & resend'}
                   </button>
