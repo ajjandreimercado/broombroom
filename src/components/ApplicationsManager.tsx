@@ -7,6 +7,7 @@ import { openAcknowledgementReceipt, openImage, openInfoSheet, reserveWindow } f
 import { dataUrlToBlob } from '../api.ts';
 import { amountPaid } from './ApplicationProgress.tsx';
 import { photoDataUrl } from '../media.ts';
+import { Quotations } from './admin/Quotations.tsx';
 import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
 import { Check, PhoneCall, PackageCheck, Paperclip, Pencil, Plus, X, FileText } from 'lucide-react';
 
@@ -245,7 +246,7 @@ const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const { updateApplicationStatus } = useApp();
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState('');
-  const [commission, setCommission] = useState(String(Math.round(app.vehiclePrice * COMMISSION_RATE)));
+  const [commission, setCommission] = useState(String(app.commissionAmount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
   if (!open)
     return (
       <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => setOpen(true)}>
@@ -279,8 +280,10 @@ const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const { releaseVehicle, commissions } = useApp();
   const [open, setOpen] = useState(false);
   const [orcr, setOrcr] = useState(false);
+  const [file, setFile] = useState<File | undefined>();
+  const [problem, setProblem] = useState('');
   const current = commissions.find((c) => c.applicationRef === app.referenceNo);
-  const [commission, setCommission] = useState(String(current?.amount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
+  const [commission, setCommission] = useState(String(app.commissionAmount ?? current?.amount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
   if (!open)
     return (
       <button className={`${btn.ink} flex items-center gap-1.5`} onClick={() => { setOrcr(false); setOpen(true); }}>
@@ -293,29 +296,56 @@ const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
       className="w-full space-y-2 animate-fade-up"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (orcr && (await releaseVehicle(app.id, Number(commission || 0)))) setOpen(false);
+        if (orcr && file && (await releaseVehicle(app.id, Number(commission || 0), file))) setOpen(false);
       }}
     >
       <CommissionField app={app} value={commission} onChange={setCommission} agent={current?.agentName} />
+      <div>
+        <span className="gb-label block mb-1.5">OR / CR of the vehicle (photo or PDF) *</span>
+        {file ? (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-2 border border-[#1B7F35] text-[12.5px] max-w-full">
+            <Paperclip className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> <span className="truncate">{file.name}</span>
+            <button type="button" onClick={() => setFile(undefined)} aria-label="Remove the OR/CR file" className="cursor-pointer text-[#4E585E]"><X className="w-3.5 h-3.5" /></button>
+          </span>
+        ) : (
+          <label className={`${btn.outline} inline-flex items-center gap-1.5`}>
+            <Paperclip className="w-4 h-4" aria-hidden="true" /> Upload OR/CR
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                const bad = checkUpload(f);
+                setProblem(bad ?? '');
+                if (!bad) setFile(f);
+              }}
+            />
+          </label>
+        )}
+        {problem && <p role="alert" className="mt-1 text-[12.5px] text-[#B42318]">{problem}</p>}
+      </div>
       <label className="flex items-start gap-2 text-[13.5px] text-[#141517] cursor-pointer">
         <input type="checkbox" checked={orcr} onChange={(e) => setOrcr(e.target.checked)} className="mt-0.5 w-4 h-4 accent-[#1D5FD1]" />
         This vehicle now has its OR and CR, and is ready to be released to {app.applicantName}.
       </label>
       <div className="flex gap-2">
-        <button type="submit" disabled={!orcr} className={btn.ink}>Confirm release</button>
+        <button type="submit" disabled={!orcr || !file} className={btn.ink}>Confirm release</button>
         <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
       </div>
     </form>
   );
 };
 
-type Filter = 'review' | 'reserved' | 'processing' | 'approved' | 'completed' | 'closed' | 'all';
+type Filter = 'review' | 'reserved' | 'quotations' | 'processing' | 'approved' | 'completed' | 'closed' | 'all';
 const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'contacted'];
 
 // Admin: review -> reserve (reservation AR) -> the client's information sheet -> approve -> release with OR/CR.
-export const ApplicationsManager: React.FC = () => {
-  const { applications, updateApplicationStatus, navigateTo, showToast } = useApp();
-  const [filter, setFilter] = useState<Filter>('review');
+export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 'review' }) => {
+  const { applications, quotations, updateApplicationStatus, navigateTo, showToast } = useApp();
+  const [filter, setFilter] = useState<Filter>(initial);
 
   const matches = (f: Filter, a: VehicleApplication) =>
     f === 'all' ||
@@ -342,6 +372,7 @@ export const ApplicationsManager: React.FC = () => {
         options={[
           { value: 'review', label: 'To review', count: count('review') },
           { value: 'reserved', label: 'Reserved', count: count('reserved') },
+          { value: 'quotations', label: 'Quotations', count: quotations.filter((q) => q.status === 'requested').length },
           { value: 'processing', label: 'Processing', count: count('processing') },
           { value: 'approved', label: 'Approved', count: count('approved') },
           { value: 'completed', label: 'Released', count: count('completed') },
@@ -350,7 +381,9 @@ export const ApplicationsManager: React.FC = () => {
         ]}
       />
 
-      {rows.length === 0 ? (
+      {filter === 'quotations' ? (
+        <Quotations />
+      ) : rows.length === 0 ? (
         <EmptyState title="All caught up" body="No applications in this list." />
       ) : (
         <ul key={filter} className="animate-view-fade">
@@ -434,6 +467,9 @@ export const ApplicationsManager: React.FC = () => {
                 {app.status === 'completed' && (
                   <p className="text-[12.5px] text-[#1B7F35] font-medium">
                     Released{app.releasedAt ? ` ${shortDate(app.releasedAt)}` : ''} with OR and CR · sale completed.
+                    {app.orcrUrl && (
+                      <a href={app.orcrUrl} target="_blank" rel="noopener noreferrer" className="ml-3 text-[#1D5FD1] underline underline-offset-4">OR/CR file</a>
+                    )}
                     {app.infoSheet && (
                       <button className="ml-3 text-[#1D5FD1] underline underline-offset-4 cursor-pointer" onClick={() => viewSheet(app)}>Information sheet</button>
                     )}

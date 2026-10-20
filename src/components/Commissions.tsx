@@ -6,18 +6,18 @@ import { openCommissionReceipt } from './receipt.ts';
 import { photoDataUrl } from '../media.ts';
 import { dataUrlToBlob } from '../api.ts';
 import { FilterTabs, SectionHeader, EmptyState, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
-import { FileCheck2, Download, Check } from 'lucide-react';
+import { FileCheck2, Download } from 'lucide-react';
 
 type Stage = Commission['status'];
 
-const STAGES: { value: Stage; label: string; explain: string }[] = [
-  { value: 'receivable', label: 'Receivable', explain: 'Earned when the client’s application was approved. Approval needs the sale to be completed.' },
-  { value: 'payable', label: 'Payable', explain: 'Approved by the admin. Waiting for the cash transfer.' },
+// A commission exists from the vehicle's release (payable, in full) until the cash is sent with proof (paid).
+const ALL_STAGES: { value: Stage; label: string; explain: string }[] = [
+  { value: 'payable', label: 'Payable', explain: 'The vehicle was released. Waiting for the cash transfer.' },
   { value: 'paid', label: 'Paid', explain: 'Cash transferred with proof of payment. The PDF receipt is ready.' },
 ];
 
-// The three steps a commission moves through, drawn as a ruled track.
-const StageTrack: React.FC<{ status: Stage; transactionCompleted: boolean }> = ({ status, transactionCompleted }) => {
+// The steps a commission moves through, drawn as a ruled track.
+const StageTrack: React.FC<{ status: Stage; stages: typeof ALL_STAGES }> = ({ status, stages: STAGES }) => {
   const reached = STAGES.findIndex((s) => s.value === status);
   return (
     <ol className="flex items-center gap-1.5" aria-label={`Stage: ${status}`}>
@@ -32,18 +32,17 @@ const StageTrack: React.FC<{ status: Stage; transactionCompleted: boolean }> = (
           {i < STAGES.length - 1 && <span className="w-3 h-px bg-[#C9D1D6]" />}
         </li>
       ))}
-      {status === 'receivable' && !transactionCompleted && (
-        <li className="ml-1 text-[11.5px] text-[#B42318]">· sale not completed</li>
-      )}
     </ol>
   );
 };
 
 // Agent commissions. Agents read theirs; the admin approves, pays (with proof) and issues the receipt.
 export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean }> = ({ mode, compact = false }) => {
-  const { commissions, approveCommission, payCommission, navigateTo, currentUser, showToast } = useApp();
-  const mine = mode === 'agent' ? commissions.filter((c) => c.agentName === currentUser?.name) : commissions;
-  const [stage, setStage] = useState<Stage | 'all'>(mode === 'admin' ? 'receivable' : 'all');
+  const { commissions, payCommission, navigateTo, currentUser, showToast } = useApp();
+  // Agents only follow what is still owed to them; the admin also keeps the paid ones. Unreleased (older) ones are not shown.
+  const STAGES = mode === 'agent' ? ALL_STAGES.filter((s) => s.value === 'payable') : ALL_STAGES;
+  const mine = commissions.filter((c) => STAGES.some((s) => s.value === c.status) && (mode === 'admin' || c.agentName === currentUser?.name));
+  const [stage, setStage] = useState<Stage | 'all'>(mode === 'admin' ? 'payable' : 'all');
   const [error, setError] = useState('');
 
   const total = (s: Stage) => mine.filter((c) => c.status === s).reduce((sum, c) => sum + c.amount, 0);
@@ -73,7 +72,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
     <section className="space-y-5">
       <SectionHeader
         title={mode === 'admin' ? 'Agent commissions' : 'Commissions'}
-        hint={compact ? undefined : `Commission is ${COMMISSION_RATE * 100}% of the sale price. Each one moves Receivable → Payable → Paid.`}
+        hint={compact ? undefined : mode === 'admin' ? `The admin sets each commission (standard ${COMMISSION_RATE * 100}% of the sale price). It is payable in full once the vehicle is released, then paid with proof.` : 'Your full commission is payable once your client’s vehicle is released.'}
       >
         {compact && (
           <button
@@ -86,7 +85,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
       </SectionHeader>
 
       {/* Stage totals: what is owed at each step */}
-      <dl className="grid grid-cols-3 border-b border-[#C9D1D6]">
+      <dl className={`grid ${STAGES.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} border-b border-[#C9D1D6]`}>
         {STAGES.map((s, i) => (
           <button
             key={s.value}
@@ -100,7 +99,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
         ))}
       </dl>
 
-      {!compact && (
+      {!compact && STAGES.length > 1 && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <FilterTabs
             id={`stage-${mode}`}
@@ -120,7 +119,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
       {rows.length === 0 ? (
         <EmptyState
           title="Nothing here"
-          body={mode === 'agent' ? 'A commission appears when the admin approves one of your clients’ applications.' : 'No commissions at this stage.'}
+          body={mode === 'agent' ? 'A commission appears when one of your clients’ vehicles is released.' : 'No commissions at this stage.'}
         />
       ) : (
         <ul key={stage} className="animate-view-fade">
@@ -136,7 +135,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
                   {mode === 'admin' && <> · Agent <strong className="text-[#141517] font-semibold">{c.agentName}</strong></>} · Sale {peso(c.salePrice)}
                 </p>
                 <div className="mt-2.5">
-                  <StageTrack status={c.status} transactionCompleted={c.transactionCompleted} />
+                  <StageTrack status={c.status} stages={STAGES} />
                 </div>
                 {c.status === 'paid' && (
                   <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-[#141517]">
@@ -151,17 +150,6 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
                   <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => receipt(c)}>
                     <Download className="w-4 h-4" aria-hidden="true" />
                     PDF receipt
-                  </button>
-                )}
-                {mode === 'admin' && c.status === 'receivable' && (
-                  <button
-                    className={`${btn.ink} flex items-center gap-1.5`}
-                    onClick={() => approveCommission(c.id)}
-                    disabled={!c.transactionCompleted}
-                    title={c.transactionCompleted ? 'Approve for payout' : 'Complete the sale in Applications first'}
-                  >
-                    <Check className="w-4 h-4" aria-hidden="true" />
-                    Approve payout
                   </button>
                 )}
                 {mode === 'admin' && c.status === 'payable' && (
@@ -181,7 +169,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
                 )}
                 {mode === 'agent' && c.status !== 'paid' && (
                   <span className="text-[12.5px] text-[#4E585E]">
-                    {c.status === 'receivable' ? (c.transactionCompleted ? 'Waiting for admin approval' : 'Waiting for the sale to complete') : 'Approved, cash transfer pending'}
+                    Vehicle released · cash transfer pending
                   </span>
                 )}
               </div>

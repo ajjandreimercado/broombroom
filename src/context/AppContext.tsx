@@ -269,7 +269,7 @@ interface AppContextType {
   updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string, commission?: number) => Promise<boolean>;
   reserveApplication: (id: string, payment: { amount: number; description: string; remarks?: string }, screenshot?: Blob & { name?: string }) => Promise<PaymentReceipt | undefined>;
   submitInfoSheet: (id: string, sheet: Omit<InfoSheet, 'sketchUrl'>, sketch?: Blob & { name?: string }) => Promise<boolean>;
-  releaseVehicle: (id: string, commission: number) => Promise<boolean>;
+  releaseVehicle: (id: string, commission: number, orcr: Blob & { name?: string }) => Promise<boolean>;
   withdrawApplication: (id: string) => Promise<boolean>;
   reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => Promise<boolean>;
   attachDocumentForClient: (appId: string, docIndex: number, file: File) => Promise<boolean>;
@@ -293,7 +293,6 @@ interface AppContextType {
   saveQuotation: (id: string, changes: Partial<Quotation>, send: boolean) => Promise<Quotation | undefined>;
 
   // Commissions
-  approveCommission: (id: string) => Promise<boolean>;
   payCommission: (id: string, proof: File) => Promise<boolean>;
 
   // Messaging
@@ -391,7 +390,7 @@ const linkedApplicationId = PORTAL === 'buyer' ? params.get('resubmit') : null;
 const linkedSheetId = PORTAL === 'buyer' ? params.get('infosheet') : null;
 // Direct links to the info pages: /?page=privacy, /?page=terms, /?page=help, /?page=permits.
 const linkedPage = PORTAL === 'buyer' ? (['privacy', 'terms', 'help', 'permits'] as const).find((p) => p === params.get('page')) : undefined;
-const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedSheetId ? 'info_sheet' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : linkedPage ?? 'intro';
+const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedSheetId ? 'info_sheet' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : linkedPage ?? 'marketplace';
 
 const EMPTY: ServerState = { me: null, vehicles: [] };
 
@@ -712,8 +711,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return api(`/applications/${id}/info-sheet`, { body: { ...sheet, sketchFileId: up?.id } });
       }, ['Information sheet sent', 'Your application is now processing.'], 'Could not send the information sheet')
     );
-  const releaseVehicle = async (id: string, commission: number) =>
-    done(await run(() => api(`/applications/${id}/release`, { body: { orcrConfirmed: true, commission } }), ['Vehicle released', 'The sale is complete; the agent’s full commission is now payable.']));
+  const releaseVehicle: AppContextType['releaseVehicle'] = async (id, commission, orcr) =>
+    done(await run(async () => {
+      const up = await uploadFile(orcr, orcr.name || 'or-cr', 'private');
+      return api(`/applications/${id}/release`, { body: { orcrConfirmed: true, commission, orcrFileId: up.id } });
+    }, ['Vehicle released', 'The sale is complete; the agent’s full commission is now payable.']));
   const withdrawApplication = async (id: string) =>
     done(await run(() => api(`/applications/${id}/status`, { body: { status: 'withdrawn' } }), ['Application withdrawn', 'Your application has been canceled.']));
   const reviewDocument: AppContextType['reviewDocument'] = async (appId, i, approve, reason) =>
@@ -775,7 +777,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     run(() => api<Quotation>(`/quotations/${id}`, { method: 'PATCH', body: { changes, send } }), send ? ['Quotation sent', 'The client can see it in My Quotations.'] : ['Draft saved', 'The client will see it once you send it.']);
 
   // ----- Commissions -----
-  const approveCommission = async (id: string) => done(await run(() => api(`/commissions/${id}/approve`, { body: {} }), ['Commission approved', 'It is now payable.']));
   const payCommission = async (id: string, proof: File) =>
     done(
       await run(async () => {
@@ -975,7 +976,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         requestQuotation,
         saveQuotation,
 
-        approveCommission,
         payCommission,
 
         startOrOpenConversation,

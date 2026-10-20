@@ -1,12 +1,81 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { AFFIRMATION, PURPOSES, SHEET, cleanInfoSheet, type Dependent, type SheetField } from '../components/infoSheet.ts';
 import { checkUpload } from '../components/admin/ui.tsx';
 import { photoDataUrl } from '../media.ts';
 import { dataUrlToBlob } from '../api.ts';
-import { ArrowLeft, Paperclip, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Eraser, Paperclip, PenLine, Plus, Trash2, X } from 'lucide-react';
 
 const field = 'w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]';
+
+// Draw the sketch to your home with a finger, pen or mouse. "Use drawing" hands it back as a PNG.
+const SketchPad: React.FC<{ onDone: (blob: Blob) => void; onCancel: () => void }> = ({ onDone, onCancel }) => {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const last = useRef<{ x: number; y: number } | null>(null);
+  const [drawn, setDrawn] = useState(false);
+  const point = (e: React.PointerEvent) => {
+    const c = canvas.current!;
+    const r = c.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) * c.width) / r.width, y: ((e.clientY - r.top) * c.height) / r.height };
+  };
+  const ctx = () => {
+    const g = canvas.current!.getContext('2d')!;
+    g.lineWidth = 3;
+    g.lineCap = 'round';
+    g.strokeStyle = '#141517';
+    return g;
+  };
+  const clear = () => {
+    const g = ctx();
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, canvas.current!.width, canvas.current!.height);
+    setDrawn(false);
+  };
+  return (
+    <div className="space-y-2">
+      <canvas
+        ref={(el) => {
+          if (el && !canvas.current) {
+            (canvas as React.MutableRefObject<HTMLCanvasElement>).current = el;
+            clear();
+          }
+        }}
+        width={1000}
+        height={600}
+        aria-label="Drawing area for the sketch to your home"
+        className="w-full max-w-2xl aspect-[5/3] bg-white border border-[#141517] touch-none cursor-crosshair"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          last.current = point(e);
+        }}
+        onPointerMove={(e) => {
+          if (!last.current) return;
+          const p = point(e);
+          const g = ctx();
+          g.beginPath();
+          g.moveTo(last.current.x, last.current.y);
+          g.lineTo(p.x, p.y);
+          g.stroke();
+          last.current = p;
+          setDrawn(true);
+        }}
+        onPointerUp={() => (last.current = null)}
+        onPointerCancel={() => (last.current = null)}
+      />
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={!drawn} onClick={() => canvas.current!.toBlob((b) => b && onDone(b), 'image/png')} className="px-3.5 py-2 bg-[#141517] disabled:bg-[#8C989F] text-white text-[13px] font-semibold cursor-pointer">
+          Use drawing
+        </button>
+        <button type="button" onClick={clear} className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#141517] text-[13px] font-semibold text-[#141517] cursor-pointer">
+          <Eraser className="w-4 h-4" aria-hidden="true" /> Clear
+        </button>
+        <button type="button" onClick={onCancel} className="px-3 py-2 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
+      </div>
+    </div>
+  );
+};
+
+const BY = { applicant: 'Filled in by the applicant (you)', comaker: 'Filled in by your co-maker (spouse / surety)' };
 
 // Client: the Applicant's Information Sheet, after the admin reserved the vehicle. Follows the paper form.
 export const InfoSheetView: React.FC = () => {
@@ -32,6 +101,7 @@ export const InfoSheetView: React.FC = () => {
   const [signature, setSignature] = useState('');
   const [spouseSignature, setSpouseSignature] = useState('');
   const [sketch, setSketch] = useState<{ blob: Blob; name: string } | undefined>();
+  const [drawing, setDrawing] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -104,6 +174,7 @@ export const InfoSheetView: React.FC = () => {
         {SHEET.map((s) => (
           <fieldset key={s.id} className="border-t-2 border-[#141517] pt-5">
             <legend className="sr-only">{s.title}</legend>
+            <p className={`inline-block mb-2 px-2 py-0.5 text-[11.5px] font-semibold uppercase tracking-[0.06em] ${s.by === 'comaker' ? 'bg-[#FFF4E5] text-[#8A4B00]' : 'bg-[#E8F0FC] text-[#174CA8]'}`}>{BY[s.by]}</p>
             <h2 className="font-display text-[20px] leading-tight text-[#141517]">{s.title}</h2>
             {s.note && <p className="mt-1 text-[13px] text-[#4E585E]">{s.note}</p>}
 
@@ -121,10 +192,11 @@ export const InfoSheetView: React.FC = () => {
             {s.kind === 'dependents' && (
               <div className="mt-4 space-y-2">
                 {dependents.map((d, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_70px_1fr_auto] gap-2 items-center">
+                  <div key={i} className="grid grid-cols-2 sm:grid-cols-[1fr_70px_1fr_1fr_auto] gap-2 items-center">
                     <input value={d.name} onChange={(e) => setDependents((ds) => ds.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Name" aria-label={`Dependent ${i + 1} name`} className={field} />
                     <input value={d.age} inputMode="numeric" maxLength={3} onChange={(e) => setDependents((ds) => ds.map((x, j) => (j === i ? { ...x, age: e.target.value.replace(/\D/g, '') } : x)))} placeholder="Age" aria-label={`Dependent ${i + 1} age`} className={field} />
                     <input value={d.studying} onChange={(e) => setDependents((ds) => ds.map((x, j) => (j === i ? { ...x, studying: e.target.value } : x)))} placeholder="Where studying, year & course" aria-label={`Dependent ${i + 1} school`} className={field} />
+                    <input value={d.others ?? ''} onChange={(e) => setDependents((ds) => ds.map((x, j) => (j === i ? { ...x, others: e.target.value } : x)))} placeholder="Others" aria-label={`Dependent ${i + 1} others`} className={field} />
                     <button type="button" onClick={() => setDependents((ds) => ds.filter((_, j) => j !== i))} aria-label={`Remove dependent ${i + 1}`} className="p-2 text-[#4E585E] hover:text-[#B42318] cursor-pointer">
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -155,15 +227,24 @@ export const InfoSheetView: React.FC = () => {
             {s.kind === 'affirm' && (
               <div className="mt-4 space-y-4">
                 <div>
-                  <span className="gb-label block mb-1.5">Sketch or map photo (optional)</span>
-                  {sketch ? (
+                  <span className="gb-label block mb-1.5">Sketch to your home (optional): upload a photo of it, or draw it here</span>
+                  {drawing ? (
+                    <SketchPad
+                      onCancel={() => setDrawing(false)}
+                      onDone={(blob) => {
+                        setSketch({ blob, name: 'sketch-drawing.png' });
+                        setDrawing(false);
+                      }}
+                    />
+                  ) : sketch ? (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-2 border border-[#1B7F35] text-[12.5px] max-w-full">
                       <Paperclip className="w-3.5 h-3.5 shrink-0" aria-hidden="true" /> <span className="truncate">{sketch.name}</span>
                       <button type="button" onClick={() => setSketch(undefined)} aria-label="Remove sketch" className="cursor-pointer text-[#4E585E]"><X className="w-3.5 h-3.5" /></button>
                     </span>
                   ) : (
+                    <div className="flex flex-wrap gap-2">
                     <label className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#141517] text-[13px] font-semibold text-[#141517] hover:bg-[#EEF1F2] cursor-pointer">
-                      <Paperclip className="w-4 h-4" aria-hidden="true" /> Attach a photo
+                      <Paperclip className="w-4 h-4" aria-hidden="true" /> Upload a photo
                       <input
                         type="file"
                         accept="image/*"
@@ -178,6 +259,10 @@ export const InfoSheetView: React.FC = () => {
                         }}
                       />
                     </label>
+                    <button type="button" onClick={() => setDrawing(true)} className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#141517] text-[13px] font-semibold text-[#141517] hover:bg-[#EEF1F2] cursor-pointer">
+                      <PenLine className="w-4 h-4" aria-hidden="true" /> Draw it
+                    </button>
+                    </div>
                   )}
                 </div>
                 <p className="text-[13.5px] leading-relaxed text-[#2A2E31] max-w-[70ch]">{AFFIRMATION}</p>

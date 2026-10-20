@@ -15,12 +15,11 @@ export const AdminOverview: React.FC = () => {
     { tab: 'applications', label: 'Applications to review', count: applications.filter((a) => open.includes(a.status)).length, detail: 'Reserve with the reservation payment, or decline with a reason' },
     { tab: 'financing', label: 'Client documents to check', count: applications.filter((a) => open.includes(a.status) && docSummary(a).tone !== 'good').length, detail: 'Cash and financing: approve or reject each document' },
     { tab: 'applications', label: 'Approved, ready to release', count: applications.filter((a) => a.status === 'approved').length, detail: 'Release once the OR and CR are ready' },
-    { tab: 'commissions', label: 'Commissions ready to approve', count: commissions.filter((c) => c.status === 'receivable' && c.transactionCompleted).length, detail: 'Sale is complete; approve to make it payable' },
     { tab: 'commissions', label: 'Commissions to pay', count: commissions.filter((c) => c.status === 'payable').length, detail: 'Transfer the cash and attach the proof' },
     { tab: 'reports', label: 'Pending listing reports', count: reports.filter((r) => r.status === 'pending').length, detail: 'Dismiss or take the listing down' },
   ];
   const pendingItems = queue.filter((q) => q.count > 0);
-  const owed = commissions.filter((c) => c.status !== 'paid').reduce((s, c) => s + c.amount, 0);
+  const owed = commissions.filter((c) => c.status === 'payable').reduce((s, c) => s + c.amount, 0);
   const activity = notifications.filter((n) => n.audience === 'admin').slice(0, 5);
 
   return (

@@ -546,28 +546,9 @@ export const createApplication = (me: User, input: any) =>
     return app;
   });
 
-// The agent's commission on a sale, receivable until the vehicle is released. Once per application.
-// The admin sets the amount; without one it is the standard rate of the price.
+// The agent's commission on a sale, set by the admin; without one it is the standard rate of the price.
 const commissionAmount = (app: VehicleApplication, v: unknown) =>
   v === undefined || v === null || v === '' ? Math.round(app.vehiclePrice * COMMISSION_RATE) : money(v, 'Agent commission', { allowZero: true });
-const addReceivable = async (app: VehicleApplication, amount = commissionAmount(app, undefined)) => {
-  if (await store.one('commissions', { applicationRef: app.referenceNo })) return;
-  const agent = (await ownerOf(app.applicantId)) ?? app.sellerName;
-  await store.put<Commission>('commissions', {
-    id: newId('com'),
-    agentName: agent,
-    applicationRef: app.referenceNo,
-    vehicleTitle: app.vehicleTitle,
-    clientName: app.applicantName,
-    salePrice: app.vehiclePrice,
-    rate: app.vehiclePrice ? amount / app.vehiclePrice : 0,
-    amount,
-    status: 'receivable',
-    transactionCompleted: false,
-    createdAt: now(),
-  });
-  await notify('agent', 'Commission receivable', `₱${amount.toLocaleString()} for the ${app.vehicleTitle} sale to ${app.applicantName}. It is yours in full once the vehicle is released.`, 'commissions', agent);
-};
 
 // Admin: reserve the vehicle for the client. Their documents must be approved; the reservation payment is confirmed
 // and released as an acknowledgement receipt in the client's name. The client then fills in the information sheet.
@@ -607,19 +588,32 @@ export const submitInfoSheet = (me: User, id: string, input: any) =>
   });
 
 // Admin: release the vehicle to the client, confirming it now has its OR and CR. Completes the sale.
-export const releaseVehicle = (id: string, input: any) =>
+export const releaseVehicle = (me: User, id: string, input: any) =>
   tx(async () => {
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
     if (app.status !== 'approved') bad('Only an approved application can be released.');
     if (input?.orcrConfirmed !== true) bad('Confirm that the vehicle now has its OR and CR.');
+    if (!input?.orcrFileId) bad('Upload the OR/CR of the vehicle before releasing it.');
+    const orcr = await attachUpload(input.orcrFileId, me, app.applicantId, IMG_OR_PDF); // the client can open it too
     const vehicle = await store.get<Vehicle>('vehicles', app.vehicleId);
     if (vehicle) await store.put('vehicles', { ...vehicle, status: 'sold' });
-    // The agent who has the client gets the full commission on release: payable at once, awaiting the cash transfer.
-    const existing = await store.one<Commission>('commissions', { applicationRef: app.referenceNo });
-    const amount = input?.commission === undefined && existing ? existing.amount : commissionAmount(app, input?.commission);
-    if (!existing) await addReceivable(app, amount);
-    const c = (await store.one<Commission>('commissions', { applicationRef: app.referenceNo }))!;
-    const agent = (await ownerOf(app.applicantId)) ?? c.agentName;
+    // The commission exists only from the release: the agent who has the client gets it in full, payable at once.
+    const existing = await store.one<Commission>('commissions', { applicationRef: app.referenceNo }); // older sales had one from approval
+    const amount = input?.commission === undefined ? (app.commissionAmount ?? existing?.amount ?? commissionAmount(app, undefined)) : commissionAmount(app, input.commission);
+    const agent = (await ownerOf(app.applicantId)) ?? existing?.agentName ?? app.sellerName;
+    const c: Commission = existing ?? {
+      id: newId('com'),
+      agentName: agent,
+      applicationRef: app.referenceNo,
+      vehicleTitle: app.vehicleTitle,
+      clientName: app.applicantName,
+      salePrice: app.vehiclePrice,
+      rate: 0,
+      amount,
+      status: 'payable',
+      transactionCompleted: true,
+      createdAt: now(),
+    };
     await store.put<Commission>('commissions', {
       ...c,
       agentName: agent,
@@ -630,7 +624,7 @@ export const releaseVehicle = (id: string, input: any) =>
       completedAt: now(),
       approvedAt: c.approvedAt ?? now(),
     });
-    const saved = await store.put<VehicleApplication>('applications', { ...app, status: 'completed', releasedAt: now(), orcrConfirmed: true });
+    const saved = await store.put<VehicleApplication>('applications', { ...app, status: 'completed', releasedAt: now(), orcrConfirmed: true, orcrUrl: fileUrl(orcr._id), orcrFileName: orcr.name, commissionAmount: amount });
     await releaseLock(saved);
     await notify('agent', 'Vehicle released: full commission', `The ${app.vehicleTitle} was released to ${app.applicantName}. Your full commission of ₱${amount.toLocaleString()} is approved and awaiting the cash transfer.`, 'commissions', agent);
     await notify('client', 'Vehicle released', `Your ${app.vehicleTitle} has been released to you with its OR and CR. Thank you for choosing Broom Broom.`, 'applications', app.applicantId);
@@ -657,8 +651,7 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
     let extra: Partial<VehicleApplication> = {};
     if (status === 'approved') {
       // After the information sheet: the commission is receivable from now (cash and financing).
-      await addReceivable(app, commissionAmount(app, commission));
-      extra = { approvedAt: now(), ciComments: reason || undefined, ...(app.purchaseMethod === 'financing' ? { financingApprovedAt: now() } : {}) };
+      extra = { commissionAmount: commissionAmount(app, commission), approvedAt: now(), ciComments: reason || undefined, ...(app.purchaseMethod === 'financing' ? { financingApprovedAt: now() } : {}) };
       await notify('client', 'Application approved', `${app.referenceNo} for the ${app.vehicleTitle} was approved. We will tell you when the vehicle is ready for release.`, 'applications', app.applicantId);
     } else if (status === 'declined' || status === 'withdrawn') {
       if (HOLDING.includes(app.status)) await setVehicle('available');
@@ -981,15 +974,7 @@ export const saveQuotation = (me: User, id: string, input: any, send: boolean) =
     return store.put('quotations', updated);
   });
 
-// ---------- commissions: receivable -> payable (sale completed) -> paid (with proof) ----------
-export const approveCommission = (id: string) =>
-  tx(async () => {
-    const c = need(await store.get<Commission>('commissions', idOf(id)), 'Commission');
-    if (c.status !== 'receivable') bad('Only a receivable commission can be approved.');
-    if (!c.transactionCompleted) bad('A commission can only be approved after the sale is completed.');
-    await store.put('commissions', { ...c, status: 'payable', approvedAt: now() });
-    await notify('agent', 'Commission payable', `₱${c.amount.toLocaleString()} for the ${c.vehicleTitle} was approved and is awaiting cash transfer.`, 'commissions', c.agentName);
-  });
+// ---------- commissions: payable (from the release) -> paid (with proof) ----------
 
 export const payCommission = (me: User, id: string, fileId: unknown) =>
   tx(async () => {

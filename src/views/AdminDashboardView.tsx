@@ -15,7 +15,6 @@ import { AccountingOverview } from '../components/accounting/AccountingOverview.
 import { VoucherPage } from '../components/accounting/VoucherPage.tsx';
 import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { ReceiptsPage } from '../components/accounting/ReceiptsPage.tsx';
-import { Quotations } from '../components/admin/Quotations.tsx';
 import { LeadsManager } from '../components/admin/LeadsManager.tsx';
 import { AccountsManager } from '../components/admin/AccountsManager.tsx';
 import {
@@ -36,7 +35,6 @@ import {
   CreditCard,
   FileSpreadsheet,
   ReceiptText,
-  Calculator,
   Users,
   UserCog,
 } from 'lucide-react';
@@ -54,8 +52,7 @@ export const AdminDashboardView: React.FC = () => {
       title: 'Work queue',
       items: [
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-        { id: 'quotations', label: 'Quotations', icon: Calculator, count: quotations.filter((q) => q.status === 'requested').length },
-        { id: 'applications', label: 'Applications', icon: FileText, count: applications.filter((a) => open.includes(a.status) || a.status === 'processing').length },
+        { id: 'applications', label: 'Applications', icon: FileText, count: applications.filter((a) => open.includes(a.status) || a.status === 'processing').length + quotations.filter((q) => q.status === 'requested').length },
         {
           id: 'financing',
           label: 'Documents',
@@ -97,7 +94,7 @@ export const AdminDashboardView: React.FC = () => {
   ];
 
   const NavButton: React.FC<{ item: NavItem }> = ({ item }) => {
-    const isActive = adminTab === item.id;
+    const isActive = adminTab === item.id || (item.id === 'applications' && adminTab === 'quotations'); // quotations live in Applications
     const Icon = item.icon;
     return (
       <button
@@ -152,7 +149,7 @@ export const AdminDashboardView: React.FC = () => {
             <ErrorBoundary key={adminTab}>
             {adminTab === 'dashboard' && <AdminOverview />}
             {adminTab === 'approvals' && <ListingRequests />}
-            {adminTab === 'applications' && <ApplicationsManager />}
+            {(adminTab === 'applications' || adminTab === 'quotations') && <ApplicationsManager key={adminTab} initial={adminTab === 'quotations' ? 'quotations' : 'review'} />}
             {adminTab === 'financing' && <FinancingReview />}
             {adminTab === 'commissions' && <Commissions mode="admin" />}
             {adminTab === 'vehicles' && <ListingsManager />}
@@ -166,7 +163,6 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'acc_credit' && <VoucherPage kind="credit" />}
             {adminTab === 'acc_reports' && <SalesReport />}
             {adminTab === 'acc_receipts' && <ReceiptsPage />}
-            {adminTab === 'quotations' && <Quotations />}
             {adminTab === 'leads' && <LeadsManager />}
             {adminTab === 'accounts' && <AccountsManager />}
             </ErrorBoundary>

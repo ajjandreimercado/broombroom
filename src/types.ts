@@ -107,6 +107,9 @@ export interface VehicleApplication {
   approvedAt?: string;
   releasedAt?: string; // vehicle released to the client, with its OR and CR
   orcrConfirmed?: boolean;
+  orcrUrl?: string; // the OR/CR file the admin uploaded on release (image or PDF)
+  orcrFileName?: string;
+  commissionAmount?: number; // the agent's commission the admin set on approval; paid out after release
 }
 
 // A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).

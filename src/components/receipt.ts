@@ -2,7 +2,7 @@ import { Commission, ManualReceipt, PaymentReceipt, Quotation, ReceiptLine, Vehi
 import { pesoWords } from './ar.ts';
 import { quoteFigures } from './quote.ts';
 import pdfLib from 'html2pdf.js/dist/html2pdf.bundle.min.js?url';
-import { AFFIRMATION, PURPOSES, SHEET, type SheetSection } from './infoSheet.ts';
+import { AFFIRMATION } from './infoSheet.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`;
@@ -302,61 +302,125 @@ ${tools(`Quotation-${q.quoteNo || 'draft'}.pdf`)}
 export const openQuotation = (q: Quotation, win?: Window | null) => openPrintable(quotationHtml(q), win);
 export const downloadQuotationPdf = (q: Quotation) => downloadPdf(quotationHtml(q));
 
-// The client's Applicant's Information Sheet, laid out like the paper form, for the admin to read, download or print.
+// The client's Applicant's Information Sheet, placed like the paper form (same order, two columns for the applicant
+// and the spouse/surety), for the admin to read, download or print.
 export const openInfoSheet = (app: VehicleApplication, win?: Window | null) => {
   const sheet = app.infoSheet;
   if (!sheet) return false;
   const a = sheet.answers;
-  const val = (k: string) => esc(a[k] || '');
-  const section = (s: SheetSection) => {
-    if (s.kind === 'dependents')
-      return sheet.dependents.length
-        ? `<h2>${esc(s.title)}</h2><table class="grid"><tr><th>Name</th><th style="width:12%">Age</th><th>Where studying (year & course)</th></tr>${sheet.dependents
-            .map((d) => `<tr><td>${esc(d.name)}</td><td>${esc(d.age)}</td><td>${esc(d.studying)}</td></tr>`)
-            .join('')}</table>`
-        : '';
-    if (s.kind === 'purpose')
-      return `<h2>${esc(s.title)}</h2><p class="checks">${PURPOSES.map((p) => `<span>${sheet.purposes.includes(p) ? '☑' : '☐'} ${esc(p)}</span>`).join('')}${sheet.purposeOther ? ` <span>(${esc(sheet.purposeOther)})</span>` : ''}</p>`;
-    if (s.kind === 'affirm') return '';
-    const rows = (s.fields ?? []).filter((f) => a[f.key]);
-    if (!rows.length) return '';
-    return `<h2>${esc(s.title)}</h2><table class="kv">${rows.map((f) => `<tr><th>${esc(f.label)}</th><td>${val(f.key)}</td></tr>`).join('')}</table>`;
-  };
+  const v = (k: string) => esc(a[k] || '');
+  const f = (label: string, value: string, extra = '') => `<div class="r"><span>${label}</span><b class="f"${extra}>${value}</b></div>`;
+  const tick = (on: boolean) => `<span class="ck">${on ? '✔' : '&nbsp;'}</span>`;
+  const cols = (left: string, right: string) => `<div class="cols"><div>${left}</div><div>${right}</div></div>`;
+  const person = (p: string, title: string) => `
+    <p class="h">${title}</p>
+    <div class="r"><b class="f">${[v(`${p}.firstName`), v(`${p}.middleName`), v(`${p}.lastName`)].join(' ')}</b></div>
+    <div class="cap"><span>First Name</span><span>Middle</span><span>Family</span></div>
+    <div class="r"><span>Age:</span><b class="f s">${v(`${p}.age`)}</b><span>Date of Birth:</span><b class="f" style="white-space:nowrap">${a[`${p}.birthDate`] ? esc(a[`${p}.birthDate`].replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3/$1')) : ''}</b>
+      <span>${tick(a[`${p}.civilStatus`] === 'Single')}Single ${tick(a[`${p}.civilStatus`] === 'Married')}Married</span></div>
+    <div class="r"><span>Religion:</span><b class="f">${v(`${p}.religion`)}</b><span>Nickname:</span><b class="f">${v(`${p}.nickname`)}</b></div>
+    ${f('Present Address:', v(`${p}.presentAddress`))}
+    ${f('Previous Address:', v(`${p}.previousAddress`))}
+    ${f('Birth Place:', v(`${p}.birthPlace`))}`;
+  const work = (p: string, who: string) => `
+    <p class="h">${who} EMPLOYED?</p>
+    ${f('Firm:', v(`${p}.firm`))}${f('Address:', v(`${p}.firmAddress`))}${f('Position:', v(`${p}.position`))}${f('Salary (Net):', v(`${p}.salary`))}${f('Length of Service:', v(`${p}.serviceLength`))}`;
+  const biz = (p: string) => `
+    <p class="h">IN BUSINESS?</p>
+    ${f('Business Name:', v(`${p}.businessName`))}${f('Address:', v(`${p}.businessAddress`))}${f('Line of Business:', v(`${p}.businessLine`))}${f('Since when operated:', v(`${p}.businessSince`))}
+    <div class="r"><span>Capital:</span><b class="f">${v(`${p}.capital`)}</b><span>Net Income:</span><b class="f">${v(`${p}.netIncome`)}</b></div>`;
+  const parents = (p: string, title: string) => `
+    <p class="h">${title}</p>
+    <div class="r"><span>1. Father:</span><b class="f">${v(`${p}.fatherName`)}</b><span>Age</span><b class="f s">${v(`${p}.fatherAge`)}</b></div>
+    ${f('Address:', v(`${p}.fatherAddress`))}${f('Occupation:', v(`${p}.fatherOccupation`))}
+    <div class="r"><span>2. Mother:</span><b class="f">${v(`${p}.motherName`)}</b><span>Age</span><b class="f s">${v(`${p}.motherAge`)}</b></div>
+    ${f('Address:', v(`${p}.motherAddress`))}${f('Occupation:', v(`${p}.motherOccupation`))}`;
+  const ids = (p: string, sig: string, label: string) =>
+    `${f(`${label}:`, esc(sig))}${f('Com Tax. Cert. No.:', v(`${p}.ctcNo`))}${f('Issued at:', v(`${p}.ctcIssuedAt`))}${f('Issued on:', v(`${p}.ctcIssuedOn`))}${f('TIN No.', v(`${p}.tin`))}${f('SSS No.', v(`${p}.sss`))}`;
+  const blank = { name: '', age: '', studying: '', others: '' };
+  const deps = [...sheet.dependents, ...Array(Math.max(0, 5 - sheet.dependents.length)).fill(blank)];
+  const res = a['residence.type'];
+  const at = (type: string, k: string) => (res === type ? v(k) : '');
+  const has = (p: string) => sheet.purposes.includes(p);
+  const others = sheet.purposeOther || '';
+
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Information sheet ${esc(app.referenceNo)}</title>
 <style>
-  @page { size: letter; margin: 0.6in; }
+  @page { size: letter; margin: 0.5in; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; font-size: 10.5pt; }
-  .sheet { max-width: 7.3in; margin: 24px auto; padding: 0 16px; }
-  .logo { text-align: center; } .logo img { height: 44px; }
-  h1 { text-align: center; font-size: 15pt; margin: 10px 0 4px; letter-spacing: .03em; }
-  .meta { display: flex; justify-content: space-between; gap: 12px; font-size: 9.5pt; margin: 8px 0 12px; }
-  h2 { font-size: 10.5pt; text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 4px; border-bottom: 1.5px solid #000; padding-bottom: 2px; }
-  table { width: 100%; border-collapse: collapse; }
-  .kv th { text-align: left; font-weight: 400; color: #333; width: 38%; padding: 3px 8px 3px 0; vertical-align: top; border-bottom: 1px solid #ddd; }
-  .kv td { padding: 3px 0; border-bottom: 1px solid #ddd; white-space: pre-wrap; }
-  .grid th, .grid td { border: 1px solid #000; padding: 3px 6px; text-align: left; }
-  .checks span { display: inline-block; margin-right: 14px; }
-  .affirm { margin-top: 14px; font-size: 9.5pt; line-height: 1.4; }
-  .signs { display: flex; gap: 40px; margin-top: 18px; text-align: center; }
-  .signs div { flex: 1; } .signs p { margin: 0; } .line { border-top: 1px solid #000; padding-top: 3px; font-weight: 700; font-size: 9pt; }
-  .sketch img { max-width: 100%; max-height: 320px; border: 1px solid #999; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; font-size: 9pt; }
+  .sheet { max-width: 7.5in; margin: 24px auto; padding: 0 16px; }
+  h1 { text-align: center; font-size: 13pt; margin: 0 0 4px; }
+  .date { display: flex; justify-content: flex-end; } .date .r { width: 2.4in; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 26px; margin-top: 8px; }
+  .h { margin: 8px 0 2px; font-weight: 700; }
+  .c { text-align: center; } .u { text-decoration: underline; }
+  .r { display: flex; align-items: flex-end; gap: 4px; margin: 3px 0; }
+  .r > span { white-space: nowrap; }
+  .f { flex: 1; min-height: 13px; border-bottom: 1px solid #000; font-weight: 400; padding: 0 3px; white-space: pre-wrap; font-family: 'Courier New', monospace; font-size: 9pt; }
+  .f.s { flex: 0 0 34px; } .f.m { flex: 0 0 70px; }
+  .cap { display: flex; justify-content: space-between; padding: 0 14px; font-size: 8pt; }
+  .ck { display: inline-block; min-width: 18px; border-bottom: 1px solid #000; text-align: center; margin-right: 2px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { text-align: left; font-weight: 700; font-size: 8.5pt; padding-bottom: 2px; }
+  td { border-bottom: 1px solid #000; height: 15px; padding: 0 4px; font-family: 'Courier New', monospace; }
+  td + td { border-left: 10px solid #fff; }
+  .affirm { margin: 10px 0; line-height: 1.35; text-indent: 3em; }
+  .sketch img { max-width: 100%; max-height: 3.2in; border: 1px solid #999; margin-top: 4px; }
+  .block { margin-top: 8px; }
   @media print { .sheet { margin: 0; padding: 0; } }
 </style></head>
 <body><div class="sheet">
-  <div class="logo"><img src="${esc(logoUrl())}" alt="Broom Broom"></div>
   <h1>APPLICANT'S INFORMATION SHEET</h1>
-  <div class="meta"><span><b>Application:</b> ${esc(app.referenceNo)} · ${esc(app.vehicleTitle)}</span><span><b>Date:</b> ${esc(date(app.infoSheetSubmittedAt))}</span></div>
-  ${SHEET.map(section).join('')}
-  ${sheet.sketchUrl ? `<h2>Sketch</h2><p class="sketch"><img src="${esc(abs(sheet.sketchUrl))}" alt="Sketch / map to the applicant's home"></p>` : ''}
-  <p class="affirm"><b>Agent:</b> ${esc(app.sellerName)}</p>
-  <p class="affirm">${esc(AFFIRMATION)}</p>
-  <div class="signs">
-    <div><p>${esc(sheet.signature)}</p><p class="line">APPLICANT'S SIGNATURE</p></div>
-    <div><p>${esc(sheet.spouseSignature || '')}</p><p class="line">SPOUSE / SURETY SIGNATURE</p></div>
+  <div class="date">${f('DATE', esc(date(app.infoSheetSubmittedAt)))}</div>
+  ${cols(person('applicant', 'NAME OF APPLICANT:'), person('spouse', 'SPOUSE/SURETY OF APPLICANT:'))}
+
+  <table><tr><th style="width:38%">NAME OF DEPENDENTS</th><th style="width:8%">AGE</th><th>WHERE STUDYING YR &amp; COURSE</th><th style="width:20%">OTHERS</th></tr>
+    ${deps.map((d) => `<tr><td>${esc(d.name)}</td><td>${esc(d.age)}</td><td>${esc(d.studying)}</td><td>${esc(d.others || '')}</td></tr>`).join('')}</table>
+
+  <div class="block">
+    <div class="r">${tick(res === 'Own house & lot')}<span>Own house &amp; lot?</span><span>Length of residence:</span><b class="f">${at('Own house & lot', 'residence.length')}</b></div>
+    <div class="r">${tick(res === 'Own house, renting the lot')}<span>Own house &amp; renting lot? (Owner's Name:</span><b class="f">${at('Own house, renting the lot', 'residence.owner')}</b><span>) Rental:</span><b class="f m">${at('Own house, renting the lot', 'residence.rental')}</b><span>Length of residence:</span><b class="f m">${at('Own house, renting the lot', 'residence.length')}</b></div>
+    <div class="r">${tick(res === 'Renting house & lot')}<span>Renting house &amp; lot? (Owner's Name:</span><b class="f">${at('Renting house & lot', 'residence.owner')}</b><span>Rental</span><b class="f m">${at('Renting house & lot', 'residence.rental')}</b><span>Length of res.</span><b class="f m">${at('Renting house & lot', 'residence.length')}</b><span>)</span></div>
+    <div class="r"><span>Tel. Nos.</span><b class="f">${v('residence.telephone')}</b><span>Cellphone Nos.</span><b class="f">${v('residence.cellphone')}</b></div>
   </div>
-  ${app.ciComments ? `<h2>C.I. comments</h2><p style="white-space:pre-wrap">${esc(app.ciComments)}</p>` : ''}
+
+  ${cols(work('applicantWork', 'APPLICANT'), work('spouseWork', 'SPOUSE/SURETY'))}
+  ${cols(biz('applicantWork'), biz('spouseWork'))}
+  ${cols(f('<b>OTHER INCOME:</b>', v('applicantWork.otherIncome')), f('<b>OTHER INCOME:</b>', v('spouseWork.otherIncome')))}
+
+  <p class="h c"><span class="u">BANK REFERENCES (Savings, Current, Time Deposit)</span>:</p>
+  <div class="r"><b class="f">${v('assets.bankReferences')}</b></div>
+  <p class="h c"><span class="u">PERSONAL/REAL PROPERTY (land, vehicles, appliances others)</span></p>
+  <div class="r"><b class="f">${v('assets.property')}</b></div>
+
+  ${cols(parents('applicantParents', "APPLICANT'S PARENTS:"), parents('spouseParents', "SPOUSE/SURETY'S PARENTS:"))}
+
+  <p class="h">REFERENCES:</p>
+  ${f("a. (To Sales) Ask any Broom Broom staff if he/she knows the applicant or is familiar w/ applicant's hometown:", v('references.staff'))}
+  ${f('b. Anyone within/nearby the City/Town where Broom Broom is located:', v('references.nearby'))}
+  ${f('c. Co-Workers:', v('references.coWorkers'))}
+  ${f('d. Neighbors:', v('references.neighbors'))}
+  ${f('e. Relatives:', v('references.relatives'))}
+
+  <p class="block">The purpose of this motorcycle/unit (please check):
+    ${tick(has('Habal-habal'))} habal-habal; ${tick(has('Tricycle'))} tricycle; ${tick(has('Masiao / bagdok'))} masiao/bagdok; ${tick(has('Rental'))} rental; ${tick(has('Election'))} election;
+    ${tick(has('Others'))} others (pls. state) <b class="f" style="display:inline-block;min-width:1.6in">${esc(others)}</b></p>
+  ${f('<b>COMPANIES/PERSONS WHO EXTENDED YOU CREDIT?</b>', v('credit.creditors'))}
+  ${f('<b>WHAT MERCHANDISE?</b>', v('credit.merchandise'))}
+  ${f('<b>THE STATUS:</b> Fully Paid, Still Unpaid, If still unpaid, WHY?', [v('credit.status'), v('credit.unpaidReason')].filter(Boolean).join(' · '))}
+  ${f('What attracted you to buy motorcycle/unit at Broom Broom?', v('credit.attracted'))}
+
+  <div style="width:3.6in">${f('<b>AGENT:</b>', esc(app.sellerName))}</div>
+  <p class="affirm">${esc(AFFIRMATION)}</p>
+  ${cols(ids('applicantIds', sheet.signature, "Applicant's Signature"), ids('spouseIds', sheet.spouseSignature || '', 'Spouse/Surety Signature'))}
+
+  <p class="h" style="margin-top:12px">C.I. MAN'S (NAME and SIGNATURE) COMMENTS:</p>
+  <div class="r"><b class="f">${esc(app.ciComments || '')}</b></div>
+  <p class="h">SKETCH:</p>
+  ${a['directions.text'] ? `<p>${v('directions.text')}</p>` : ''}
+  ${sheet.sketchUrl ? `<p class="sketch"><img src="${esc(abs(sheet.sketchUrl))}" alt="Sketch / map to the applicant's home"></p>` : '<div style="height:2in"></div>'}
 </div>
 ${tools(`Information-sheet-${app.referenceNo}.pdf`)}
 </body></html>`;

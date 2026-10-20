@@ -124,8 +124,9 @@ const approveDocs = async (ad: Awaited<ReturnType<typeof admin>>, appId: string)
 // The flow: reserve (reservation AR) -> client's information sheet -> approve -> release with OR/CR.
 const SHEET_OK = {
   answers: { 'applicant.firstName': 'Juan', 'applicant.lastName': 'Cruz', 'applicant.birthDate': '1990-01-31', 'applicant.civilStatus': 'Single', 'applicant.presentAddress': '1 Test St, Butuan City', 'residence.type': 'Own house & lot', 'residence.cellphone': '0917 000 0000' },
-  dependents: [], purposes: ['Personal / family use'], affirmed: true, signature: 'Juan Cruz',
+  dependents: [], purposes: ['Tricycle'], affirmed: true, signature: 'Juan Cruz',
 };
+const orcrFile = async (ad: Awaited<ReturnType<typeof admin>>) => (await ad.upload(PNG, 'image/png', 'or-cr.png')).data.id;
 const reserve = (ad: Awaited<ReturnType<typeof admin>>, appId: string, amount = 5000) => ad.post(`/api/applications/${appId}/reserve`, { amount });
 const toApproved = async (ad: Awaited<ReturnType<typeof admin>>, c: Awaited<ReturnType<typeof newClient>>, appId: string) => {
   await approveDocs(ad, appId);
@@ -225,7 +226,7 @@ test('public visitors only see active listings', async () => {
 });
 
 // ---------------- applications ----------------
-test('financing: needs 2 uploads; documents first; reserve -> information sheet -> approve makes the commission receivable', async () => {
+test('financing: needs 2 uploads; documents first; reserve -> information sheet -> approve; no commission before the release', async () => {
   const c = await newClient();
   const ad = await admin();
   const v = await freeVehicle();
@@ -281,16 +282,11 @@ test('financing: needs 2 uploads; documents first; reserve -> information sheet 
   assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true })).status, 400, 'approve first');
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved', note: 'Good standing' })).status, 200);
   const s2 = await ad.state();
-  const coms = s2.commissions.filter((x: any) => x.applicationRef === app.referenceNo);
-  assert.equal(coms.length, 1, 'one commission');
-  assert.equal(coms[0].status, 'receivable');
-  assert.equal(coms[0].amount, Math.round(v.price * 0.03));
+  assert.equal(s2.commissions.filter((x: any) => x.applicationRef === app.referenceNo).length, 0, 'commissions start at the release');
   const approved = s2.applications.find((a: any) => a.id === app.id);
   assert.ok(approved.financingApprovedAt);
   assert.equal(approved.ciComments, 'Good standing');
-
-  // commission can't be approved before the sale completes
-  assert.equal((await ad.post(`/api/commissions/${coms[0].id}/approve`)).status, 400);
+  assert.equal(approved.commissionAmount, Math.round(v.price * 0.03), 'standard rate when the admin leaves it');
 });
 
 test('decline needs a reason, frees the car and drops the receivable commission', async () => {
@@ -332,13 +328,16 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
   assert.equal((await c.get(p1.data.attachment)).status, 200); // the client can open their payment screenshot
 
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'completed' })).status, 400, 'release has its own step');
-  assert.equal((await ad.post(`/api/applications/${app.id}/release`, {})).status, 400, 'OR/CR must be confirmed');
-  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, commission: -5 })).status, 400, 'no negative commission');
-  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, commission: 25000 })).status, 200);
+  const orcr = await orcrFile(ad);
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrFileId: orcr })).status, 400, 'OR/CR must be confirmed');
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true })).status, 400, 'OR/CR file required');
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: orcr, commission: -5 })).status, 400, 'no negative commission');
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: orcr, commission: 25000 })).status, 200);
   let s = await ad.state();
   const rel = s.applications.find((a: any) => a.id === app.id);
   assert.equal(rel.status, 'completed');
   assert.equal(rel.orcrConfirmed, true);
+  assert.equal((await c.get(rel.orcrUrl)).status, 200, 'the client can open the OR/CR');
   assert.equal(s.vehicles.find((x: any) => x.id === v.id).status, 'sold');
   const com = s.commissions.find((x: any) => x.applicationRef === app.referenceNo);
   assert.equal(com.transactionCompleted, true);
@@ -391,12 +390,10 @@ test('commission: the admin sets it on approval; on release the client’s agent
   assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 200);
   assert.equal((await c.post(`/api/applications/${app.id}/status`, { status: 'approved', commission: 1 })).status, 403);
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved', commission: 18000 })).status, 200);
-  let com = (await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo);
-  assert.equal(com.amount, 18000);
-  assert.equal(com.status, 'receivable');
+  assert.equal((await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo), undefined, 'nothing until the release');
   // release without a new amount keeps the admin's figure
-  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true })).status, 200);
-  com = (await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo);
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  const com = (await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo);
   assert.equal(com.amount, 18000);
   assert.equal(com.agentName, 'Bea Villanueva');
   assert.equal(com.status, 'payable');
@@ -419,7 +416,7 @@ test('referrals: admin only; status set by hand; every change kept', async () =>
   assert.equal((await (await carlo()).state()).referrals, undefined, 'agents do not get the list');
 });
 
-test('reassigning moves unearned commissions; 24-hour rule returns a waiting client to the pool', async () => {
+test('reassigning: the release pays the client’s current agent; 24-hour rule returns a waiting client to the pool', async () => {
   const c = await newClient();
   const ad = await admin();
   const v = await freeVehicle();
@@ -428,6 +425,7 @@ test('reassigning moves unearned commissions; 24-hour rule returns a waiting cli
   await toApproved(ad, c, app.id);
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Nobody Here' })).status, 400);
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Bea Villanueva' })).status, 200);
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
   let s = await ad.state();
   assert.equal(s.commissions.find((x: any) => x.applicationRef === app.referenceNo).agentName, 'Bea Villanueva');
 

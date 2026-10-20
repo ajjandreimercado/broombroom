@@ -302,7 +302,7 @@ export const createApp = () => {
     })
   );
   api.post('/applications/:id/info-sheet', requireRole('buyer'), act((req) => svc.submitInfoSheet(me(req), req.params.id, body(req))));
-  api.post('/applications/:id/release', requireRole('admin'), act((req) => svc.releaseVehicle(req.params.id, body(req))));
+  api.post('/applications/:id/release', requireRole('admin'), act((req) => svc.releaseVehicle(me(req), req.params.id, body(req))));
   api.patch('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.updatePayment(me(req), req.params.id, req.params.arNo, body(req))));
   api.delete('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.deletePayment(req.params.id, req.params.arNo)));
 
@@ -311,7 +311,6 @@ export const createApp = () => {
   api.patch('/quotations/:id', requireRole('admin'), act((req) => svc.saveQuotation(me(req), req.params.id, body(req).changes, !!body(req).send)));
 
   // ---------- commissions ----------
-  api.post('/commissions/:id/approve', requireRole('admin'), act((req) => svc.approveCommission(req.params.id)));
   api.post('/commissions/:id/pay', requireRole('admin'), act((req) => svc.payCommission(me(req), req.params.id, body(req).fileId)));
 
   // ---------- chat ----------

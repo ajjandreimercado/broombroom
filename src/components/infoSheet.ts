@@ -9,7 +9,8 @@ export type SheetField = {
   required?: boolean;
   wide?: boolean; // full width in the form
 };
-export type SheetSection = { id: string; title: string; note?: string; fields?: SheetField[]; kind?: 'dependents' | 'purpose' | 'affirm' };
+// by: who fills the part in. The client fills the applicant's parts; their co-maker (spouse/surety) fills theirs.
+export type SheetSection = { id: string; title: string; by: 'applicant' | 'comaker'; note?: string; fields?: SheetField[]; kind?: 'dependents' | 'purpose' | 'affirm' };
 
 const person = (p: string, required: boolean): SheetField[] => [
   { key: `${p}.firstName`, label: 'First name', required },
@@ -18,7 +19,7 @@ const person = (p: string, required: boolean): SheetField[] => [
   { key: `${p}.nickname`, label: 'Nickname' },
   { key: `${p}.birthDate`, label: 'Date of birth', type: 'date', required },
   { key: `${p}.age`, label: 'Age', type: 'number' },
-  { key: `${p}.civilStatus`, label: 'Civil status', type: 'select', options: ['Single', 'Married', 'Widowed', 'Separated'], required },
+  { key: `${p}.civilStatus`, label: 'Civil status', type: 'select', options: ['Single', 'Married'], required },
   { key: `${p}.religion`, label: 'Religion' },
   { key: `${p}.birthPlace`, label: 'Birth place' },
   { key: `${p}.presentAddress`, label: 'Present address', type: 'textarea', required, wide: true },
@@ -56,14 +57,15 @@ const ids = (p: string): SheetField[] => [
   { key: `${p}.sss`, label: 'SSS No.' },
 ];
 
-export const PURPOSES = ['Personal / family use', 'Habal-habal', 'Tricycle', 'Masiao / bagdok', 'Rental', 'Election', 'Others'];
+export const PURPOSES = ['Habal-habal', 'Tricycle', 'Masiao / bagdok', 'Rental', 'Election', 'Others'];
 
 export const SHEET: SheetSection[] = [
-  { id: 'applicant', title: 'Name of applicant', fields: person('applicant', true) },
-  { id: 'spouse', title: 'Spouse / surety of applicant', note: 'Fill in if you have a spouse or a surety (co-maker).', fields: person('spouse', false) },
-  { id: 'dependents', title: 'Dependents', note: 'Name, age, and where studying (year and course).', kind: 'dependents' },
+  { id: 'applicant', by: 'applicant', title: 'Name of applicant', fields: person('applicant', true) },
+  { id: 'spouse', by: 'comaker', title: 'Spouse / surety of applicant', note: 'Your co-maker (spouse or surety) fills this in.', fields: person('spouse', false) },
+  { id: 'dependents', by: 'applicant', title: 'Dependents', note: 'Name, age, where studying (year and course), and others.', kind: 'dependents' },
   {
     id: 'residence',
+    by: 'applicant',
     title: 'Residence',
     fields: [
       { key: 'residence.type', label: 'Residence', type: 'select', options: ['Own house & lot', 'Own house, renting the lot', 'Renting house & lot'], required: true },
@@ -74,20 +76,22 @@ export const SHEET: SheetSection[] = [
       { key: 'residence.cellphone', label: 'Cellphone no.', required: true },
     ],
   },
-  { id: 'applicantWork', title: 'Applicant: employment and business', fields: work('applicantWork') },
-  { id: 'spouseWork', title: 'Spouse / surety: employment and business', fields: work('spouseWork') },
+  { id: 'applicantWork', by: 'applicant', title: 'Applicant: employment and business', fields: work('applicantWork') },
+  { id: 'spouseWork', by: 'comaker', title: 'Spouse / surety: employment and business', fields: work('spouseWork') },
   {
     id: 'assets',
+    by: 'applicant',
     title: 'Bank references and property',
     fields: [
       { key: 'assets.bankReferences', label: 'Bank references (savings, current, time deposit)', type: 'textarea', wide: true },
       { key: 'assets.property', label: 'Personal / real property (land, vehicles, appliances, others)', type: 'textarea', wide: true },
     ],
   },
-  { id: 'applicantParents', title: "Applicant's parents", fields: parents('applicantParents') },
-  { id: 'spouseParents', title: "Spouse / surety's parents", fields: parents('spouseParents') },
+  { id: 'applicantParents', by: 'applicant', title: "Applicant's parents", fields: parents('applicantParents') },
+  { id: 'spouseParents', by: 'comaker', title: "Spouse / surety's parents", fields: parents('spouseParents') },
   {
     id: 'references',
+    by: 'applicant',
     title: 'References',
     fields: [
       { key: 'references.staff', label: 'Broom Broom staff who knows you or your hometown', wide: true },
@@ -97,9 +101,10 @@ export const SHEET: SheetSection[] = [
       { key: 'references.relatives', label: 'Relatives', wide: true },
     ],
   },
-  { id: 'purpose', title: 'Purpose of this unit', kind: 'purpose' },
+  { id: 'purpose', by: 'applicant', title: 'Purpose of this unit', kind: 'purpose' },
   {
     id: 'credit',
+    by: 'applicant',
     title: 'Credit history',
     fields: [
       { key: 'credit.creditors', label: 'Companies / persons who extended you credit', type: 'textarea', wide: true },
@@ -109,16 +114,16 @@ export const SHEET: SheetSection[] = [
       { key: 'credit.attracted', label: 'What attracted you to buy at Broom Broom?', type: 'textarea', wide: true },
     ],
   },
-  { id: 'applicantIds', title: 'Applicant: IDs', fields: ids('applicantIds') },
-  { id: 'spouseIds', title: 'Spouse / surety: IDs', fields: ids('spouseIds') },
-  { id: 'directions', title: 'Sketch / directions to your home', fields: [{ key: 'directions.text', label: 'Landmarks and directions', type: 'textarea', wide: true }] },
-  { id: 'affirm', title: 'Affirmation', kind: 'affirm' },
+  { id: 'applicantIds', by: 'applicant', title: 'Applicant: IDs', fields: ids('applicantIds') },
+  { id: 'spouseIds', by: 'comaker', title: 'Spouse / surety: IDs', fields: ids('spouseIds') },
+  { id: 'directions', by: 'applicant', title: 'Sketch / directions to your home', fields: [{ key: 'directions.text', label: 'Landmarks and directions', type: 'textarea', wide: true }] },
+  { id: 'affirm', by: 'applicant', title: 'Affirmation', kind: 'affirm' },
 ];
 
 export const AFFIRMATION =
   'I hereby affirm that each of the answers to the foregoing questions are true and correct. I authorize Broom Broom to obtain such information as it may require concerning this application, and I agree that such information shall remain its property whether this application is approved or not.';
 
-export type Dependent = { name: string; age: string; studying: string };
+export type Dependent = { name: string; age: string; studying: string; others?: string };
 export type InfoSheet = {
   answers: Record<string, string>; // field key -> answer
   dependents: Dependent[];
@@ -147,7 +152,7 @@ export const cleanInfoSheet = (input: any): InfoSheet | string => {
   }
   const dependents = (Array.isArray(input?.dependents) ? input.dependents : [])
     .slice(0, 8)
-    .map((d: any) => ({ name: str(d?.name, 120), age: str(d?.age, 3), studying: str(d?.studying, 200) }))
+    .map((d: any) => ({ name: str(d?.name, 120), age: str(d?.age, 3), studying: str(d?.studying, 200), others: str(d?.others, 120) || undefined }))
     .filter((d: Dependent) => d.name);
   const purposes = (Array.isArray(input?.purposes) ? input.purposes : []).filter((p: unknown) => PURPOSES.includes(p as string));
   if (!purposes.length) return 'Purpose of this unit: check at least one.';
