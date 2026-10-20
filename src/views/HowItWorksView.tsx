@@ -32,7 +32,7 @@ export const HowItWorksView: React.FC = () => {
     {
       num: '03',
       title: 'Structured Purchase Application',
-      desc: 'Submit your purchase intent or financing application digitally from the listing, as cash or financing.',
+      desc: 'Press “Request to apply” on the listing. An agent takes you on and sends you the application link in Messages; fill it in there, as cash or financing.',
       icon: FileCheck2,
     },
     {
@@ -44,7 +44,7 @@ export const HowItWorksView: React.FC = () => {
     {
       num: '05',
       title: 'Transparent Settlement',
-      desc: 'Once your documents are checked, the vehicle is reserved for you with a reservation payment, and you fill in the Applicant\'s Information Sheet. Every payment gets an acknowledgement receipt.',
+      desc: 'Once your documents are checked, the vehicle is reserved for you with a reservation payment, and the admin team sends you a quotation to sign. Then you fill in the Applicant\'s Information Sheet. Every payment gets an acknowledgement receipt.',
       icon: CreditCard,
     },
     {
