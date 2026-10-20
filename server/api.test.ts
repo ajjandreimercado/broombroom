@@ -128,9 +128,17 @@ const SHEET_OK = {
 };
 const orcrFile = async (ad: Awaited<ReturnType<typeof admin>>) => (await ad.upload(PNG, 'image/png', 'or-cr.png')).data.id;
 const reserve = (ad: Awaited<ReturnType<typeof admin>>, appId: string, amount = 5000) => ad.post(`/api/applications/${appId}/reserve`, { amount });
+const signQuote = async (ad: Awaited<ReturnType<typeof admin>>, c: Awaited<ReturnType<typeof newClient>>, appId: string) => {
+  const q = (await ad.post(`/api/applications/${appId}/quotation`)).data;
+  assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: {}, send: true })).status, 200);
+  const r = await c.post(`/api/quotations/${q.id}/return`, { conforme: 'Juan Cruz' });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  return q.id as string;
+};
 const toApproved = async (ad: Awaited<ReturnType<typeof admin>>, c: Awaited<ReturnType<typeof newClient>>, appId: string) => {
   await approveDocs(ad, appId);
   assert.equal((await reserve(ad, appId)).status, 200);
+  await signQuote(ad, c, appId);
   assert.equal((await c.post(`/api/applications/${appId}/info-sheet`, SHEET_OK)).status, 200);
   assert.equal((await ad.post(`/api/applications/${appId}/status`, { status: 'approved' })).status, 200);
 };
@@ -260,11 +268,15 @@ test('financing: needs 2 uploads; documents first; reserve -> information sheet 
   const reserved = s.applications.find((a: any) => a.id === app.id);
   assert.equal(reserved.status, 'reserved');
   assert.equal(reserved.payments.length, 1, 'the reservation AR');
-  assert.ok(outbox.some((m: any) => m.to === c.email && /infosheet=/.test(m.html)), 'client emailed the sheet link');
   assert.equal(s.commissions.filter((x: any) => x.applicationRef === app.referenceNo).length, 0, 'no commission before approval');
   // the same car can't be reserved twice
   const other = await newClient();
   assert.equal((await apply(other, v.id)).status, 400);
+
+  // quotation first, then the information sheet
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 400, 'sign the quotation first');
+  await signQuote(ad, c, app.id);
+  assert.ok(outbox.some((m: any) => m.to === c.email && /infosheet=/.test(m.html)), 'client emailed the sheet link once the quotation is back');
 
   // information sheet: the client's own, checked, then processing
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 400, 'sheet first');
@@ -387,6 +399,7 @@ test('commission: the admin sets it on approval; on release the client’s agent
   const app = (await apply(c, v.id, { ref: 'bea-villanueva' })).data;
   await approveDocs(ad, app.id);
   assert.equal((await reserve(ad, app.id)).status, 200);
+  await signQuote(ad, c, app.id);
   assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 200);
   assert.equal((await c.post(`/api/applications/${app.id}/status`, { status: 'approved', commission: 1 })).status, 403);
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved', commission: 18000 })).status, 200);
@@ -463,8 +476,21 @@ test('quotations: the admin makes one from a reserved application; numbered when
   assert.match(sent.quoteNo, /^QT-\d{4}-\d{4}$/);
   assert.equal(sent.engineNo, 'ABC123');
   assert.equal((await c.state()).quotations.find((x: any) => x.id === q.id).status, 'sent', 'the client sees it');
+  // the client signs it and sends it back
+  assert.equal((await (await newClient()).post(`/api/quotations/${q.id}/return`, { conforme: 'X' })).status, 403);
+  assert.equal((await c.post(`/api/quotations/${q.id}/return`, {})).status, 400, 'conforme required');
+  assert.equal((await c.post(`/api/quotations/${q.id}/return`, { conforme: 'Client Name', note: 'Please use 36 months' })).status, 200);
+  assert.equal((await c.post(`/api/quotations/${q.id}/return`, { conforme: 'Client Name' })).status, 400, 'once');
+  const back = (await ad.state()).quotations.find((x: any) => x.id === q.id);
+  assert.equal(back.status, 'returned');
+  assert.equal(back.conforme, 'Client Name');
+  assert.equal(back.clientReply, 'Please use 36 months');
+  assert.ok((await ad.state()).notifications.some((n: any) => n.title === 'Quotation returned'));
+  // the admin changes and resends it: the client signs again
   const resend = (await ad.patch(`/api/quotations/${q.id}`, { changes: { remarks: 'x' }, send: true })).data;
   assert.equal(resend.quoteNo, sent.quoteNo);
+  assert.equal(resend.status, 'sent');
+  assert.equal(resend.conforme, undefined);
 });
 
 // ---------------- accounting & listings ----------------

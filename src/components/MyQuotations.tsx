@@ -1,14 +1,49 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
 import { openQuotation } from './receipt.ts';
 import { quoteFigures, quoteLabel, isExpired } from './quote.ts';
 import { money } from './accounting/ledger.ts';
 import { FileText } from 'lucide-react';
+import type { Quotation } from '../types.ts';
 
 const day = (ymd: string) => new Date(`${ymd}T00:00:00`).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
 
-// Client: quotations they asked for, with the PDF and a shortcut into the application using the quoted terms.
+// Client: check the quotation, type your full name as conforme, and send it back (with a note if something should change).
+const SignBack: React.FC<{ q: Quotation }> = ({ q }) => {
+  const { returnQuotation, currentUser } = useApp();
+  const [conforme, setConforme] = useState(currentUser?.name ?? '');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="border-l-2 border-[#1D5FD1] bg-[#E8F0FC] px-4 py-3 space-y-2.5"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        await returnQuotation(q.id, conforme.trim(), note.trim());
+        setBusy(false);
+      }}
+    >
+      <p className="text-[13px] text-[#141517]"><strong>Please check this quotation, sign it and send it back.</strong> Then you can fill in your information sheet.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <label className="block">
+          <span className="block text-[11.5px] font-semibold text-[#2A2E31] mb-1">Conforme: your full name *</span>
+          <input value={conforme} onChange={(e) => setConforme(e.target.value)} maxLength={120} required className="w-full px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]" />
+        </label>
+        <label className="block">
+          <span className="block text-[11.5px] font-semibold text-[#2A2E31] mb-1">Note to the admin (optional)</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} placeholder="e.g. Please change the term to 36 months" className="w-full px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]" />
+        </label>
+      </div>
+      <button type="submit" disabled={busy || !conforme.trim()} className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:bg-[#8C989F] text-white text-xs font-semibold cursor-pointer">
+        {busy ? 'Sending…' : 'Sign & send back'}
+      </button>
+    </form>
+  );
+};
+
+// Client: the quotation the admin team sent after the reservation, with the PDF. They sign it and send it back.
 export const MyQuotations: React.FC = () => {
   const { quotations, currentUser, navigateTo, showToast } = useApp();
   const mine = quotations.filter((q) => q.clientId === currentUser?.id);
@@ -50,6 +85,8 @@ export const MyQuotations: React.FC = () => {
                       <p className="text-xs text-[#4E585E] mt-0.5">
                         {q.status === 'requested'
                           ? 'The admin team is preparing your quotation.'
+                          : q.status === 'returned'
+                          ? `You signed it as ${q.conforme} and sent it back${q.returnedAt ? ` on ${new Date(q.returnedAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}.`
                           : q.status === 'accepted'
                           ? `You applied with this quotation${q.applicationRef ? ` (${q.applicationRef})` : ''}.`
                           : expired
@@ -83,6 +120,7 @@ export const MyQuotations: React.FC = () => {
                     )}
                   </dl>
                 )}
+                {q.status === 'sent' && !expired && <SignBack q={q} />}
               </li>
             );
           })}

@@ -290,6 +290,7 @@ interface AppContextType {
 
   // Quotations
   createQuotation: (applicationId: string) => Promise<boolean>;
+  returnQuotation: (id: string, conforme: string, note: string) => Promise<boolean>;
   saveQuotation: (id: string, changes: Partial<Quotation>, send: boolean) => Promise<Quotation | undefined>;
 
   // Commissions
@@ -768,6 +769,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteSalesEntry = async (id: string) => done(await run(() => api(`/sales-entries/${id}`, { method: 'DELETE' }), ['Sale removed']));
 
   // ----- Quotations -----
+  const returnQuotation: AppContextType['returnQuotation'] = async (id, conforme, note) =>
+    done(await run(() => api(`/quotations/${id}/return`, { body: { conforme, note } }), ['Quotation sent back', 'Next: fill in the Applicant’s Information Sheet in My Applications.'], 'Could not send the quotation back'));
   const createQuotation = async (applicationId: string) =>
     done(await run(() => api(`/applications/${applicationId}/quotation`, { body: {} }), ['Quotation created', 'Check the figures in Quotations, then send it to the client.']));
   const saveQuotation: AppContextType['saveQuotation'] = (id, changes, send) =>
@@ -971,6 +974,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         endTakeover,
 
         createQuotation,
+        returnQuotation,
         saveQuotation,
 
         payCommission,

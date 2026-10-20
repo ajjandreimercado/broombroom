@@ -294,12 +294,7 @@ export const createApp = () => {
   api.post(
     '/applications/:id/reserve',
     requireRole('admin'),
-    act(async (req) => {
-      const { receipt, email } = await svc.reserveApplication(me(req), req.params.id, body(req));
-      // Sent after the change is saved; the client also gets an in-app notice.
-      void sendMail(infoSheetEmail({ ...email, link: `${clientSiteUrl(req)}/?infosheet=${encodeURIComponent(email.appId)}` }));
-      return receipt;
-    })
+    act((req) => svc.reserveApplication(me(req), req.params.id, body(req)))
   );
   api.post('/applications/:id/info-sheet', requireRole('buyer'), act((req) => svc.submitInfoSheet(me(req), req.params.id, body(req))));
   api.post('/applications/:id/release', requireRole('admin'), act((req) => svc.releaseVehicle(me(req), req.params.id, body(req))));
@@ -308,6 +303,16 @@ export const createApp = () => {
 
   // ---------- quotations ----------
   api.post('/applications/:id/quotation', requireRole('admin'), act((req) => svc.quoteApplication(req.params.id)));
+  api.post(
+    '/quotations/:id/return',
+    requireRole('buyer'),
+    act(async (req) => {
+      const { quotation, email } = await svc.returnQuotation(me(req), req.params.id, body(req));
+      // Sent after the change is saved; the client also gets an in-app notice.
+      if (email) void sendMail(infoSheetEmail({ ...email, link: `${clientSiteUrl(req)}/?infosheet=${encodeURIComponent(email.appId)}` }));
+      return quotation;
+    })
+  );
   api.patch('/quotations/:id', requireRole('admin'), act((req) => svc.saveQuotation(me(req), req.params.id, body(req).changes, !!body(req).send)));
 
   // ---------- commissions ----------

@@ -357,6 +357,7 @@ export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 
     (f === 'closed' && (a.status === 'declined' || a.status === 'withdrawn'));
   const count = (f: Filter) => applications.filter((a) => matches(f, a)).length;
   const rows = applications.filter((a) => matches(filter, a));
+  const quoteOf = (app: VehicleApplication) => quotations.find((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId && q.status !== 'accepted');
   const viewSheet = (app: VehicleApplication) => !openInfoSheet(app) && showToast('Allow pop-ups', 'Your browser blocked the sheet window. Allow pop-ups for this site and try again.', 'error');
 
   return (
@@ -437,7 +438,7 @@ export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 
                 )}
                 {app.status === 'reserved' && (
                   <div className="flex flex-wrap items-center gap-2">
-                    {quotations.some((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId && q.status !== 'accepted') ? (
+                    {quoteOf(app) ? (
                       <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => setFilter('quotations')}>
                         <FileText className="w-4 h-4" aria-hidden="true" /> Open quotation
                       </button>
@@ -446,7 +447,15 @@ export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 
                         <Plus className="w-4 h-4" aria-hidden="true" /> Create quotation
                       </button>
                     )}
-                    <span className="text-[12.5px] font-medium text-[#B4690E]">Reserved · waiting for the client's information sheet.</span>
+                    <span className="text-[12.5px] font-medium text-[#B4690E]">
+                      {(() => {
+                        const q = quoteOf(app);
+                        if (!q) return 'Reserved · next: create the quotation and send it to the client.';
+                        if (q.status === 'requested') return 'Quotation drafted · check it and send it to the client.';
+                        if (q.status === 'sent') return 'Quotation sent · waiting for the client to sign it and send it back.';
+                        return `Quotation returned, signed by ${q.conforme}${q.clientReply ? ` (note: “${q.clientReply}”)` : ''} · waiting for the information sheet.`;
+                      })()}
+                    </span>
                     <ReasonAction label="Cancel reservation" confirmLabel="Cancel & free the car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
                   </div>
                 )}

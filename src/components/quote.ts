@@ -45,4 +45,4 @@ export const daysFromToday = (days: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 export const quoteLabel = (q: Quotation) =>
-  q.status === 'requested' ? 'Being prepared' : q.status === 'accepted' ? 'Accepted' : isExpired(q) ? 'Expired' : 'Sent';
+  q.status === 'requested' ? 'Being prepared' : q.status === 'returned' ? 'Signed & returned' : q.status === 'accepted' ? 'Accepted' : isExpired(q) ? 'Expired' : 'Sent';

@@ -79,7 +79,7 @@ const BY = { applicant: 'Filled in by the applicant (you)', comaker: 'Filled in 
 
 // Client: the Applicant's Information Sheet, after the admin reserved the vehicle. Follows the paper form.
 export const InfoSheetView: React.FC = () => {
-  const { applications, selectedApplicationId, currentUser, submitInfoSheet, navigateTo, showToast } = useApp();
+  const { applications, quotations, selectedApplicationId, currentUser, submitInfoSheet, navigateTo, showToast } = useApp();
   const app = applications.find((a) => a.id === selectedApplicationId);
 
   // Start from what the client already gave us.
@@ -106,12 +106,18 @@ export const InfoSheetView: React.FC = () => {
   const [busy, setBusy] = useState(false);
 
   const back = () => navigateTo('account', { accountTab: 'applications' });
-  if (!app || app.status !== 'reserved') {
+  // The sheet opens once the client signed their quotation and sent it back.
+  const signed = !!app && quotations.some((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId && q.status === 'returned');
+  if (!app || app.status !== 'reserved' || !signed) {
     return (
       <section className="gb-container py-16">
         <div className="max-w-md border-t-2 border-[#141517] pt-6">
           <p className="text-[16px] font-semibold text-[#141517]">
-            {app?.infoSheet ? 'Your information sheet is already in.' : 'The information sheet opens once the vehicle is reserved for you.'}
+            {app?.infoSheet
+              ? 'Your information sheet is already in.'
+              : app?.status === 'reserved'
+              ? 'The information sheet opens once you sign your quotation and send it back (My Quotations).'
+              : 'The information sheet opens once the vehicle is reserved for you.'}
           </p>
           <button onClick={back} className="mt-5 px-6 py-3 bg-[#141517] text-white text-[14px] font-semibold cursor-pointer">My Applications</button>
         </div>

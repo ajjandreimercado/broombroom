@@ -293,7 +293,7 @@ const quotationHtml = (q: Quotation) => {
   </ul>
   <div class="signs">
     <div><p class="name">${esc(q.preparedBy || '')}</p><p class="line">PREPARED BY</p></div>
-    <div><p class="name">${esc(q.clientName)}</p><p class="line">CONFORME (CLIENT)</p></div>
+    <div><p class="name">${esc(q.conforme || "")}</p><p class="line">CONFORME (CLIENT)</p></div>
   </div>
 </div>
 ${tools(`Quotation-${q.quoteNo || 'draft'}.pdf`)}

@@ -523,14 +523,28 @@ export const AccountView: React.FC = () => {
                             )}
                           </div>
                         </div>
-                        {app.status === 'reserved' && (
-                          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#E8F0FC] border-l-2 border-[#1D5FD1]">
-                            <p className="text-[13px] text-[#141517]"><strong>The vehicle is reserved for you.</strong> Next: fill in the Applicant's Information Sheet.</p>
-                            <button onClick={() => navigateTo('info_sheet', { applicationId: app.id })} className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[13px] font-semibold cursor-pointer">
-                              Fill in information sheet
-                            </button>
-                          </div>
-                        )}
+                        {app.status === 'reserved' && (() => {
+                          // After the reservation: the admin sends a quotation, the client signs it back, then the information sheet.
+                          const quote = quotations.find((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId);
+                          const signed = quote?.status === 'returned';
+                          const toSign = quote?.status === 'sent';
+                          return (
+                            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#E8F0FC] border-l-2 border-[#1D5FD1]">
+                              <p className="text-[13px] text-[#141517]">
+                                <strong>The vehicle is reserved for you.</strong>{' '}
+                                {signed ? "Next: fill in the Applicant's Information Sheet." : toSign ? 'Next: check and sign your quotation.' : 'Next: the admin team sends you a quotation.'}
+                              </p>
+                              {(signed || toSign) && (
+                                <button
+                                  onClick={() => (signed ? navigateTo('info_sheet', { applicationId: app.id }) : navigateTo('account', { accountTab: 'quotations' }))}
+                                  className="px-4 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[13px] font-semibold cursor-pointer"
+                                >
+                                  {signed ? 'Fill in information sheet' : 'Sign quotation'}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                         <ApplicationProgress app={app} />
                         </div>
                       );

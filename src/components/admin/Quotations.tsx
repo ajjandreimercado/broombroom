@@ -9,7 +9,7 @@ import { money } from '../accounting/ledger.ts';
 import { Drawer, EmptyState, FilterTabs, SectionHeader, btn, shortDate } from './ui.tsx';
 import { Download, FileSpreadsheet, FileText, Send } from 'lucide-react';
 
-type Filter = 'requested' | 'sent' | 'accepted' | 'all';
+type Filter = 'requested' | 'sent' | 'returned' | 'accepted' | 'all';
 
 const input = 'w-full px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]';
 const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode; className?: string }> = ({ label, hint, children, className = '' }) => (
@@ -174,7 +174,7 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
   );
 };
 
-// Admin: quotation requests from clients, and the quotations already sent.
+// Admin: quotations made from reserved applications: drafts to send, sent ones, and the ones the client signed back.
 export const Quotations: React.FC = () => {
   const { quotations, showToast } = useApp();
   const [filter, setFilter] = useState<Filter>('requested');
@@ -187,7 +187,7 @@ export const Quotations: React.FC = () => {
     <section className="space-y-5">
       <SectionHeader
         title="Quotations"
-        hint="Made with “Create quotation” on a reserved application. Fill in the unit details and the price, then send it; the client gets it in their account as a PDF."
+        hint="Made with “Create quotation” on a reserved application. Fill in the unit details and the price, then send it. The client signs it and sends it back; then they fill in the information sheet."
       />
       <FilterTabs
         id="quotations"
@@ -196,7 +196,7 @@ export const Quotations: React.FC = () => {
         options={[
           { value: 'requested', label: 'To send', count: count('requested') },
           { value: 'sent', label: 'Sent', count: count('sent') },
-          { value: 'accepted', label: 'Accepted', count: count('accepted') },
+          { value: 'returned', label: 'Returned', count: count('returned') },
           { value: 'all', label: 'All', count: quotations.length },
         ]}
       />
@@ -221,8 +221,13 @@ export const Quotations: React.FC = () => {
                       Created {shortDate(q.requestedAt)}
                       {q.sentAt ? ` · sent ${shortDate(q.sentAt)}` : ''}
                       {q.validUntil && q.status !== 'requested' ? ` · ${isExpired(q) ? 'expired' : 'valid until'} ${shortDate(`${q.validUntil}T00:00:00`)}` : ''}
-                      {q.applicationRef ? ` · applied as ${q.applicationRef}` : ''}
+                      {q.applicationRef ? ` · ${q.applicationRef}` : ''}
                     </span>
+                    {q.status === 'returned' && (
+                      <span className="block mt-1 text-[12.5px] text-[#1B7F35] font-medium">
+                        Signed by {q.conforme} · returned {shortDate(q.returnedAt)}{q.clientReply ? ` · Note: “${q.clientReply}”` : ''}
+                      </span>
+                    )}
                   </span>
                   <span className="text-right tabular-nums">
                     <span className="block text-[14px] font-semibold text-[#141517]">{money(q.unitPrice)}</span>
