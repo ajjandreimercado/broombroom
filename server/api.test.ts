@@ -1072,5 +1072,8 @@ test('release frees the client: no agent or lock, the chat with that agent ends,
   const fresh = chats.find((x: any) => !x.closedAt);
   assert.equal(fresh.sellerName, 'Bea Villanueva');
   assert.equal(fresh.vehicleId, v2.id);
+  assert.equal(fresh.messages.at(-1).applyVehicleId, v2.id, 'the claim sent the apply link again');
+  assert.equal((await ad.state()).leads.find((l: any) => l.clientId === c.id).lockedTo, 'Bea Villanueva', 'and Bea keeps the client');
+  assert.equal((await (await carlo()).post(`/api/leads/${c.id}/claim`)).status, 409, 'first come, first served');
   assert.equal(chats.find((x: any) => x.id === conv.id).sellerName, 'Carlo Santos', 'the old chat stays as it was');
 });
