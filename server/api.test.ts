@@ -148,8 +148,8 @@ const linkFor = async (c: Awaited<ReturnType<typeof newClient>>, vehicleId: stri
   await c.post('/api/conversations', { vehicleId, text: 'I would like to apply. Please send me the link.', ref });
   let owner = (await c.state()).myAgent as string | undefined;
   if (!owner) {
-    await (await carlo()).post(`/api/leads/${c.id}/claim`);
-    owner = 'Carlo Santos';
+    owner = ref === 'bea-villanueva' ? 'Bea Villanueva' : 'Carlo Santos'; // the referring agent claims them (Carlo by default)
+    await (owner === 'Bea Villanueva' ? await bea() : await carlo()).post(`/api/leads/${c.id}/claim`);
   }
   const agent = owner === 'Bea Villanueva' ? await bea() : await carlo();
   const chat = (await agent.state()).conversations.find((x: any) => x.buyerId === c.id && x.vehicleId === vehicleId);
@@ -388,11 +388,16 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
 });
 
 // ---------------- leads ----------------
-test('agent link: a new client belongs to that agent; links do not move existing clients', async () => {
+test('agent link: the client still waits in Open leads until claimed (no chat with the agent before); links do not move existing clients', async () => {
   const c = await newClient();
   const v = await freeVehicle();
   const conv = await c.post('/api/conversations', { vehicleId: v.id, ref: 'bea-villanueva' });
-  assert.equal(conv.data.sellerName, 'Bea Villanueva');
+  assert.equal(conv.data.sellerName, 'Broom Broom sales team', 'not Bea yet');
+  assert.equal((await c.state()).myAgent, null);
+  assert.equal((await (await bea()).post(`/api/conversations/${conv.data.id}/messages`, { text: 'hi' })).status, 403, 'no chat before the claim');
+  assert.ok((await (await bea()).state()).notifications.some((n: any) => n.title === 'Client from your link' && n.message.includes(c.email.split('@')[0].replace('client', 'Client '))));
+  assert.equal((await (await bea()).post(`/api/leads/${c.id}/claim`)).status, 200);
+  assert.equal((await c.state()).conversations.find((x: any) => x.id === conv.data.id).sellerName, 'Bea Villanueva');
   const again = await apply(c, (await freeVehicle()).id, { ref: 'carlo-santos' });
   assert.equal(again.status, 200);
   assert.equal((await c.state()).myAgent, 'Bea Villanueva');
@@ -718,6 +723,7 @@ test('takeover: the admin reads silently, and can answer only after the client w
   const [ca, ad] = [await carlo(), await admin()];
   const v = (await ad.state()).vehicles.find((x: any) => x.status === 'available'); // a chat needs any listed car
   const conv = (await c.post('/api/conversations', { vehicleId: v.id, ref: 'carlo-santos' })).data;
+  assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
   assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { text: 'Is it still available?' })).status, 200);
   const unread = async () => (await ca.state()).conversations.find((x: any) => x.id === conv.id).unreadSeller;
   const before = await unread();

@@ -131,33 +131,33 @@ const moveClient = async (clientId: string, owner: string | undefined) => {
   }
 };
 
-// The client did something (first message, application, quotation request). New clients go to the agent whose link
-// they came through, otherwise into Open leads. Only a chat message starts the 24-hour reply clock.
+// The client did something (first message, application). New clients always go to Open leads: an agent must claim
+// them before any chat reaches that agent. A referral link only tells that agent to claim them.
+// Only a chat message starts the 24-hour reply clock.
 const touchLead = async (client: User, interest: string, isMessage: boolean, refSlug: unknown): Promise<string | undefined> => {
   const existing = await store.get<ClientLead>('leads', client.id);
   if (existing) {
     if (isMessage) await store.put('leads', { ...existing, lastClientAt: now() });
     return existing.agentName;
   }
-  const agent = await agentBySlug(refSlug);
+  const referrer = await agentBySlug(refSlug);
   const at = now();
   await store.put<ClientLead>('leads', {
     id: client.id,
     clientId: client.id,
     clientName: client.name,
     clientEmail: client.email,
-    agentName: agent,
-    source: agent ? 'link' : 'pool',
+    agentName: undefined,
+    source: 'pool',
     createdAt: at,
-    pooledAt: agent ? undefined : at,
-    claimedAt: agent ? at : undefined,
+    pooledAt: at,
     interest,
     lastClientAt: isMessage ? at : undefined,
-    history: [{ at, text: agent ? `Came through ${agent}'s link` : 'Entered Open leads' }],
+    history: [{ at, text: referrer ? `Entered Open leads through ${referrer}'s link` : 'Entered Open leads' }],
   });
-  if (agent) await notify('agent', 'New client from your link', `${client.name} contacted you about the ${interest}.`, 'leads', agent);
-  else await notify('agent', 'New lead', `${client.name} is asking about the ${interest}. Claim them in Open leads.`, 'leads');
-  return agent;
+  if (referrer) await notify('agent', 'Client from your link', `${client.name} came through your link about the ${interest}. Claim them in Open leads to start the chat.`, 'leads', referrer);
+  await notify('agent', 'New lead', `${client.name} is asking about the ${interest}. Claim them in Open leads.`, 'leads');
+  return undefined;
 };
 
 // Two agents claiming at once: both transactions write the same lead, MongoDB lets one commit and reruns the other,

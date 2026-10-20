@@ -21,7 +21,7 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
     const link = referralLink(v.id, currentUser?.name || '');
     try {
       await navigator.clipboard.writeText(link);
-      showToast('Your link is copied', 'Clients who open it become your clients when they message or apply.');
+      showToast('Your link is copied', 'Clients who use it show up in Open leads and you are told; claim them to start the chat.');
     } catch {
       window.prompt('Copy your link', link);
     }
@@ -60,7 +60,7 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
   return (
     <section className="space-y-8">
       <div className="space-y-4">
-        <SectionHeader title="Listings" hint="Every listing is open to every agent. Share one with your own link: clients who use it become your clients. The admin team posts listings and sets their status.">
+        <SectionHeader title="Listings" hint="Every listing is open to every agent. Share one with your own link: you are told when a client uses it, then claim them in Open leads. The admin team posts listings and sets their status.">
           <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => setPanel({ kind: 'add' })}>
             <PlusCircle className="w-4 h-4" aria-hidden="true" /> Request new listing
           </button>

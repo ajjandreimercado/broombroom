@@ -38,7 +38,7 @@ export const AgentLeads: React.FC = () => {
     <section className="space-y-5">
       <SectionHeader
         title="Leads"
-        hint="Clients who came through your share link are yours automatically. Everyone else waits in Open leads: the first agent to claim a client gets their chats and the commission if they buy."
+        hint="Every new client waits in Open leads (you are told when one came through your share link). The first agent to claim a client gets their chats and the commission if they buy."
       />
       <FilterTabs
         id="agent-leads"
