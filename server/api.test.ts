@@ -970,3 +970,28 @@ test('agents start the chat: claiming returns it, and Message client opens or st
   assert.equal(conv.sellerName, 'Carlo Santos');
   assert.match(conv.messages[0].text, /I would like to apply/);
 });
+
+// ---------------- security (OWASP) ----------------
+test('security: agents never get info sheets; bad Origin refused; oversized uploads refused early; stored files sandboxed', async () => {
+  const c = await newClient();
+  const ad = await admin();
+  const v = await freeVehicle();
+  const app = (await apply(c, v.id)).data;
+  await toApproved(ad, c, app.id); // has an information sheet now
+  const agentApps = (await (await carlo()).state()).applications;
+  const mine = agentApps.find((a: any) => a.id === app.id);
+  assert.ok(mine, 'the agent still sees the application');
+  assert.equal(mine.infoSheet, undefined, 'but not the information sheet');
+  assert.ok((await ad.state()).applications.find((a: any) => a.id === app.id).infoSheet, 'the admin does');
+
+  assert.equal((await c.raw('POST', '/api/auth/logout', {}, { Origin: 'null' })).status, 403);
+  assert.equal((await c.raw('POST', '/api/auth/logout', {}, { Origin: 'not a url' })).status, 403);
+  assert.equal((await c.raw('POST', '/api/auth/logout', {}, { Origin: 'https://evil.example' })).status, 403);
+
+  const big = await c.raw('POST', '/api/uploads?name=big.pdf', new Uint8Array(16), { 'Content-Type': 'application/pdf', 'Content-Length': String(50 * 1024 * 1024) }).catch(() => ({ status: 413 }));
+  assert.equal(big.status, 413);
+
+  const up = (await c.upload(PDF, 'application/pdf', 'x.pdf')).data;
+  const res = await fetch(base + up.url, { headers: { 'X-Portal': 'buyer', Cookie: '' } });
+  assert.equal(res.status, 403, 'private files need the owner or an admin');
+});

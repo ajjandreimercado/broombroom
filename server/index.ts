@@ -12,7 +12,7 @@ if (!existsSync(dist)) throw new Error('dist/ is missing. Run "npm run build" fi
 
 const production = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
 await boot({ production });
-if (production && !process.env.APP_URL) console.warn('APP_URL is not set: links in emails use the address of the request instead.');
+if (production && !process.env.APP_URL && !process.env.RENDER_EXTERNAL_URL) console.warn('APP_URL is not set: links in emails use the address of the request instead.');
 if (production && !process.env.BREVO_API_KEY) console.warn('BREVO_API_KEY is not set: emails (document re-submission, help messages) are not sent.');
 const app = createApp();
 // Content-Security-Policy for the site: only this site's own scripts run (no inline or injected code), plus Google's

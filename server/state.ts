@@ -49,7 +49,7 @@ export const buildState = async (me?: User) => {
         return { ...l, preview: last?.text };
       })
     );
-    return { ...base, notifications, agents, conversations, leads, applications, commissions, listingRequests };
+    return { ...base, notifications, agents, conversations, leads, applications: applications.map(({ infoSheet, ciComments, ...a }) => a), commissions, listingRequests };
   }
 
   // Admin: everything, plus the account list (never password hashes).

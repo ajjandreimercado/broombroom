@@ -28,9 +28,17 @@ const me = (req: Request) => req.user as User;
 // The client site's address for links in emails: APP_URL when set, otherwise this request's site without the
 // agent./admin. prefix (in single-address mode the client site is the same address).
 const clientSiteUrl = (req: Request) => {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
+  const fixed = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL; // never the Host header in production (it can be forged)
+  if (fixed) return fixed.replace(/\/$/, '');
   const host = String(req.get('host') || 'localhost').replace(/^(agent|admin)\./, '');
   return `${req.protocol}://${host}`;
+};
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).host;
+  } catch {
+    return ''; // "null" or malformed: never this site
+  }
 };
 const TEMP_ALLOWED = new Set(['GET /state', 'GET /events', 'POST /me/password', 'POST /auth/logout', 'POST /auth/login', 'POST /auth/google']);
 const body = (req: Request) => (req.body && typeof req.body === 'object' ? req.body : {});
@@ -86,6 +94,7 @@ export const createApp = () => {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       }
       res.setHeader('Content-Type', row.mime);
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
       res.setHeader('Content-Length', String(row.size));
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(row.name)}"`);
       files()
@@ -110,7 +119,13 @@ export const createApp = () => {
     if (req.method !== 'GET') {
       if (!req.get('x-portal')) return next(new HttpError(403, 'Missing portal header.'));
       const origin = req.get('origin');
-      if (origin && new URL(origin).host !== req.get('host')) return next(new HttpError(403, 'Cross-site request blocked.'));
+      if (origin && hostOf(origin) !== req.get('host')) return next(new HttpError(403, 'Cross-site request blocked.'));
+      // A04: a cap on changes per address, against scripted abuse (normal use is far below it).
+      try {
+        rateLimit(`write|${req.ip}`, 600, 10 * 60e3, 'Too many requests from this connection. Please wait a few minutes.');
+      } catch (e) {
+        return next(e);
+      }
     }
     sessionUser(req)
       .then((u) => {
@@ -128,6 +143,14 @@ export const createApp = () => {
   // Uploads come as the raw file body; the record they belong to is attached in a later call.
   api.post(
     '/uploads',
+    (req, _res, next) => {
+      const mime = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      const maxMb = UPLOAD_TYPES[mime];
+      if (!req.user) return next(new HttpError(401, 'Please sign in first.'));
+      if (!maxMb) return next(new HttpError(415, 'Use a photo (JPG, PNG, WebP), a PDF, or a video (MP4, MOV, WebM).'));
+      if (Number(req.get('content-length') || 0) > (req.user.role === 'buyer' ? 10 : maxMb) * 1024 * 1024) return next(new HttpError(413, `Files of this type can be up to ${maxMb} MB.`));
+      next();
+    },
     express.raw({ type: () => true, limit: '101mb' }),
     handle(async (req, res) => {
       const u = req.user;
@@ -396,7 +419,10 @@ export const createApp = () => {
 
   // Errors: known ones carry their message to the user; anything else is logged and kept vague.
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    if (err instanceof HttpError) return res.status(err.status).json({ ok: false, error: err.message });
+    if (err instanceof HttpError) {
+      if ([401, 403, 429].includes(err.status)) console.warn(`[security] ${err.status} ${_req.method} ${_req.originalUrl.split('?')[0]} ip=${_req.ip} user=${_req.user?.id ?? '-'}`);
+      return res.status(err.status).json({ ok: false, error: err.message });
+    }
     if (err?.type === 'entity.too.large') return res.status(413).json({ ok: false, error: 'That file is too large.' });
     if (err?.type === 'entity.parse.failed') return res.status(400).json({ ok: false, error: 'The request could not be read.' });
     console.error(err);
