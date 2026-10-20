@@ -879,19 +879,17 @@ export const deleteSalesEntry = (id: string) =>
   });
 
 // ---------- quotations ----------
-export const requestQuotation = (me: User, input: any) =>
+// Admin: after reserving, prepare the client's quotation from their application. It is edited and sent from Quotations.
+export const quoteApplication = (id: string) =>
   tx(async () => {
-    const v = need(await store.get<Vehicle>('vehicles', idOf(input?.vehicleId)), 'Listing');
-    if (v.status !== 'available') bad('This vehicle is no longer available.');
-    const mine = await store.all<Quotation>('quotations', { clientId: me.id, vehicleId: v.id });
-    if (mine.some((q) => q.status === 'requested' || (q.status === 'sent' && !isExpired(q)))) bad('You already have a quotation for this vehicle. See My Quotations.');
-    const method = input.method;
-    if (method !== 'cash' && method !== 'financing') bad('Choose cash or financing.');
-    const downPayment = method === 'financing' ? money(input.downPayment, 'Down payment', { min: 1 }) : 0;
-    if (method === 'financing' && downPayment >= v.price) bad('Enter a down payment below the price.');
-    const termMonths = Number(input.termMonths);
-    if (!QUOTE_TERMS.includes(termMonths)) bad('Choose a term.');
-    await touchLead(me, v.title, false, input.ref);
+    const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
+    if (app.status !== 'reserved') bad('A quotation is made after the vehicle is reserved and before processing.');
+    if (await store.one('quotations', { clientId: app.applicantId, vehicleId: app.vehicleId, status: { $in: ['requested', 'sent'] } })) bad('This client already has a quotation for this vehicle.');
+    const v = need(await store.get<Vehicle>('vehicles', app.vehicleId), 'Listing');
+    const me = need(await users.byId(app.applicantId), 'Client');
+    const method = app.purchaseMethod;
+    const downPayment = method === 'financing' ? app.downPayment ?? 0 : 0;
+    const termMonths = QUOTE_TERMS.includes(app.financingTermMonths ?? 0) ? app.financingTermMonths! : QUOTE_TERMS[0];
     const a = me.address;
     const q = await store.put<Quotation>('quotations', {
       id: newId('qt'),
@@ -906,14 +904,14 @@ export const requestQuotation = (me: User, input: any) =>
       clientPhone: me.phone,
       clientAddress: [a?.street, a?.barangay, a?.city, a?.province].filter(Boolean).join(', ') + (a?.postalCode ? ` ${a.postalCode}` : ''),
       method,
-      clientNote: text(input.note, 'Note', 1000, false) || undefined,
+      clientNote: `For ${app.referenceNo}`,
       unitType: `${v.year} ${v.brand} ${v.model}`,
       variant: '',
       engineNo: '',
       chassisNo: '',
       color: v.color,
       transmission: v.transmission,
-      unitPrice: v.price,
+      unitPrice: app.vehiclePrice,
       downPayment,
       termMonths,
       annualRate: DEFAULT_RATE,
@@ -922,7 +920,6 @@ export const requestQuotation = (me: User, input: any) =>
       chattelMortgage: 0,
       remarks: '',
     });
-    await notify('admin', 'Quotation requested', `${me.name} asked for a ${method} quotation on the ${v.title}.`, 'quotations');
     return q;
   });
 

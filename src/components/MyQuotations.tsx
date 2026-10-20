@@ -10,7 +10,7 @@ const day = (ymd: string) => new Date(`${ymd}T00:00:00`).toLocaleDateString('en-
 
 // Client: quotations they asked for, with the PDF and a shortcut into the application using the quoted terms.
 export const MyQuotations: React.FC = () => {
-  const { quotations, currentUser, vehicles, navigateTo, showToast } = useApp();
+  const { quotations, currentUser, navigateTo, showToast } = useApp();
   const mine = quotations.filter((q) => q.clientId === currentUser?.id);
 
   return (
@@ -19,14 +19,14 @@ export const MyQuotations: React.FC = () => {
         <h2 className="font-display text-[22px] leading-tight text-[#141517]">
           My Quotations <span className="text-[#6B767D] font-normal">({mine.length})</span>
         </h2>
-        <p className="text-xs text-[#4E585E] mt-1">Ask for a quotation on any listing. When it is ready, you can save it as a PDF or apply with the quoted terms.</p>
+        <p className="text-xs text-[#4E585E] mt-1">After your vehicle is reserved, the admin team prepares your quotation here. Save it as a PDF anytime.</p>
       </div>
 
       {mine.length === 0 ? (
         <div className="bg-white p-12 text-center border border-[#C9D1D6]">
           <FileText className="w-6 h-6 mx-auto mb-3 text-[#6B767D]" aria-hidden="true" />
           <p className="font-bold text-[#141517] text-sm">No quotations yet</p>
-          <p className="text-xs text-[#4E585E] mt-1">Open a listing and choose “Request a quotation”.</p>
+          <p className="text-xs text-[#4E585E] mt-1">Your quotation appears here once your vehicle is reserved.</p>
           <button onClick={() => navigateTo('marketplace')} className="mt-4 px-4 py-2 bg-[#141517] text-white text-xs font-semibold cursor-pointer">
             Browse vehicles
           </button>
@@ -36,8 +36,6 @@ export const MyQuotations: React.FC = () => {
           {mine.map((q) => {
             const f = quoteFigures(q);
             const expired = isExpired(q);
-            const vehicle = vehicles.find((v) => v.id === q.vehicleId);
-            const canApply = q.status === 'sent' && !expired && vehicle?.status === 'available';
             return (
               <li key={q.id} className="border-t-2 border-[#141517] pt-5 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -45,7 +43,7 @@ export const MyQuotations: React.FC = () => {
                     <img src={q.vehicleImage} alt="" className="w-20 h-14 object-cover bg-[#202426] shrink-0" />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="tabular-nums text-xs font-bold text-[#6B767D]">{q.quoteNo || 'Requested'}</span>
+                        <span className="tabular-nums text-xs font-bold text-[#6B767D]">{q.quoteNo || 'Quotation'}</span>
                         <StatusMark status={quoteLabel(q)} />
                       </div>
                       <h3 className="font-bold text-[#141517] text-sm mt-1">{q.vehicleTitle}</h3>
@@ -55,7 +53,7 @@ export const MyQuotations: React.FC = () => {
                           : q.status === 'accepted'
                           ? `You applied with this quotation${q.applicationRef ? ` (${q.applicationRef})` : ''}.`
                           : expired
-                          ? `Expired on ${day(q.validUntil!)}. Request a new one for current prices.`
+                          ? `Expired on ${day(q.validUntil!)}. Ask your agent for an updated one.`
                           : `Valid until ${day(q.validUntil!)}.`}
                       </p>
                     </div>
@@ -68,22 +66,6 @@ export const MyQuotations: React.FC = () => {
                       >
                         View &amp; save PDF
                       </button>
-                      {canApply && (
-                        <button
-                          onClick={() => navigateTo('apply', { vehicleId: q.vehicleId, quotationId: q.id })}
-                          className="px-3.5 py-2 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-xs font-semibold cursor-pointer transition-colors"
-                        >
-                          Apply with this quotation
-                        </button>
-                      )}
-                      {expired && (
-                        <button
-                          onClick={() => navigateTo('vehicle_detail', { vehicleId: q.vehicleId })}
-                          className="px-3.5 py-2 border border-[#141517] text-[#141517] text-xs font-semibold cursor-pointer hover:bg-[#EEF1F2] transition-colors"
-                        >
-                          Request a new one
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>

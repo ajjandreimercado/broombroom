@@ -7,7 +7,7 @@ import { CONTACT_EMAIL } from '../data/constants.ts';
 const TERMS: { h: string; p: string }[] = [
   {
     h: '1. What Broom Broom is',
-    p: 'Broom Broom sells the vehicles listed on this site through its sales team and agents. You can browse listings, request a quotation, message an agent and send a purchase application online.',
+    p: 'Broom Broom sells the vehicles listed on this site through its sales team and agents. You can browse listings, message an agent and send a purchase application online; your quotation follows once the vehicle is reserved.',
   },
   {
     h: '2. Applications and payments',

@@ -39,8 +39,7 @@ const StageTrack: React.FC<{ status: Stage; stages: typeof ALL_STAGES }> = ({ st
 // Agent commissions. Agents read theirs; the admin approves, pays (with proof) and issues the receipt.
 export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean }> = ({ mode, compact = false }) => {
   const { commissions, payCommission, navigateTo, currentUser, showToast } = useApp();
-  // Agents only follow what is still owed to them; the admin also keeps the paid ones. Unreleased (older) ones are not shown.
-  const STAGES = mode === 'agent' ? ALL_STAGES.filter((s) => s.value === 'payable') : ALL_STAGES;
+  const STAGES = ALL_STAGES; // unreleased (older, receivable) ones are not shown
   const mine = commissions.filter((c) => STAGES.some((s) => s.value === c.status) && (mode === 'admin' || c.agentName === currentUser?.name));
   const [stage, setStage] = useState<Stage | 'all'>(mode === 'admin' ? 'payable' : 'all');
   const [error, setError] = useState('');

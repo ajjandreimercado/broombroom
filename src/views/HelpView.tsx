@@ -31,8 +31,8 @@ export const HelpView: React.FC = () => {
       a: 'We email you the reason with a link. Open it (or go to My Applications), and upload a clearer copy of that document. The admin team reviews it again.',
     },
     {
-      q: 'Can I compare cash and financing before applying?',
-      a: 'Yes. Request a quotation from the listing. It shows the unit price, down payment, term and estimated monthly amortization. Financing is still subject to the bank or financing company’s approval.',
+      q: 'How do I get a quotation?',
+      a: 'Once your vehicle is reserved, the admin team sends you a quotation in My Quotations. It shows the unit price, down payment, term and estimated monthly amortization. Financing is still subject to the bank or financing company’s approval.',
     },
     {
       q: 'How do I talk to an agent?',

@@ -344,7 +344,7 @@ const OPEN: VehicleApplication['status'][] = ['submitted', 'under_review', 'cont
 
 // Admin: review -> reserve (reservation AR) -> the client's information sheet -> approve -> release with OR/CR.
 export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 'review' }) => {
-  const { applications, quotations, updateApplicationStatus, navigateTo, showToast } = useApp();
+  const { applications, quotations, updateApplicationStatus, createQuotation, navigateTo, showToast } = useApp();
   const [filter, setFilter] = useState<Filter>(initial);
 
   const matches = (f: Filter, a: VehicleApplication) =>
@@ -437,6 +437,15 @@ export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 
                 )}
                 {app.status === 'reserved' && (
                   <div className="flex flex-wrap items-center gap-2">
+                    {quotations.some((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId && q.status !== 'accepted') ? (
+                      <button className={`${btn.outline} flex items-center gap-1.5`} onClick={() => setFilter('quotations')}>
+                        <FileText className="w-4 h-4" aria-hidden="true" /> Open quotation
+                      </button>
+                    ) : (
+                      <button className={`${btn.primary} flex items-center gap-1.5`} onClick={async () => (await createQuotation(app.id)) && setFilter('quotations')}>
+                        <Plus className="w-4 h-4" aria-hidden="true" /> Create quotation
+                      </button>
+                    )}
                     <span className="text-[12.5px] font-medium text-[#B4690E]">Reserved · waiting for the client's information sheet.</span>
                     <ReasonAction label="Cancel reservation" confirmLabel="Cancel & free the car" placeholder="Reason the client will see" onConfirm={(r) => updateApplicationStatus(app.id, 'declined', r)} />
                   </div>

@@ -57,7 +57,7 @@ export const GUIDES: Guide[] = [
       {
         heading: '3. Comparing Both on Broom Broom',
         content:
-          'On any listing you can request a quotation for cash or for financing. The quotation shows the unit price, down payment, term and estimated monthly amortization, so you can compare both before you apply. Financing is still subject to the bank or financing company’s approval.',
+          'Once your vehicle is reserved, the admin team sends you a quotation for your cash or financing purchase. It shows the unit price, down payment, term and estimated monthly amortization. Financing is still subject to the bank or financing company’s approval.',
       },
     ],
   },

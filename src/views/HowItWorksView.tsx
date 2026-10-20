@@ -26,7 +26,7 @@ export const HowItWorksView: React.FC = () => {
     {
       num: '02',
       title: 'Inquire Directly with Agents',
-      desc: 'Message an agent from any listing to ask about the unit, its papers or a viewing, or request a quotation for cash or financing.',
+      desc: 'Message an agent from any listing to ask about the unit, its papers or a viewing, or ask about cash and financing.',
       icon: MessageSquare,
     },
     {

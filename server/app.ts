@@ -307,7 +307,7 @@ export const createApp = () => {
   api.delete('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.deletePayment(req.params.id, req.params.arNo)));
 
   // ---------- quotations ----------
-  api.post('/quotations', requireRole('buyer'), act((req) => svc.requestQuotation(me(req), body(req))));
+  api.post('/applications/:id/quotation', requireRole('admin'), act((req) => svc.quoteApplication(req.params.id)));
   api.patch('/quotations/:id', requireRole('admin'), act((req) => svc.saveQuotation(me(req), req.params.id, body(req).changes, !!body(req).send)));
 
   // ---------- commissions ----------

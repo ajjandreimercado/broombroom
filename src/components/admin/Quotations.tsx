@@ -187,21 +187,21 @@ export const Quotations: React.FC = () => {
     <section className="space-y-5">
       <SectionHeader
         title="Quotations"
-        hint="Clients request a quotation from a listing. Fill in the unit details and the price, then send it; the client gets it in their account as a PDF."
+        hint="Made with “Create quotation” on a reserved application. Fill in the unit details and the price, then send it; the client gets it in their account as a PDF."
       />
       <FilterTabs
         id="quotations"
         value={filter}
         onChange={setFilter}
         options={[
-          { value: 'requested', label: 'Requests', count: count('requested') },
+          { value: 'requested', label: 'To send', count: count('requested') },
           { value: 'sent', label: 'Sent', count: count('sent') },
           { value: 'accepted', label: 'Accepted', count: count('accepted') },
           { value: 'all', label: 'All', count: quotations.length },
         ]}
       />
       {rows.length === 0 ? (
-        <EmptyState title={filter === 'requested' ? 'No requests waiting' : 'Nothing here yet'} body="Quotation requests from clients appear here." />
+        <EmptyState title={filter === 'requested' ? 'Nothing to send' : 'Nothing here yet'} body="Use “Create quotation” on a reserved application; it appears here to check and send." />
       ) : (
         <ul key={filter} className="animate-view-fade border-b border-[#C9D1D6]">
           {rows.map((q) => {
@@ -211,14 +211,14 @@ export const Quotations: React.FC = () => {
                 <button onClick={() => setOpenId(q.id)} className="w-full flex flex-wrap items-start justify-between gap-x-6 gap-y-2 py-4 text-left cursor-pointer hover:bg-white/60 transition-colors">
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-[12.5px] tabular-nums text-[#4E585E]">{q.quoteNo || 'New request'}</span>
+                      <span className="text-[12.5px] tabular-nums text-[#4E585E]">{q.quoteNo || 'Draft, not sent'}</span>
                       <StatusMark status={quoteLabel(q)} />
                       <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[#141517]">{q.method === 'cash' ? 'Cash' : `Financing · ${q.termMonths} mo`}</span>
                     </span>
                     <span className="block mt-1.5 font-semibold text-[15px] text-[#141517]">{q.clientName}</span>
                     <span className="block text-[13px] text-[#2A2E31]">{q.vehicleTitle}</span>
                     <span className="block text-[12px] text-[#6B767D] tabular-nums">
-                      Requested {shortDate(q.requestedAt)}
+                      Created {shortDate(q.requestedAt)}
                       {q.sentAt ? ` · sent ${shortDate(q.sentAt)}` : ''}
                       {q.validUntil && q.status !== 'requested' ? ` · ${isExpired(q) ? 'expired' : 'valid until'} ${shortDate(`${q.validUntil}T00:00:00`)}` : ''}
                       {q.applicationRef ? ` · applied as ${q.applicationRef}` : ''}

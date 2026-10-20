@@ -6,7 +6,6 @@ import { AnimatePresence, motion } from 'motion/react';
 import { EASE_OUT } from '../motion.ts';
 import { StoredVideo } from '../components/StoredVideo.tsx';
 import { Lightbox } from '../components/Lightbox.tsx';
-import { QuoteRequest } from '../components/QuoteRequest.tsx';
 import {
   Bookmark,
   Maximize2,
@@ -366,7 +365,6 @@ export const VehicleDetailView: React.FC = () => {
                     <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
                   </button>
                 )}
-                {vehicle.status === 'available' && <QuoteRequest vehicle={vehicle} />}
                 <div className="grid grid-cols-3 border border-[#8C989F] divide-x divide-[#8C989F]">
                   <button
                     onClick={handleMessage}

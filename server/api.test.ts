@@ -359,7 +359,7 @@ test('agent link: a new client belongs to that agent; links do not move existing
   const v = await freeVehicle();
   const conv = await c.post('/api/conversations', { vehicleId: v.id, ref: 'bea-villanueva' });
   assert.equal(conv.data.sellerName, 'Bea Villanueva');
-  const again = await c.post('/api/quotations', { vehicleId: v.id, method: 'cash', termMonths: 36, ref: 'carlo-santos' });
+  const again = await apply(c, (await freeVehicle()).id, { ref: 'carlo-santos' });
   assert.equal(again.status, 200);
   assert.equal((await c.state()).myAgent, 'Bea Villanueva');
   // an agent can't reply to another agent's client; admins only read
@@ -443,23 +443,26 @@ test('reassigning: the release pays the client’s current agent; 24-hour rule r
 });
 
 // ---------------- quotations ----------------
-test('quotations: numbered when sent; applying with one fixes the price and marks it accepted', async () => {
+test('quotations: the admin makes one from a reserved application; numbered when sent', async () => {
   const c = await newClient();
   const ad = await admin();
   const v = await freeVehicle();
-  const q = (await c.post('/api/quotations', { vehicleId: v.id, method: 'financing', downPayment: Math.round(v.price / 4), termMonths: 48 })).data;
-  assert.equal((await c.post('/api/quotations', { vehicleId: v.id, method: 'cash', termMonths: 36 })).status, 400, 'one open quotation per car');
+  const app = (await apply(c, v.id)).data;
+  assert.equal((await c.post('/api/quotations', { vehicleId: v.id, method: 'cash', termMonths: 36 })).status, 404, 'clients no longer request one');
+  assert.equal((await ad.post(`/api/applications/${app.id}/quotation`)).status, 400, 'after the reservation');
+  await approveDocs(ad, app.id);
+  assert.equal((await reserve(ad, app.id)).status, 200);
+  assert.equal((await c.post(`/api/applications/${app.id}/quotation`)).status, 403, 'admins only');
+  const q = (await ad.post(`/api/applications/${app.id}/quotation`)).data;
+  assert.equal(q.method, 'cash');
+  assert.equal(q.clientName, app.applicantName);
+  assert.equal(q.unitPrice, v.price);
+  assert.equal((await ad.post(`/api/applications/${app.id}/quotation`)).status, 400, 'one open quotation per car');
   assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: { validUntil: '2000-01-01' }, send: true })).status, 400);
   const sent = (await ad.patch(`/api/quotations/${q.id}`, { changes: { unitPrice: v.price - 50000, engineNo: 'abc123' }, send: true })).data;
   assert.match(sent.quoteNo, /^QT-\d{4}-\d{4}$/);
   assert.equal(sent.engineNo, 'ABC123');
-  const app = (await c.post('/api/applications', {
-    vehicleId: v.id, purchaseMethod: 'financing', downPayment: Math.round(v.price / 4), financingTermMonths: 48,
-    documents: await docs(c, ['id-applicant', 'billing']), address, quotationId: q.id,
-  })).data;
-  assert.equal(app.vehiclePrice, v.price - 50000);
-  assert.equal(app.quotationNo, sent.quoteNo);
-  assert.equal((await c.state()).quotations.find((x: any) => x.id === q.id).status, 'accepted');
+  assert.equal((await c.state()).quotations.find((x: any) => x.id === q.id).status, 'sent', 'the client sees it');
   const resend = (await ad.patch(`/api/quotations/${q.id}`, { changes: { remarks: 'x' }, send: true })).data;
   assert.equal(resend.quoteNo, sent.quoteNo);
 });
@@ -900,7 +903,7 @@ test('editing a listing: details, photos and videos change; removing every photo
 test('agents start the chat: claiming returns it, and Message client opens or starts one for their own clients', async () => {
   const ca = await carlo();
   const c = await newClient();
-  await c.post('/api/quotations', { vehicleId: (await freeVehicle()).id, method: 'cash', termMonths: 36 });
+  await apply(c, (await freeVehicle()).id);
   const claimed = await ca.post(`/api/leads/${c.id}/claim`);
   assert.equal(claimed.status, 200);
   const convId = claimed.data.conversationId;

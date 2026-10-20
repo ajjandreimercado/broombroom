@@ -289,7 +289,7 @@ interface AppContextType {
   endTakeover: (id: string) => Promise<boolean>;
 
   // Quotations
-  requestQuotation: (vehicleId: string, req: { method: 'cash' | 'financing'; downPayment: number; termMonths: number; note: string }) => Promise<Quotation | undefined>;
+  createQuotation: (applicationId: string) => Promise<boolean>;
   saveQuotation: (id: string, changes: Partial<Quotation>, send: boolean) => Promise<Quotation | undefined>;
 
   // Commissions
@@ -768,11 +768,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteSalesEntry = async (id: string) => done(await run(() => api(`/sales-entries/${id}`, { method: 'DELETE' }), ['Sale removed']));
 
   // ----- Quotations -----
-  const requestQuotation: AppContextType['requestQuotation'] = async (vehicleId, req) => {
-    const q = await run(() => api<Quotation>('/quotations', { body: { vehicleId, ...req, ref: takeRef() } }), ['Quotation requested', 'The admin team will send it to My Quotations.'], 'Could not request a quotation');
-    if (q) clearRef();
-    return q;
-  };
+  const createQuotation = async (applicationId: string) =>
+    done(await run(() => api(`/applications/${applicationId}/quotation`, { body: {} }), ['Quotation created', 'Check the figures in Quotations, then send it to the client.']));
   const saveQuotation: AppContextType['saveQuotation'] = (id, changes, send) =>
     run(() => api<Quotation>(`/quotations/${id}`, { method: 'PATCH', body: { changes, send } }), send ? ['Quotation sent', 'The client can see it in My Quotations.'] : ['Draft saved', 'The client will see it once you send it.']);
 
@@ -973,7 +970,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         takeOverConversation,
         endTakeover,
 
-        requestQuotation,
+        createQuotation,
         saveQuotation,
 
         payCommission,
