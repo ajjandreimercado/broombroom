@@ -59,7 +59,7 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
     <div className="space-y-7">
       {d.clientNote && (
         <p className="text-[13px] text-[#2A2E31] bg-white border border-[#C9D1D6] px-3.5 py-2.5">
-          <span className="gb-label block mb-1">Client's request</span>“{d.clientNote}”
+          <span className="gb-label block mb-1">Note</span>{d.clientNote}
         </p>
       )}
 
@@ -234,7 +234,10 @@ export const Quotations: React.FC = () => {
                     {q.method === 'financing' && <span className="block text-[12.5px] text-[#4E585E]">{money(f.monthly)} / mo</span>}
                   </span>
                 </button>
-                <div className="flex gap-5 pb-3.5 -mt-1">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pb-3.5 -mt-1">
+                  <button onClick={() => setOpenId(q.id)} className={`${q.status === 'requested' ? btn.primary : btn.outline} inline-flex items-center gap-1.5`}>
+                    <Send className="w-3.5 h-3.5" aria-hidden="true" /> {q.status === 'requested' ? 'Check & send to client' : 'Edit & resend'}
+                  </button>
                   <button onClick={() => downloadQuotationPdf(q)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#141517] underline decoration-[#8C989F] underline-offset-4 cursor-pointer">
                     <Download className="w-3.5 h-3.5" aria-hidden="true" /> PDF
                   </button>
