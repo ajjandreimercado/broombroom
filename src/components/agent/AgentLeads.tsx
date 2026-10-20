@@ -9,7 +9,7 @@ const SOURCE: Record<ClientLead['source'], string> = { link: 'Came through your 
 
 // Agent: claim new clients from the shared pool, and keep track of the clients who are yours.
 export const AgentLeads: React.FC = () => {
-  const { leads, claimLead, openClientChat, currentUser, conversations, navigateTo, setActiveConversationId } = useApp();
+  const { leads, applyRequests, claimLead, claimRequest, openClientChat, currentUser, conversations, navigateTo, setActiveConversationId } = useApp();
   const me = currentUser?.name;
   const [view, setView] = useState<'open' | 'mine'>('open');
   const [now, setNow] = useState(Date.now());
@@ -18,7 +18,12 @@ export const AgentLeads: React.FC = () => {
     return () => window.clearInterval(id);
   }, []);
 
-  const open = leads.filter((l) => !l.agentName && !l.doneAt).sort((a, b) => (a.pooledAt ?? a.createdAt).localeCompare(b.pooledAt ?? b.createdAt));
+  // Open leads: every unclaimed request to apply (one per vehicle, even for clients who have an agent for another
+  // vehicle), plus older unclaimed clients without a request.
+  const requests = applyRequests.filter((r) => !r.claimedBy && !r.doneAt).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const open = leads
+    .filter((l) => !l.agentName && !l.doneAt && !requests.some((r) => r.clientId === l.clientId))
+    .sort((a, b) => (a.pooledAt ?? a.createdAt).localeCompare(b.pooledAt ?? b.createdAt));
   const mine = leads.filter((l) => l.agentName === me);
   const lastClientLine = (clientId: string) =>
     conversations
@@ -33,6 +38,7 @@ export const AgentLeads: React.FC = () => {
   };
   const openChat = async (clientId: string) => goToChat(await openClientChat(clientId));
   const claim = async (clientId: string) => goToChat(await claimLead(clientId));
+  const claimReq = async (id: string) => goToChat(await claimRequest(id));
 
   return (
     <section className="space-y-5">
@@ -45,16 +51,28 @@ export const AgentLeads: React.FC = () => {
         value={view}
         onChange={setView}
         options={[
-          { value: 'open', label: 'Open leads', count: open.length },
+          { value: 'open', label: 'Open leads', count: requests.length + open.length },
           { value: 'mine', label: 'My clients', count: mine.length },
         ]}
       />
 
       {view === 'open' &&
-        (open.length === 0 ? (
+        (requests.length + open.length === 0 ? (
           <EmptyState title="No open leads" body="Clients who press “Request to apply” on a vehicle appear here. Be the first to claim them." />
         ) : (
           <ul key="open" className="animate-view-fade border-b border-[#C9D1D6]">
+            {requests.map((r) => (
+              <li key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4 border-t border-[#C9D1D6]">
+                <div className="min-w-0">
+                  <p className="font-semibold text-[15px] text-[#141517]">{r.clientName}</p>
+                  <p className="text-[13px] text-[#2A2E31]">Wants to apply for {r.vehicleTitle}</p>
+                  <p className="text-[12px] text-[#6B767D] tabular-nums">Waiting {duration(now - new Date(r.createdAt).getTime())}</p>
+                </div>
+                <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-center`} onClick={() => claimReq(r.id)}>
+                  <Hand className="w-4 h-4" aria-hidden="true" /> Claim &amp; send apply link
+                </button>
+              </li>
+            ))}
             {open.map((l) => {
               const line = l.preview ?? lastClientLine(l.clientId);
               return (

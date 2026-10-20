@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount, Referral } from '../src/types.ts';
+import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount, Referral, ApplyRequest } from '../src/types.ts';
 import { store } from './db.ts';
 import { users, publicUser, type User } from './auth.ts';
 import { notificationScope, ownerOf } from './services.ts';
@@ -49,11 +49,12 @@ export const buildState = async (me?: User) => {
         return { ...l, preview: last?.text };
       })
     );
-    return { ...base, notifications, agents, conversations, leads, applications: applications.map(({ infoSheet, ciComments, ...a }) => a), commissions, listingRequests };
+    const applyRequests = await store.all<ApplyRequest>('apply_requests', { doneAt: { $exists: false }, $or: [{ claimedBy: null }, { claimedBy: me.name }] }, NEWEST('createdAt'));
+    return { ...base, notifications, agents, conversations, leads, applyRequests, applications: applications.map(({ infoSheet, ciComments, ...a }) => a), commissions, listingRequests };
   }
 
   // Admin: everything, plus the account list (never password hashes).
-  const [accounts, applications, conversations, leads, commissions, listingRequests, reports, quotations, expenses, credits, receipts, salesEntries, ledgerAccounts, referrals] = await Promise.all([
+  const [accounts, applications, conversations, leads, commissions, listingRequests, reports, quotations, expenses, credits, receipts, salesEntries, ledgerAccounts, referrals, applyRequests] = await Promise.all([
     users.all(),
     store.all<VehicleApplication>('applications', {}, NEWEST('submittedAt')),
     store.all<Conversation>('conversations', {}, NEWEST('updatedAt')),
@@ -68,6 +69,7 @@ export const buildState = async (me?: User) => {
     store.all<SalesEntry>('sales_entries', {}, NEWEST('date')),
     store.all<LedgerAccount>('ledger_accounts', {}, { createdAt: 1 }),
     store.all<Referral>('referrals', {}, NEWEST('createdAt')),
+    store.all<ApplyRequest>('apply_requests', {}, NEWEST('createdAt')),
   ]);
   return {
     ...base,
@@ -87,5 +89,6 @@ export const buildState = async (me?: User) => {
     salesEntries,
     ledgerAccounts,
     referrals,
+    applyRequests,
   };
 };

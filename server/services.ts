@@ -22,6 +22,7 @@ import type {
   SalesEntry,
   Referral,
   ReferralStatus,
+  ApplyRequest,
   LedgerAccount,
 } from '../src/types.ts';
 import { TEAM_NAME, COMMISSION_RATE, generateVehicleSvg } from '../src/data/constants.ts';
@@ -164,6 +165,8 @@ const touchLead = async (client: User, interest: string, isMessage: boolean, ref
 // which then finds the lead taken.
 export const claimLead = (me: User, clientId: string) =>
   tx(async () => {
+    const open = (await store.all<ApplyRequest>('apply_requests', { clientId: idOf(clientId), claimedBy: null, doneAt: { $exists: false } }, { createdAt: 1 }))[0];
+    if (open) return claimRequest(me, open.id);
     const lead = need(await store.get<ClientLead>('leads', idOf(clientId)), 'Lead');
     if (lead.agentName) throw new HttpError(409, `${lead.clientName} is already ${lead.agentName === me.name ? 'your' : `${lead.agentName}'s`} client.`);
     const at = now();
@@ -506,14 +509,12 @@ export const createApplication = (me: User, input: any) =>
     const viaAgent = await agentBySlug(input.viaAgent);
     const linkChat = viaAgent ? await store.one<Conversation>('conversations', { buyerId: me.id, sellerName: viaAgent, 'messages.applyVehicleId': v.id }) : undefined;
     if (!viaAgent || !linkChat) bad('Apply through the application link your agent sends you in Messages.');
-    let owner = await touchLead(me, v.title, false, input.viaAgent);
-    if (owner && owner !== viaAgent) bad(`This link is from ${viaAgent}, who no longer handles your purchase. Ask ${owner} for a new link.`);
-    // A client back in Open leads who applies through an agent's link goes to that agent.
-    if (!owner) {
-      await assignLead(me.id, viaAgent!, `Applied through ${viaAgent}'s link`);
-      owner = viaAgent;
-    }
-    const locked = true;
+    if (linkChat!.closedAt) bad('That chat has ended. Press "Request to apply" on the vehicle again.');
+    // The agent who sent this link handles this application (a client may have other agents for other vehicles).
+    const leadOwner = await touchLead(me, v.title, false, input.viaAgent);
+    if (!leadOwner) await assignLead(me.id, viaAgent!, `Applied through ${viaAgent}'s link`);
+    const owner = viaAgent;
+    const locked = !leadOwner || leadOwner === viaAgent; // the client's main agent is locked to them while they apply
     const app = await store.put<VehicleApplication>('applications', {
       id: newId('app'),
       referenceNo: `GB-${year()}-${pad4(await nextNumber(`app-${year()}`))}`,
@@ -552,7 +553,10 @@ export const createApplication = (me: User, input: any) =>
       const at = now();
       await store.put<ClientLead>('leads', { ...lead, lockedTo: viaAgent, lockedRef: app.referenceNo, lockedAt: at, history: [...lead.history, { at, text: `Locked to ${viaAgent}: applied through their link (${app.referenceNo})` }] });
       await notify('agent', 'Client locked to you', `${me.name} applied for the ${v.title} through your link (${app.referenceNo}). They are locked to you.`, 'leads', viaAgent);
+    }
+    {
       // The automatic message in the chat where the link was sent.
+      const at = now();
       const chat = (await store.get<Conversation>('conversations', linkChat!.id))!;
       const t = `I have finished the application for the ${v.title} through your link (${app.referenceNo}). You are now my agent for this purchase.`;
       await store.put<Conversation>('conversations', {
@@ -616,10 +620,14 @@ export const submitInfoSheet = (me: User, id: string, input: any) =>
 
 // After a release the client is free again: no agent, no lock, not in Open leads (until they ask to apply again), and
 // their chats with that agent end (read-only for the client, gone from the agent's list). The agent keeps the commission.
-const endAgentLink = async (clientId: string, agent: string, ref: string) => {
+const endAgentLink = async (clientId: string, agent: string, ref: string, vehicleId?: string) => {
   const at = now();
+  for (const r of await store.all<ApplyRequest>('apply_requests', { clientId, doneAt: { $exists: false }, ...(vehicleId ? { vehicleId } : { claimedBy: agent }) }))
+    await store.put<ApplyRequest>('apply_requests', { ...r, doneAt: at });
+  for (const c of await store.all<Conversation>('conversations', { buyerId: clientId, sellerName: agent, closedAt: { $exists: false } }))
+    await store.put<Conversation>('conversations', { ...c, closedAt: at, unreadSeller: 0 });
   const lead = await store.get<ClientLead>('leads', clientId);
-  if (lead) {
+  if (lead && (!lead.agentName || lead.agentName === agent)) {
     await store.put<ClientLead>('leads', {
       ...lead,
       agentName: undefined,
@@ -632,8 +640,6 @@ const endAgentLink = async (clientId: string, agent: string, ref: string) => {
       history: [...lead.history, { at, text: `Vehicle released (${ref}): ${agent}'s chat ended; the client can ask to apply again` }],
     });
   }
-  for (const c of await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false } }))
-    await store.put<Conversation>('conversations', { ...c, closedAt: at, unreadSeller: 0 });
 };
 
 // Admin: release the vehicle to the client, confirming it now has its OR and CR. Completes the sale.
@@ -649,7 +655,7 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
     // The commission exists only from the release: the agent who has the client gets it in full, payable at once.
     const existing = await store.one<Commission>('commissions', { applicationRef: app.referenceNo }); // older sales had one from approval
     const amount = input?.commission === undefined ? (app.commissionAmount ?? existing?.amount ?? commissionAmount(app, undefined)) : commissionAmount(app, input.commission);
-    const agent = (await ownerOf(app.applicantId)) ?? existing?.agentName ?? app.sellerName;
+    const agent = app.sellerName !== TEAM_NAME ? app.sellerName : (await ownerOf(app.applicantId)) ?? existing?.agentName ?? app.sellerName;
     const c: Commission = existing ?? {
       id: newId('com'),
       agentName: agent,
@@ -675,7 +681,7 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
     });
     const saved = await store.put<VehicleApplication>('applications', { ...app, status: 'completed', releasedAt: now(), orcrConfirmed: true, orcrUrl: fileUrl(orcr._id), orcrFileName: orcr.name, commissionAmount: amount });
     await releaseLock(saved);
-    await endAgentLink(app.applicantId, agent, app.referenceNo);
+    await endAgentLink(app.applicantId, agent, app.referenceNo, app.vehicleId);
     await notify('agent', 'Vehicle released: full commission', `The ${app.vehicleTitle} was released to ${app.applicantName}. Your full commission of ₱${amount.toLocaleString()} is approved and awaiting the cash transfer.`, 'commissions', agent);
     await notify('client', 'Vehicle released', `Your ${app.vehicleTitle} has been released to you with its OR and CR. Thank you for choosing Broom Broom.`, 'applications', app.applicantId);
     return saved;
@@ -1171,7 +1177,7 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     const isAgent = me.role === 'seller';
     if (me.role === 'buyer' && conv.buyerId !== me.id) forbidden();
     if (conv.closedAt) bad('This chat ended when your vehicle was released. Press "Request to apply" on a vehicle to get an agent again.');
-    if (me.role === 'buyer' && !(await ownerOf(me.id))) bad(NEEDS_AGENT);
+    if (me.role === 'buyer' && conv.sellerName === TEAM_NAME && !conv.takenOverAt) bad(NEEDS_AGENT);
     if (isAgent && conv.sellerName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
     if (me.role === 'admin' && !conv.takenOverAt) forbidden('Admins can read conversations but not reply in them. Take over the chat first.');
     let link: Pick<ChatMessage, 'applyVehicleId' | 'applyVehicleTitle' | 'applyAgent'> = {};
@@ -1220,15 +1226,54 @@ export const requestToApply = (me: User, input: any) =>
         before = await store.get<ClientLead>('leads', me.id);
       }
     }
-    const isNew = !before;
+    if (await store.one('apply_requests', { clientId: me.id, vehicleId: v.id, doneAt: { $exists: false } })) bad('You already asked to apply for this vehicle. An agent will message you.');
     if (before?.doneAt) await store.put<ClientLead>('leads', { ...before, doneAt: undefined, pooledAt: now(), escalatedAt: undefined });
-    const owner = await touchLead(me, v.title, false, input?.ref);
+    const isNew = !before;
+    await touchLead(me, v.title, false, input?.ref);
     const lead = (await store.get<ClientLead>('leads', me.id))!;
     const at = now();
-    await store.put<ClientLead>('leads', { ...lead, interest: v.title, applyVehicleId: v.id, lastClientAt: at, history: [...lead.history, { at, text: `Asked to apply for the ${v.title}` }] });
-    if (owner) await notify('agent', 'Client wants to apply', `${me.name} wants to apply for the ${v.title}. Send them the apply link in your chat.`, 'messages', owner);
-    else if (!isNew) await notify('agent', 'New lead', `${me.name} wants to apply for the ${v.title}. Claim them in Open leads.`, 'leads');
-    return { agent: owner ?? null };
+    await store.put<ClientLead>('leads', { ...lead, interest: v.title, lastClientAt: at, history: [...lead.history, { at, text: `Asked to apply for the ${v.title}` }] });
+    await store.put<ApplyRequest>('apply_requests', { id: newId('ar'), clientId: me.id, clientName: me.name, vehicleId: v.id, vehicleTitle: v.title, createdAt: at });
+    if (!isNew) await notify('agent', 'New lead', `${me.name} wants to apply for the ${v.title}. Claim them in Open leads.`, 'leads');
+    return { agent: null };
+  });
+
+// Agent: claim a request to apply. First come, first served: the winner opens the chat about that vehicle (with
+// their introduction) and sends the apply link there. The client keeps any other agents for other vehicles.
+export const claimRequest = (me: User, id: string) =>
+  tx(async () => {
+    const r = need(await store.get<ApplyRequest>('apply_requests', idOf(id)), 'Request');
+    if (r.doneAt) bad('This request is closed.');
+    if (r.claimedBy) throw new HttpError(409, `${r.clientName}'s request for the ${r.vehicleTitle} was already claimed${r.claimedBy === me.name ? ' by you' : ` by ${r.claimedBy}`}.`);
+    const v = await store.get<Vehicle>('vehicles', r.vehicleId);
+    const client = need(await users.byId(r.clientId), 'Client');
+    const at = now();
+    const lead = await store.get<ClientLead>('leads', r.clientId);
+    // A client with no agent yet gets this one as their main agent, locked while they apply.
+    if (lead && !lead.agentName)
+      await store.put<ClientLead>('leads', {
+        ...lead, agentName: me.name, source: 'pool', claimedAt: at, escalatedAt: undefined, doneAt: undefined,
+        lockedTo: me.name, lockedRef: `request:${r.vehicleId}`, lockedAt: at,
+        history: [...lead.history, { at, text: `Claimed by ${me.name} for the ${r.vehicleTitle}` }],
+      });
+    else if (lead) await store.put<ClientLead>('leads', { ...lead, history: [...lead.history, { at, text: `${me.name} claimed the request for the ${r.vehicleTitle}` }] });
+    // The chat about this vehicle, now with this agent.
+    let conv = await store.one<Conversation>('conversations', { buyerId: r.clientId, vehicleId: r.vehicleId, closedAt: { $exists: false }, sellerName: { $in: [TEAM_NAME, me.name] } });
+    if (!conv)
+      conv = {
+        id: newId('conv'), vehicleId: r.vehicleId, vehicleTitle: r.vehicleTitle, vehiclePrice: v?.price ?? 0, vehicleImage: v?.images[0] ?? '',
+        buyerId: r.clientId, buyerName: client.name, sellerId: agentSlug(me.name), sellerName: me.name, lastMessage: '', updatedAt: at, unreadBuyer: 0, unreadSeller: 0, messages: [],
+      };
+    const t = `Hi ${client.name.split(' ')[0]}! I'm ${me.name}, your Broom Broom agent for the ${r.vehicleTitle}. I can help you with viewings, quotations and your application. How can I help?`;
+    await store.put<Conversation>('conversations', {
+      ...conv, sellerId: agentSlug(me.name), sellerName: me.name, lastMessage: t, updatedAt: at, unreadBuyer: conv.unreadBuyer + 1,
+      messages: [...conv.messages, { id: newId('msg'), senderId: me.id, senderName: me.name, text: t, timestamp: at, isSeller: true }],
+    });
+    if (v?.status === 'available') await sendMessage(me, conv.id, { applyVehicleId: v.id });
+    await store.put<ApplyRequest>('apply_requests', { ...r, claimedBy: me.name, claimedAt: at, conversationId: conv.id });
+    await notify('client', 'Your agent', `${me.name} is your Broom Broom agent for the ${r.vehicleTitle} and sent you the application link.`, 'messages', r.clientId);
+    await notify('admin', 'Lead claimed', `${me.name} claimed ${r.clientName}'s request for the ${r.vehicleTitle}.`, 'leads');
+    return { clientName: r.clientName, conversationId: conv.id };
   });
 
 // Admin: answer a client who has waited 2 days in a chat. Reading chats stays silent; a takeover is told to the agent.

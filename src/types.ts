@@ -404,6 +404,21 @@ export interface Quotation {
 }
 
 // Which agent a client belongs to. One per client: every chat, application and commission follows it.
+// A client's "Request to apply" for one vehicle. Open to every agent; the first to claim it handles that vehicle
+// with the client (the chat about it and the apply link), even when the client has other agents for other vehicles.
+export interface ApplyRequest {
+  id: string;
+  clientId: string;
+  clientName: string;
+  vehicleId: string;
+  vehicleTitle: string;
+  createdAt: string;
+  claimedBy?: string;
+  claimedAt?: string;
+  conversationId?: string;
+  doneAt?: string; // released, or the vehicle is gone
+}
+
 export interface ClientLead {
   id: string;
   clientId: string;

@@ -23,6 +23,7 @@ import {
   LedgerAccount,
   Referral,
   ReferralStatus,
+  ApplyRequest,
 } from '../types.ts';
 import { api, uploadFile, ApiError } from '../api.ts';
 import type { InfoSheet } from '../components/infoSheet.ts';
@@ -138,6 +139,7 @@ interface ServerState {
   salesEntries?: SalesEntry[];
   ledgerAccounts?: LedgerAccount[];
   referrals?: Referral[];
+  applyRequests?: ApplyRequest[];
   agents?: string[];
   users?: AccountSummary[];
   myAgent?: string | null;
@@ -221,6 +223,7 @@ interface AppContextType {
   salesEntries: SalesEntry[];
   ledgerAccounts: LedgerAccount[];
   referrals: Referral[];
+  applyRequests: ApplyRequest[];
   leads: ClientLead[];
   notifications: AppNotification[];
   agents: string[];
@@ -324,6 +327,7 @@ interface AppContextType {
   // Leads
   // Both return the chat with that client (started with the agent's introduction when there was none).
   claimLead: (clientId: string) => Promise<string | null>;
+  claimRequest: (requestId: string) => Promise<string | null>;
   openClientChat: (clientId: string) => Promise<string | null>;
   assignLead: (clientId: string, agentName: string | null) => Promise<boolean>;
   unlockLead: (clientId: string) => Promise<boolean>;
@@ -869,6 +873,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     done(await run(() => api(`/reports/${reportId}/resolve`, { body: { action } }), ['Report resolved', action === 'dismiss' ? 'Dismissed.' : 'The listing was hidden.']));
 
   // ----- Leads -----
+  const claimRequest = async (requestId: string) =>
+    (await run(() => api<{ conversationId?: string }>(`/apply-requests/${encodeURIComponent(requestId)}/claim`, { body: {} }), ['Client claimed', 'Your introduction and the apply link were sent in the chat.'], 'Could not claim'))?.conversationId ?? null;
   const claimLead = async (clientId: string) =>
     (await run(() => api<{ conversationId?: string }>(`/leads/${encodeURIComponent(clientId)}/claim`, { body: {} }), ['Client claimed', 'Your introduction (and the apply link, if they asked to apply) was sent in the chat.'], 'Could not claim'))?.conversationId ?? null;
   const openClientChat = async (clientId: string) =>
@@ -937,6 +943,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         salesEntries: data.salesEntries ?? [],
         ledgerAccounts: data.ledgerAccounts ?? [],
         referrals: data.referrals ?? [],
+        applyRequests: data.applyRequests ?? [],
         leads: data.leads ?? [],
         notifications: data.notifications ?? [],
         agents: data.agents ?? [],
@@ -1026,6 +1033,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         adminResolveReport,
 
         claimLead,
+        claimRequest,
         openClientChat,
         assignLead,
         unlockLead,

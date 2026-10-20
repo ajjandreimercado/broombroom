@@ -34,6 +34,7 @@ export const SellerDashboardView: React.FC = () => {
     sendMessage,
     sendApplyLink,
     leads,
+    applyRequests,
     applications,
     markConversationRead,
   } = useApp();
@@ -41,7 +42,7 @@ export const SellerDashboardView: React.FC = () => {
   // Every agent can sell every listing; chats and commissions are only for the agent's own clients.
   const me = currentUser?.name;
   const sellerVehicles = vehicles;
-  const openLeads = leads.filter((l) => !l.agentName).length;
+  const openLeads = applyRequests.filter((r) => !r.claimedBy && !r.doneAt).length + leads.filter((l) => !l.agentName && !l.doneAt && !applyRequests.some((r) => r.clientId === l.clientId && !r.claimedBy && !r.doneAt)).length;
   const conversations = allConversations.filter((c) => c.sellerName === me);
   const commissions = allCommissions.filter((c) => c.agentName === me);
   const payable = commissions.filter((c) => c.status === 'payable');
