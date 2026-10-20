@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check } from 'lucide-react';
-import { VehicleApplication } from '../types.ts';
+import { Quotation, VehicleApplication } from '../types.ts';
+import { useApp } from '../context/AppContext.tsx';
 
 const STOPPED = ['declined', 'withdrawn'];
 
@@ -10,12 +11,13 @@ export const amountPaid = (app: VehicleApplication) => (app.payments ?? []).redu
 
 // Where a client's purchase stands, from application to release. Built from the shared application record,
 // so it moves on its own when the admin acts in another tab (AppContext syncs storage across tabs).
-export const progressSteps = (app: VehicleApplication) => {
+export const progressSteps = (app: VehicleApplication, quotations: Quotation[] = []) => {
   const reached = (...st: VehicleApplication['status'][]) => st.includes(app.status);
   const reserved = reached('reserved', 'processing', 'approved', 'completed');
   const sheetIn = reached('processing', 'approved', 'completed');
   const approved = reached('approved', 'completed');
   const completed = app.status === 'completed';
+  const quoted = quotations.some((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId && q.status !== 'requested');
   const docs = app.documents ?? [];
   const docsDone = reserved || (docs.length > 0 && docs.every((d) => d.status === 'approved'));
   const missing = docs.filter((d) => !d.fileName).length;
@@ -27,6 +29,7 @@ export const progressSteps = (app: VehicleApplication) => {
       done: docsDone,
     },
     { label: 'Reserved', detail: reserved ? 'Vehicle held for you · AR released' : 'After your documents are checked', done: reserved },
+    { label: 'Quotation', detail: quoted ? 'Sent · see My Quotations' : reserved ? 'Admin is preparing it' : 'After the reservation', done: quoted || sheetIn },
     { label: 'Information sheet', detail: sheetIn ? 'Received' : reserved ? 'Please fill it in' : 'After the reservation', done: sheetIn },
     { label: 'Approved', detail: approved ? 'Application approved' : sheetIn ? 'Admin is processing' : 'After the information sheet', done: approved },
     { label: 'Released to you', detail: completed ? 'With OR and CR' : 'Once the OR and CR are ready', done: completed },
@@ -37,10 +40,11 @@ export const progressSteps = (app: VehicleApplication) => {
 
 export const ApplicationProgress: React.FC<{ app: VehicleApplication; stacked?: boolean }> = ({ app, stacked }) => {
   const sm = (cls: string) => (stacked ? '' : cls); // wide layouts lay the steps out in a row
-  const { steps, current, stopped } = progressSteps(app);
+  const { quotations } = useApp();
+  const { steps, current, stopped } = progressSteps(app, quotations);
   return (
     <div>
-      <ol className={`grid grid-cols-1 ${sm('sm:grid-cols-6 sm:gap-2')}`} aria-label="Purchase progress">
+      <ol className={`grid grid-cols-1 ${sm('sm:grid-cols-7 sm:gap-2')}`} aria-label="Purchase progress">
         {steps.map((s, i) => {
           const isCurrent = i === current && !stopped;
           return (

@@ -874,8 +874,8 @@ export const AccountView: React.FC = () => {
 
       {/* Application Detail Modal */}
       {viewingApplication && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#141517]/50 flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-label="Application details" className="w-full max-w-lg bg-white border border-[#141517] p-6 sm:p-8 space-y-5 animate-modal-in">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#141517]/50 flex justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-label="Application details" className="my-auto w-full max-w-lg bg-white border border-[#141517] p-6 sm:p-8 space-y-5 animate-modal-in">
             <div className="flex items-center justify-between pb-3 border-b border-[#DDE3E6]">
               <div>
                 <span className="text-[11px] tabular-nums font-bold text-[#6B767D]">
@@ -885,6 +885,7 @@ export const AccountView: React.FC = () => {
               </div>
               <button
                 onClick={() => setViewingAppId(null)}
+                aria-label="Close"
                 className="p-1.5 rounded-[2px] text-[#6B767D] hover:text-[#2A2E31] cursor-pointer"
               >
                 <X className="w-4 h-4" />
