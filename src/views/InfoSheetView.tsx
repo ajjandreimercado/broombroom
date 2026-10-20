@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { AFFIRMATION, PURPOSES, SHEET, cleanInfoSheet, type Dependent, type SheetField } from '../components/infoSheet.ts';
 import { checkUpload } from '../components/admin/ui.tsx';
+import { quoteFor } from '../components/quote.ts';
 import { photoDataUrl } from '../media.ts';
 import { dataUrlToBlob } from '../api.ts';
 import { ArrowLeft, Eraser, Paperclip, PenLine, Plus, Trash2, X } from 'lucide-react';
@@ -107,7 +108,7 @@ export const InfoSheetView: React.FC = () => {
 
   const back = () => navigateTo('account', { accountTab: 'applications' });
   // The sheet opens once the client signed their quotation and sent it back.
-  const signed = !!app && quotations.some((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId && q.status === 'returned');
+  const signed = !!app && quoteFor(quotations, app)?.status === 'returned';
   if (!app || app.status !== 'reserved' || !signed) {
     return (
       <section className="gb-container py-16">

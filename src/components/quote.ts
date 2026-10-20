@@ -1,4 +1,4 @@
-import type { Quotation } from '../types.ts';
+import type { Quotation, VehicleApplication } from '../types.ts';
 
 export const QUOTE_TERMS = [12, 24, 36, 48, 60];
 export const DEFAULT_RATE = 8.5; // same rate as the listing page's financing estimate
@@ -44,5 +44,11 @@ export const daysFromToday = (days: number) => {
   d.setDate(d.getDate() + days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+// The quotation made for this application. Two applications for the same car must never share one, so the match is by
+// the application's reference; older quotations without one fall back to the same client and car.
+export const quoteFor = (quotations: Quotation[], app: VehicleApplication) =>
+  quotations.find((q) => q.applicationRef === app.referenceNo) ??
+  quotations.find((q) => !q.applicationRef && q.clientId === app.applicantId && q.vehicleId === app.vehicleId);
+
 export const quoteLabel = (q: Quotation) =>
   q.status === 'requested' ? 'Being prepared' : q.status === 'returned' ? 'Signed & returned' : q.status === 'accepted' ? 'Accepted' : isExpired(q) ? 'Expired' : 'Sent';

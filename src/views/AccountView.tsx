@@ -4,6 +4,7 @@ import { StatusMark } from '../components/StatusMark.tsx';
 import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts';
 import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
 import { MyQuotations } from '../components/MyQuotations.tsx';
+import { quoteFor } from '../components/quote.ts';
 import { useApp } from '../context/AppContext.tsx';
 import { AccountTab } from '../context/AppContext.tsx';
 import { VehicleCard } from '../components/VehicleCard.tsx';
@@ -527,7 +528,7 @@ export const AccountView: React.FC = () => {
                         </div>
                         {app.status === 'reserved' && (() => {
                           // After the reservation: the admin sends a quotation, the client signs it back, then the information sheet.
-                          const quote = quotations.find((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId);
+                          const quote = quoteFor(quotations, app);
                           const signed = quote?.status === 'returned';
                           const toSign = quote?.status === 'sent';
                           return (

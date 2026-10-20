@@ -8,6 +8,7 @@ import { dataUrlToBlob } from '../api.ts';
 import { amountPaid } from './ApplicationProgress.tsx';
 import { photoDataUrl } from '../media.ts';
 import { Quotations } from './admin/Quotations.tsx';
+import { quoteFor } from './quote.ts';
 import { FilterTabs, SectionHeader, EmptyState, ReasonAction, btn, peso, shortDate, checkUpload } from './admin/ui.tsx';
 import { Check, PhoneCall, PackageCheck, Paperclip, Pencil, Plus, X, FileText } from 'lucide-react';
 
@@ -329,7 +330,7 @@ const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
       </div>
       <label className="flex items-start gap-2 text-[13.5px] text-[#141517] cursor-pointer">
         <input type="checkbox" checked={orcr} onChange={(e) => setOrcr(e.target.checked)} className="mt-0.5 w-4 h-4 accent-[#1D5FD1]" />
-        This vehicle now has its OR and CR, and is ready to be released to {app.applicantName}.
+        This vehicle ({app.vehicleTitle}) now has its OR and CR, and is ready to be released to <strong>{app.applicantName}</strong> for <strong className="tabular-nums">{app.referenceNo}</strong>.
       </label>
       <div className="flex gap-2">
         <button type="submit" disabled={!orcr || !file} className={btn.ink}>Confirm release</button>
@@ -357,7 +358,7 @@ export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 
     (f === 'closed' && (a.status === 'declined' || a.status === 'withdrawn'));
   const count = (f: Filter) => applications.filter((a) => matches(f, a)).length;
   const rows = applications.filter((a) => matches(filter, a));
-  const quoteOf = (app: VehicleApplication) => quotations.find((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId && q.status !== 'accepted');
+  const quoteOf = (app: VehicleApplication) => { const q = quoteFor(quotations, app); return q?.status === 'accepted' ? undefined : q; };
   const viewSheet = (app: VehicleApplication) => !openInfoSheet(app) && showToast('Allow pop-ups', 'Your browser blocked the sheet window. Allow pop-ups for this site and try again.', 'error');
 
   return (

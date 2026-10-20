@@ -2,6 +2,7 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { Quotation, VehicleApplication } from '../types.ts';
 import { useApp } from '../context/AppContext.tsx';
+import { quoteFor } from './quote.ts';
 
 const STOPPED = ['declined', 'withdrawn'];
 
@@ -17,7 +18,7 @@ export const progressSteps = (app: VehicleApplication, quotations: Quotation[] =
   const sheetIn = reached('processing', 'approved', 'completed');
   const approved = reached('approved', 'completed');
   const completed = app.status === 'completed';
-  const quote = quotations.find((q) => q.clientId === app.applicantId && q.vehicleId === app.vehicleId);
+  const quote = quoteFor(quotations, app);
   const quoted = quote?.status === 'returned' || quote?.status === 'accepted';
   const docs = app.documents ?? [];
   const docsDone = reserved || (docs.length > 0 && docs.every((d) => d.status === 'approved'));

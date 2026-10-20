@@ -600,7 +600,7 @@ export const submitInfoSheet = (me: User, id: string, input: any) =>
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
     if (app.applicantId !== me.id) forbidden();
     if (app.status !== 'reserved') bad(app.infoSheet ? 'Your information sheet is already in.' : 'The information sheet opens once the vehicle is reserved for you.');
-    if (!(await store.one('quotations', { clientId: app.applicantId, vehicleId: app.vehicleId, status: 'returned' }))) bad('Sign and send back your quotation first (My Quotations).');
+    if (!(await store.one('quotations', { ...quoteFilter(app), status: 'returned' }))) bad('Sign and send back your quotation first (My Quotations).');
     const sheet = cleanInfoSheet(input);
     if (typeof sheet === 'string') bad(sheet);
     const sketch = input?.sketchFileId ? await attachUpload(input.sketchFileId, me, me.id, IMG) : undefined;
@@ -906,12 +906,17 @@ export const deleteSalesEntry = (id: string) =>
   });
 
 // ---------- quotations ----------
+// The quotation of one application: by its reference; older quotations without one, by the same client and car.
+const quoteFilter = (app: VehicleApplication) => ({
+  $or: [{ applicationRef: app.referenceNo }, { applicationRef: { $exists: false }, clientId: app.applicantId, vehicleId: app.vehicleId }],
+});
+
 // Admin: after reserving, prepare the client's quotation from their application. It is edited and sent from Quotations.
 export const quoteApplication = (id: string) =>
   tx(async () => {
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
     if (app.status !== 'reserved') bad('A quotation is made after the vehicle is reserved and before processing.');
-    if (await store.one('quotations', { clientId: app.applicantId, vehicleId: app.vehicleId, status: { $in: ['requested', 'sent', 'returned'] } })) bad('This client already has a quotation for this vehicle.');
+    if (await store.one('quotations', { ...quoteFilter(app), status: { $in: ['requested', 'sent', 'returned'] } })) bad('This application already has a quotation.');
     const v = need(await store.get<Vehicle>('vehicles', app.vehicleId), 'Listing');
     const me = need(await users.byId(app.applicantId), 'Client');
     const method = app.purchaseMethod;
@@ -926,9 +931,9 @@ export const quoteApplication = (id: string) =>
       vehicleTitle: v.title,
       vehicleImage: v.images[0],
       clientId: me.id,
-      clientName: me.name,
-      clientEmail: me.email,
-      clientPhone: me.phone,
+      clientName: app.applicantName,
+      clientEmail: app.applicantEmail || me.email,
+      clientPhone: app.applicantPhone || me.phone,
       clientAddress: [a?.street, a?.barangay, a?.city, a?.province].filter(Boolean).join(', ') + (a?.postalCode ? ` ${a.postalCode}` : ''),
       method,
       clientNote: `For ${app.referenceNo}`,
@@ -1015,7 +1020,7 @@ export const returnQuotation = (me: User, id: string, input: any) =>
       returnedAt: now(),
     });
     await notify('admin', 'Quotation returned', `${me.name} signed and sent back ${q.quoteNo} for the ${q.vehicleTitle}${saved.clientReply ? ` with a note: ${saved.clientReply}` : ''}.`, 'applications');
-    const app = await store.one<VehicleApplication>('applications', { applicantId: me.id, vehicleId: q.vehicleId, status: 'reserved' });
+    const app = await store.one<VehicleApplication>('applications', q.applicationRef ? { referenceNo: q.applicationRef, status: 'reserved' } : { applicantId: me.id, vehicleId: q.vehicleId, status: 'reserved' });
     if (app) await notify('client', 'Quotation received', `Thank you. Next: fill in the Applicant's Information Sheet for ${app.referenceNo}.`, 'applications', me.id);
     return { quotation: saved, email: app ? { to: me.email, name: me.name, appId: app.id, referenceNo: app.referenceNo, vehicle: app.vehicleTitle } : undefined };
   });

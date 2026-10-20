@@ -1009,3 +1009,34 @@ test('security: agents never get info sheets; bad Origin refused; oversized uplo
   const res = await fetch(base + up.url, { headers: { 'X-Portal': 'buyer', Cookie: '' } });
   assert.equal(res.status, 403, 'private files need the owner or an admin');
 });
+
+test('two applications for the same car: each has its own quotation; the release pays the right client and the approved commission', async () => {
+  const c = await newClient();
+  const ad = await admin();
+  const v = await freeVehicle();
+  // first application (written as "AJ Jandrei"), reserved with a quotation, then cancelled
+  const first = (await apply(c, v.id, { applicantName: 'AJ Jandrei' })).data;
+  await approveDocs(ad, first.id);
+  assert.equal((await reserve(ad, first.id)).status, 200);
+  const q1 = await signQuote(ad, c, first.id);
+  assert.equal((await ad.post(`/api/applications/${first.id}/status`, { status: 'declined', note: 'Changed buyer' })).status, 200);
+  // second application for the same car (written as "Kent Magtibay")
+  const second = (await apply(c, v.id, { applicantName: 'Kent Magtibay' })).data;
+  await approveDocs(ad, second.id);
+  assert.equal((await reserve(ad, second.id)).status, 200);
+  assert.equal((await c.post(`/api/applications/${second.id}/info-sheet`, SHEET_OK)).status, 400, 'the first application’s signed quotation does not count');
+  const q2 = (await ad.post(`/api/applications/${second.id}/quotation`)).data;
+  assert.notEqual(q2.id, q1);
+  assert.equal(q2.applicationRef, second.referenceNo);
+  assert.equal(q2.clientName, 'Kent Magtibay', 'the name on this application');
+  await ad.patch(`/api/quotations/${q2.id}`, { changes: {}, send: true });
+  assert.equal((await c.post(`/api/quotations/${q2.id}/return`, { conforme: 'Kent Magtibay' })).status, 200);
+  assert.equal((await c.post(`/api/applications/${second.id}/info-sheet`, SHEET_OK)).status, 200);
+  assert.equal((await ad.post(`/api/applications/${second.id}/status`, { status: 'approved', commission: 40000 })).status, 200);
+  assert.equal((await ad.post(`/api/applications/${second.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  const coms = (await ad.state()).commissions.filter((x: any) => x.applicationRef === second.referenceNo || x.applicationRef === first.referenceNo);
+  assert.equal(coms.length, 1, 'one commission, for the released application only');
+  assert.equal(coms[0].applicationRef, second.referenceNo);
+  assert.equal(coms[0].clientName, 'Kent Magtibay');
+  assert.equal(coms[0].amount, 40000);
+});
