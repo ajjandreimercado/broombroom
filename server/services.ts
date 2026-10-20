@@ -30,7 +30,7 @@ import { DEFAULT_RATE, DEFAULT_VALID_DAYS, QUOTE_TERMS, daysFromToday, isExpired
 import { DOCS, MIN_UPLOADS } from '../src/components/requirements.ts';
 import { accountBalance, creditAvailable } from '../src/components/accounting/ledger.ts';
 import { store, tx, nextNumber, raw, opts, files } from './db.ts';
-import { users, HttpError, validPassword, PASSWORD_RULE, type User } from './auth.ts';
+import { users, HttpError, validPassword, PASSWORD_RULE, rateLimit, type User } from './auth.ts';
 import type { GoogleProfile } from './google.ts';
 import { cleanInfoSheet, type InfoSheet } from '../src/components/infoSheet.ts';
 
@@ -167,9 +167,22 @@ export const claimLead = (me: User, clientId: string) =>
     const lead = need(await store.get<ClientLead>('leads', idOf(clientId)), 'Lead');
     if (lead.agentName) throw new HttpError(409, `${lead.clientName} is already ${lead.agentName === me.name ? 'your' : `${lead.agentName}'s`} client.`);
     const at = now();
-    await store.put('leads', { ...lead, agentName: me.name, source: 'pool', claimedAt: at, escalatedAt: undefined, history: [...lead.history, { at, text: `Claimed by ${me.name}` }] });
+    // First come, first served: a client who asked to apply goes to the first agent who claims them, the apply link is
+    // sent in the new chat, and the client stays with that agent (locked) while they apply.
+    const wanted = lead.applyVehicleId ? await store.get<Vehicle>('vehicles', lead.applyVehicleId) : undefined;
+    const sendLink = wanted?.status === 'available';
+    await store.put<ClientLead>('leads', {
+      ...lead,
+      agentName: me.name,
+      source: 'pool',
+      claimedAt: at,
+      escalatedAt: undefined,
+      ...(sendLink ? { lockedTo: me.name, lockedRef: `request:${wanted!.id}`, lockedAt: at } : {}),
+      history: [...lead.history, { at, text: sendLink ? `Claimed by ${me.name}, who sent the apply link for the ${wanted!.title}` : `Claimed by ${me.name}` }],
+    });
     await moveClient(lead.clientId, me.name);
     const conversationId = await introduceAgent(lead.clientId, me.name);
+    if (sendLink && conversationId) await sendMessage(me, conversationId, { applyVehicleId: wanted!.id });
     await notify('admin', 'Lead claimed', `${me.name} claimed ${lead.clientName} (${lead.interest}).`, 'leads');
     return { clientName: lead.clientName, conversationId };
   });
@@ -1033,8 +1046,10 @@ export const GENERAL_TOPIC = 'General inquiry';
 
 // A client opens a chat with their agent (or the sales team, before they have one): about a listing, or a general
 // question when vehicleId is empty. With a message it is sent as the first message (or added to the existing chat).
+const NEEDS_AGENT = 'You can chat once an agent takes you on. Press "Request to apply" on a vehicle; the agent who claims you starts the chat.';
 export const startConversation = (me: User, vehicleId: unknown, ref: unknown, message?: unknown) =>
   tx(async () => {
+    if (!(await ownerOf(me.id))) bad(NEEDS_AGENT);
     const v = vehicleId ? need(await store.get<Vehicle>('vehicles', idOf(vehicleId)), 'Listing') : undefined;
     const first = text(message, 'Message', 2000, false);
     const existing = await store.one<Conversation>('conversations', { buyerId: me.id, vehicleId: v?.id ?? '' });
@@ -1070,11 +1085,14 @@ export const startConversation = (me: User, vehicleId: unknown, ref: unknown, me
 const introduceAgent = async (clientId: string, agent: string): Promise<string | undefined> => {
   const client = await users.byId(clientId);
   if (!client) return undefined;
-  let conv = (await store.all<Conversation>('conversations', { buyerId: clientId }, { updatedAt: -1 }))[0];
+  const wanted = (await store.get<ClientLead>('leads', clientId))?.applyVehicleId;
+  let conv = wanted
+    ? await store.one<Conversation>('conversations', { buyerId: clientId, vehicleId: wanted })
+    : (await store.all<Conversation>('conversations', { buyerId: clientId }, { updatedAt: -1 }))[0];
   if (!conv) {
     const app = (await store.all<VehicleApplication>('applications', { applicantId: clientId }, { submittedAt: -1 }))[0];
     const quote = (await store.all<Quotation>('quotations', { clientId }, { requestedAt: -1 }))[0];
-    const vid = app?.vehicleId ?? quote?.vehicleId;
+    const vid = wanted ?? app?.vehicleId ?? quote?.vehicleId;
     const v = vid ? await store.get<Vehicle>('vehicles', vid) : undefined;
     conv = {
       id: newId('conv'), vehicleId: v?.id ?? '', vehicleTitle: v?.title ?? GENERAL_TOPIC, vehiclePrice: v?.price ?? 0, vehicleImage: v?.images[0] ?? '',
@@ -1113,6 +1131,7 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     const conv = need(await store.get<Conversation>('conversations', idOf(convId)), 'Conversation');
     const isAgent = me.role === 'seller';
     if (me.role === 'buyer' && conv.buyerId !== me.id) forbidden();
+    if (me.role === 'buyer' && !(await ownerOf(me.id))) bad(NEEDS_AGENT);
     if (isAgent && conv.sellerName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
     if (me.role === 'admin' && !conv.takenOverAt) forbidden('Admins can read conversations but not reply in them. Take over the chat first.');
     let link: Pick<ChatMessage, 'applyVehicleId' | 'applyVehicleTitle' | 'applyAgent'> = {};
@@ -1141,6 +1160,23 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     const lead = await store.get<ClientLead>('leads', conv.buyerId);
     if (lead) await store.put('leads', reply ? (isAdmin || lead.agentName === me.name ? { ...lead, lastAgentAt: at } : lead) : { ...lead, lastClientAt: at });
     if (reply) await notify('client', 'New message', `${msg.senderName} replied about the ${conv.vehicleTitle}.`, 'messages', conv.buyerId);
+  });
+
+// Client: "Request to apply". No chat yet: the client waits in Open leads (or their agent is told) with the vehicle noted.
+// The agent who claims them starts the chat about it and sends the apply link there.
+export const requestToApply = (me: User, input: any) =>
+  tx(async () => {
+    rateLimit(`applyreq|${me.id}`, 10, 60 * 60e3, 'Too many requests. Please try again later.');
+    const v = need(await store.get<Vehicle>('vehicles', idOf(input?.vehicleId)), 'Listing');
+    if (v.status !== 'available') bad('This vehicle is no longer available.');
+    const isNew = !(await store.get<ClientLead>('leads', me.id));
+    const owner = await touchLead(me, v.title, false, input?.ref);
+    const lead = (await store.get<ClientLead>('leads', me.id))!;
+    const at = now();
+    await store.put<ClientLead>('leads', { ...lead, interest: v.title, applyVehicleId: v.id, lastClientAt: at, history: [...lead.history, { at, text: `Asked to apply for the ${v.title}` }] });
+    if (owner) await notify('agent', 'Client wants to apply', `${me.name} wants to apply for the ${v.title}. Send them the apply link in your chat.`, 'messages', owner);
+    else if (!isNew) await notify('agent', 'New lead', `${me.name} wants to apply for the ${v.title}. Claim them in Open leads.`, 'leads');
+    return { agent: owner ?? null };
   });
 
 // Admin: answer a client who has waited 2 days in a chat. Reading chats stays silent; a takeover is told to the agent.

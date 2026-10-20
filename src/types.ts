@@ -411,7 +411,8 @@ export interface ClientLead {
   createdAt: string;
   pooledAt?: string; // when it (re-)entered the pool; the 2-hour unclaimed rule counts from here
   claimedAt?: string;
-  interest: string; // the vehicle that first brought the client in
+  interest: string; // the vehicle that brought the client in (or the latest one they asked to apply for)
+  applyVehicleId?: string; // the vehicle the client asked to apply for; the claiming agent's chat is about it
   lastClientAt?: string; // client's latest message, application or quotation request
   lastAgentAt?: string; // owning agent's latest reply
   escalatedAt?: string; // admin was told it sat unclaimed

@@ -319,6 +319,7 @@ export const createApp = () => {
     requireRole('admin'),
     act((req) => svc.reserveApplication(me(req), req.params.id, body(req)))
   );
+  api.post('/apply-requests', requireRole('buyer'), act((req) => svc.requestToApply(me(req), body(req))));
   api.post('/applications/:id/info-sheet', requireRole('buyer'), act((req) => svc.submitInfoSheet(me(req), req.params.id, body(req))));
   api.post('/applications/:id/release', requireRole('admin'), act((req) => svc.releaseVehicle(me(req), req.params.id, body(req))));
   api.patch('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.updatePayment(me(req), req.params.id, req.params.arNo, body(req))));

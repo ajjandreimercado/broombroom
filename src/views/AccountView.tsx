@@ -573,7 +573,7 @@ export const AccountView: React.FC = () => {
                   <div className="flex-1 overflow-y-auto divide-y divide-[#DDE3E6]">
                     {conversations.length === 0 ? (
                       <div className="p-6 text-center text-xs text-[#4E585E]">
-                        No conversations yet. Use New message, or Message on any listing.
+                        No conversations yet. Press “Request to apply” on a vehicle: the first agent to take you on starts the chat here with your application link.
                       </div>
                     ) : (
                       conversations.map((conv) => (

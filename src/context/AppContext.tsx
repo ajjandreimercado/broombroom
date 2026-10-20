@@ -789,6 +789,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ----- Chat -----
   const startOrOpenConversation = async (vehicleId: string) => {
+    if (!data.myAgent) {
+      showToast('No agent yet', 'Press “Request to apply” on a vehicle. The agent who takes you on starts the chat.', 'error');
+      return '';
+    }
     const existing = data.conversations?.find((c) => c.vehicleId === vehicleId && c.buyerId === currentUser?.id);
     if (existing) return existing.id;
     const conv = await run(() => api<Conversation>('/conversations', { body: { vehicleId, ref: takeRef() } }), undefined, 'Could not start the chat');
@@ -796,6 +800,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return conv?.id ?? '';
   };
   const writeToAgent = async (vehicleId: string, text: string) => {
+    if (!data.myAgent) {
+      showToast('No agent yet', 'Press “Request to apply” on a vehicle. The agent who takes you on starts the chat.', 'error');
+      return '';
+    }
     const conv = await run(() => api<Conversation>('/conversations', { body: { vehicleId, text, ref: takeRef() } }), ['Message sent'], 'Message not sent');
     if (conv) clearRef();
     return conv?.id ?? '';
@@ -810,18 +818,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {}
     navigateTo('apply', { vehicleId });
   };
-  // Clients don't open the application form themselves: they ask, an agent claims them and sends the apply link.
+  // Clients don't open the application form or a chat themselves: they ask, and the first agent to claim them sends the
+  // apply link in a new chat.
   const requestToApply = async (vehicleId: string) => {
-    const v = data.vehicles?.find((x) => x.id === vehicleId);
-    const conv = await run(
-      () => api<Conversation>('/conversations', { body: { vehicleId, text: `Hi, I would like to apply for the ${v?.title ?? 'vehicle'}. Please send me the application link.`, ref: takeRef() } }),
-      ['Request sent', 'Your agent will send you the application link here in Messages.'],
+    const out = await run(
+      () => api<{ agent: string | null }>('/apply-requests', { body: { vehicleId, ref: takeRef() } }),
+      undefined,
       'Request not sent'
     );
-    if (!conv) return;
+    if (!out) return;
     clearRef();
-    setActiveConversationId(conv.id);
-    navigateTo('account', { accountTab: 'messages' });
+    showToast('Request sent', out.agent ? `${out.agent} will send you the application link in Messages.` : 'The first agent to take you on sends you the application link in Messages.');
   };
   const takeOverConversation = async (id: string) =>
     done(await run(() => api(`/conversations/${id}/takeover`, { body: {} }), ['Chat taken over', 'You can now reply to the client.']));
@@ -860,7 +867,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ----- Leads -----
   const claimLead = async (clientId: string) =>
-    (await run(() => api<{ conversationId?: string }>(`/leads/${encodeURIComponent(clientId)}/claim`, { body: {} }), ['Client claimed', 'Your introduction was sent. Say hello in the chat.'], 'Could not claim'))?.conversationId ?? null;
+    (await run(() => api<{ conversationId?: string }>(`/leads/${encodeURIComponent(clientId)}/claim`, { body: {} }), ['Client claimed', 'Your introduction (and the apply link, if they asked to apply) was sent in the chat.'], 'Could not claim'))?.conversationId ?? null;
   const openClientChat = async (clientId: string) =>
     (await run(() => api<{ conversationId?: string }>(`/leads/${encodeURIComponent(clientId)}/conversation`, { body: {} }), undefined, 'Could not open the chat'))?.conversationId ?? null;
   const unlockLead = async (clientId: string) =>

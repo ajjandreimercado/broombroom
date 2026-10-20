@@ -38,7 +38,7 @@ export const AgentLeads: React.FC = () => {
     <section className="space-y-5">
       <SectionHeader
         title="Leads"
-        hint="Every new client waits in Open leads (you are told when one came through your share link). The first agent to claim a client gets their chats and the commission if they buy."
+        hint="Every new client waits in Open leads. First come, first served: the first agent to claim a client who asked to apply sends them the apply link in a new chat and keeps them, with the commission if they buy."
       />
       <FilterTabs
         id="agent-leads"
@@ -52,7 +52,7 @@ export const AgentLeads: React.FC = () => {
 
       {view === 'open' &&
         (open.length === 0 ? (
-          <EmptyState title="No open leads" body="New clients who did not come through an agent's link appear here for anyone to claim." />
+          <EmptyState title="No open leads" body="Clients who press “Request to apply” on a vehicle appear here. Be the first to claim them." />
         ) : (
           <ul key="open" className="animate-view-fade border-b border-[#C9D1D6]">
             {open.map((l) => {
@@ -61,12 +61,12 @@ export const AgentLeads: React.FC = () => {
                 <li key={l.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4 border-t border-[#C9D1D6]">
                   <div className="min-w-0">
                     <p className="font-semibold text-[15px] text-[#141517]">{l.clientName}</p>
-                    <p className="text-[13px] text-[#2A2E31]">Interested in {l.interest}</p>
+                    <p className="text-[13px] text-[#2A2E31]">{l.applyVehicleId ? 'Wants to apply for' : 'Interested in'} {l.interest}</p>
                     {line && <p className="text-[12.5px] text-[#4E585E] truncate max-w-[60ch]">“{line}”</p>}
                     <p className="text-[12px] text-[#6B767D] tabular-nums">Waiting {duration(now - new Date(l.pooledAt ?? l.createdAt).getTime())}</p>
                   </div>
                   <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-center`} onClick={() => claim(l.clientId)}>
-                    <Hand className="w-4 h-4" aria-hidden="true" /> Claim client
+                    <Hand className="w-4 h-4" aria-hidden="true" /> {l.applyVehicleId ? 'Claim & send apply link' : 'Claim client'}
                   </button>
                 </li>
               );

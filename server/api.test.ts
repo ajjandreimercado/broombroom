@@ -142,18 +142,19 @@ const toApproved = async (ad: Awaited<ReturnType<typeof admin>>, c: Awaited<Retu
   assert.equal((await c.post(`/api/applications/${appId}/info-sheet`, SHEET_OK)).status, 200);
   assert.equal((await ad.post(`/api/applications/${appId}/status`, { status: 'approved' })).status, 200);
 };
-// The client asks to apply; their agent (Carlo claims them if they have none) sends the apply link for this vehicle.
-// Returns the agent's link name for viaAgent.
+// The client presses "Request to apply" (no chat yet). With no agent, the first to claim them (Carlo, or the referring
+// agent) sends the apply link with the claim; an existing agent sends it in their chat. Returns the agent's link name.
 const linkFor = async (c: Awaited<ReturnType<typeof newClient>>, vehicleId: string, ref?: string) => {
-  await c.post('/api/conversations', { vehicleId, text: 'I would like to apply. Please send me the link.', ref });
+  await c.post('/api/apply-requests', { vehicleId, ref }); // refused for a car no longer available
   let owner = (await c.state()).myAgent as string | undefined;
   if (!owner) {
-    owner = ref === 'bea-villanueva' ? 'Bea Villanueva' : 'Carlo Santos'; // the referring agent claims them (Carlo by default)
+    owner = ref === 'bea-villanueva' ? 'Bea Villanueva' : 'Carlo Santos';
     await (owner === 'Bea Villanueva' ? await bea() : await carlo()).post(`/api/leads/${c.id}/claim`);
+  } else {
+    const agent = owner === 'Bea Villanueva' ? await bea() : await carlo();
+    const chat = (await agent.state()).conversations.find((x: any) => x.buyerId === c.id);
+    if (chat) await agent.post(`/api/conversations/${chat.id}/messages`, { applyVehicleId: vehicleId });
   }
-  const agent = owner === 'Bea Villanueva' ? await bea() : await carlo();
-  const chat = (await agent.state()).conversations.find((x: any) => x.buyerId === c.id && x.vehicleId === vehicleId);
-  if (chat) await agent.post(`/api/conversations/${chat.id}/messages`, { applyVehicleId: vehicleId }); // refused for a car no longer available
   return owner === 'Bea Villanueva' ? 'bea-villanueva' : 'carlo-santos';
 };
 const apply = async (c: Awaited<ReturnType<typeof newClient>>, vehicleId: string, extra: any = {}) =>
@@ -388,16 +389,26 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
 });
 
 // ---------------- leads ----------------
-test('agent link: the client still waits in Open leads until claimed (no chat with the agent before); links do not move existing clients', async () => {
+test('request to apply: no chat and no agent until the first claim, which sends the apply link and keeps the client', async () => {
   const c = await newClient();
   const v = await freeVehicle();
-  const conv = await c.post('/api/conversations', { vehicleId: v.id, ref: 'bea-villanueva' });
-  assert.equal(conv.data.sellerName, 'Broom Broom sales team', 'not Bea yet');
-  assert.equal((await c.state()).myAgent, null);
-  assert.equal((await (await bea()).post(`/api/conversations/${conv.data.id}/messages`, { text: 'hi' })).status, 403, 'no chat before the claim');
-  assert.ok((await (await bea()).state()).notifications.some((n: any) => n.title === 'Client from your link' && n.message.includes(c.email.split('@')[0].replace('client', 'Client '))));
+  // clients cannot start a chat on their own
+  assert.equal((await c.post('/api/conversations', { vehicleId: v.id, text: 'Hi' })).status, 400);
+  assert.equal((await c.post('/api/apply-requests', { vehicleId: v.id, ref: 'bea-villanueva' })).status, 200);
+  const st = await c.state();
+  assert.equal(st.myAgent, null, 'not assigned to anyone');
+  assert.equal(st.conversations.length, 0, 'no chat yet');
+  const lead = (await (await carlo()).state()).leads.find((l: any) => l.clientId === c.id);
+  assert.equal(lead.applyVehicleId, v.id, 'agents see which car');
+  assert.ok((await (await bea()).state()).notifications.some((n: any) => n.title === 'Client from your link'));
   assert.equal((await (await bea()).post(`/api/leads/${c.id}/claim`)).status, 200);
-  assert.equal((await c.state()).conversations.find((x: any) => x.id === conv.data.id).sellerName, 'Bea Villanueva');
+  const convs = (await c.state()).conversations;
+  assert.equal(convs.length, 1, 'the claim opened the chat');
+  const conv = { data: convs[0] };
+  assert.equal(conv.data.sellerName, 'Bea Villanueva');
+  assert.equal(conv.data.vehicleId, v.id);
+  assert.equal(conv.data.messages.at(-1).applyVehicleId, v.id, 'with the apply link');
+  assert.equal((await (await admin()).post(`/api/leads/${c.id}/assign`, { agentName: 'Carlo Santos' })).status, 400, 'kept by Bea (locked)');
   const again = await apply(c, (await freeVehicle()).id, { ref: 'carlo-santos' });
   assert.equal(again.status, 200);
   assert.equal((await c.state()).myAgent, 'Bea Villanueva');
@@ -410,9 +421,9 @@ test('agent link: the client still waits in Open leads until claimed (no chat wi
 test('open leads: two agents claiming at once, only one wins', async () => {
   const c = await newClient();
   const v = await freeVehicle();
-  await c.post('/api/conversations', { vehicleId: v.id });
+  await c.post('/api/apply-requests', { vehicleId: v.id });
   const [a, b] = [await carlo(), await bea()];
-  assert.ok((await a.state()).leads.some((l: any) => l.clientId === c.id && !l.agentName && l.preview));
+  assert.ok((await a.state()).leads.some((l: any) => l.clientId === c.id && !l.agentName));
   const results = await Promise.all([a.post(`/api/leads/${c.id}/claim`), b.post(`/api/leads/${c.id}/claim`)]);
   assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
   const winner = results[0].status === 200 ? 'Carlo Santos' : 'Bea Villanueva';
@@ -637,8 +648,10 @@ test("agent apply link: applying through it locks the client to that agent until
   const c = await newClient();
   const [ca, ad] = [await carlo(), await admin()];
   const v = await freeVehicle();
-  const conv = (await c.post('/api/conversations', { vehicleId: v.id })).data;
-  assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
+  await c.post('/api/apply-requests', { vehicleId: v.id });
+  const claimed = await ca.post(`/api/leads/${c.id}/claim`);
+  assert.equal(claimed.status, 200);
+  const conv = { id: claimed.data.conversationId };
   assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { applyVehicleId: v.id })).status, 403, 'only the agent sends apply links');
   const sent = await ca.post(`/api/conversations/${conv.id}/messages`, { applyVehicleId: v.id });
   assert.equal(sent.status, 200, JSON.stringify(sent.json));
@@ -722,8 +735,8 @@ test('takeover: the admin reads silently, and can answer only after the client w
   const c = await newClient();
   const [ca, ad] = [await carlo(), await admin()];
   const v = (await ad.state()).vehicles.find((x: any) => x.status === 'available'); // a chat needs any listed car
-  const conv = (await c.post('/api/conversations', { vehicleId: v.id, ref: 'carlo-santos' })).data;
-  assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
+  await c.post('/api/apply-requests', { vehicleId: v.id });
+  const conv = { id: (await ca.post(`/api/leads/${c.id}/claim`)).data.conversationId };
   assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { text: 'Is it still available?' })).status, 200);
   const unread = async () => (await ca.state()).conversations.find((x: any) => x.id === conv.id).unreadSeller;
   const before = await unread();
@@ -895,29 +908,21 @@ test('change email: an address held by a client can be freed and given to an adm
 
 test('conversations: claiming a client starts a chat with the agent; clients can write to their agent about anything', async () => {
   const ca = await carlo();
-  // a client who asked to apply (chat with the team) gets their agent in that chat once claimed
+  // a client who asked to apply has no chat until an agent claims them; the claim starts it
   const c = await newClient();
   const v = await freeVehicle();
-  await c.post('/api/conversations', { vehicleId: v.id, text: 'I would like to apply. Please send me the link.' });
-  assert.equal((await c.state()).conversations[0].sellerName, 'Broom Broom sales team');
+  await c.post('/api/apply-requests', { vehicleId: v.id });
+  assert.equal((await c.state()).conversations.length, 0);
   assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
   let convs = (await c.state()).conversations;
   assert.equal(convs.length, 1);
   assert.equal(convs[0].sellerName, 'Carlo Santos');
   assert.equal(convs[0].vehicleId, v.id, 'about the vehicle they applied for');
-  assert.match(convs[0].messages.at(-1).text, /I'm Carlo Santos, your Broom Broom agent/);
+  assert.match(convs[0].messages.at(-2).text, /I'm Carlo Santos, your Broom Broom agent/);
+  assert.equal(convs[0].messages.at(-1).applyVehicleId, v.id, 'then the apply link');
   assert.equal(convs[0].messages.at(-1).isSeller, true);
   assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Your agent'));
   assert.ok((await ca.state()).conversations.some((x: any) => x.id === convs[0].id), 'the agent sees it');
-
-  // a client who already chatted gets the introduction in that chat
-  const c2 = await newClient();
-  const conv = (await c2.post('/api/conversations', { vehicleId: v.id })).data;
-  await ca.post(`/api/leads/${c2.id}/claim`);
-  const after = (await c2.state()).conversations;
-  assert.equal(after.length, 1);
-  assert.equal(after[0].id, conv.id);
-  assert.equal(after[0].messages.length, 2);
 
   // the client writes to their agent without a listing: a general chat, reused next time
   assert.equal((await c.post('/api/conversations', { text: '' })).status, 400, 'needs a message');
@@ -934,6 +939,9 @@ test('conversations: claiming a client starts a chat with the agent; clients can
   const l = await c.post('/api/conversations', { vehicleId: other.id, text: 'Is the price negotiable?' });
   assert.equal(l.data.messages[0].text, 'Is the price negotiable?');
   assert.equal((await ca.state()).conversations.filter((x: any) => x.buyerId === c.id).length, 3);
+  // a client with no agent cannot write at all
+  const lone = await newClient();
+  assert.equal((await lone.post('/api/conversations', { text: 'Hello?' })).status, 400);
 });
 
 test('editing a listing: details, photos and videos change; removing every photo brings back the placeholder', async () => {
@@ -959,22 +967,22 @@ test('editing a listing: details, photos and videos change; removing every photo
 test('agents start the chat: claiming returns it, and Message client opens or starts one for their own clients', async () => {
   const ca = await carlo();
   const c = await newClient();
-  await c.post('/api/conversations', { vehicleId: (await freeVehicle()).id, text: 'I would like to apply. Please send me the link.' });
+  await c.post('/api/apply-requests', { vehicleId: (await freeVehicle()).id });
   const claimed = await ca.post(`/api/leads/${c.id}/claim`);
   assert.equal(claimed.status, 200);
   const convId = claimed.data.conversationId;
   assert.ok(convId, 'the claim returns the chat it started');
   assert.equal((await ca.post(`/api/leads/${c.id}/conversation`)).data.conversationId, convId, 'Message client opens the same chat');
   assert.equal((await (await bea()).post(`/api/leads/${c.id}/conversation`)).status, 403, 'not her client');
-  // a client the admin assigned: Message client opens their chat, now with the agent
+  // a client the admin assigned (no chat yet): Message client starts one with the agent's introduction
   const d = await newClient();
-  await d.post('/api/conversations', { vehicleId: (await freeVehicle()).id, text: 'I would like to apply. Please send me the link.' });
+  await d.post('/api/apply-requests', { vehicleId: (await freeVehicle()).id });
   assert.equal((await (await admin()).post(`/api/leads/${d.id}/assign`, { agentName: 'Carlo Santos' })).status, 200);
   const started = await ca.post(`/api/leads/${d.id}/conversation`);
   assert.equal(started.status, 200);
   const conv = (await d.state()).conversations.find((x: any) => x.id === started.data.conversationId);
   assert.equal(conv.sellerName, 'Carlo Santos');
-  assert.match(conv.messages[0].text, /I would like to apply/);
+  assert.match(conv.messages[0].text, /your Broom Broom agent/);
 });
 
 // ---------------- security (OWASP) ----------------
