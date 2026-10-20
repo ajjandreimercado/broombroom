@@ -15,6 +15,7 @@ import {
   Wallet,
   Eye,
   ArrowUpRight,
+  ArrowLeft,
   Send,
   Users,
 } from 'lucide-react';
@@ -66,6 +67,7 @@ export const SellerDashboardView: React.FC = () => {
 
   // Seller Chat
   const [sellerChatText, setSellerChatText] = useState('');
+  const [chatOpen, setChatOpen] = useState(!!activeConversationId); // phones: the open chat instead of the list
   const selectedConv = conversations.find((c) => c.id === activeConversationId) || conversations[0];
 
   const available = vehicles.filter((v) => v.status === 'available');
@@ -250,8 +252,9 @@ export const SellerDashboardView: React.FC = () => {
 
             {/* 6. MESSAGES TAB */}
             {sellerTab === 'messages' && (
-              <div className="bg-white rounded-[2px] border border-[#C9D1D6] overflow-hidden h-[560px] flex flex-col md:flex-row">
-                <div className="w-full md:w-80 border-r border-[#C9D1D6] flex flex-col bg-[#F7F8F8]/50 max-h-48 md:max-h-none shrink-0">
+              <div className="bg-white rounded-[2px] border border-[#C9D1D6] overflow-hidden h-[calc(100dvh-140px)] min-h-[420px] md:h-[560px] flex flex-col md:flex-row">
+                {/* Phones: the list or one chat at a time */}
+                <div className={`${chatOpen ? 'hidden md:flex' : 'flex'} w-full md:w-80 h-full border-r border-[#C9D1D6] flex-col bg-[#F7F8F8]/50 shrink-0`}>
                   <div className="p-4 border-b border-[#C9D1D6] text-xs font-bold uppercase tracking-wider text-[#2A2E31] tabular-nums">
                     Client Inquiries ({conversations.length})
                   </div>
@@ -259,7 +262,7 @@ export const SellerDashboardView: React.FC = () => {
                     {conversations.map((conv) => (
                       <div
                         key={conv.id}
-                        onClick={() => setActiveConversationId(conv.id)}
+                        onClick={() => { setActiveConversationId(conv.id); setChatOpen(true); }}
                         className={`p-3.5 cursor-pointer text-xs transition-colors ${
                           selectedConv?.id === conv.id ? 'bg-white font-bold outline outline-1 outline-[#141517] -outline-offset-1' : 'hover:bg-[#EEF1F2]/70'
                         }`}
@@ -278,20 +281,23 @@ export const SellerDashboardView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex-1 flex flex-col h-full bg-white">
+                <div className={`${chatOpen ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 min-w-0 flex-col h-full bg-white`}>
                   {selectedConv ? (
                     <>
-                      <div className="p-4 border-b border-[#C9D1D6] text-xs font-bold text-[#141517] bg-[#F7F8F8]/50">
-                        Chatting with {selectedConv.buyerName} ({selectedConv.vehicleTitle})
+                      <div className="p-3 sm:p-4 border-b border-[#C9D1D6] flex items-center gap-2 text-xs font-bold text-[#141517] bg-[#F7F8F8]/50 shrink-0">
+                        <button type="button" onClick={() => setChatOpen(false)} aria-label="Back to conversations" className="md:hidden -ml-1 p-2 cursor-pointer">
+                          <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+                        </button>
+                        <span className="min-w-0 truncate">Chatting with {selectedConv.buyerName} ({selectedConv.vehicleTitle})</span>
                       </div>
-                      <div className="flex-1 p-5 overflow-y-auto space-y-3.5">
+                      <div className="flex-1 min-h-0 p-3 sm:p-5 overflow-y-auto space-y-3.5">
                         {selectedConv.messages.map((m) => (
                           <div
                             key={m.id}
                             className={`flex flex-col ${m.isSeller ? 'items-end' : 'items-start'}`}
                           >
                             <div
-                              className={`max-w-xs rounded-[2px] px-4 py-2.5 text-xs leading-relaxed ${
+                              className={`max-w-[85%] sm:max-w-xs rounded-[2px] px-4 py-2.5 text-[13px] sm:text-xs leading-relaxed break-words ${
                                 m.isSeller
                                   ? 'bg-[#1D5FD1] text-white rounded-tr-xs'
                                   : 'bg-[#EEF1F2] text-[#141517] rounded-tl-xs'
@@ -307,29 +313,30 @@ export const SellerDashboardView: React.FC = () => {
                           </div>
                         ))}
                       </div>
-                      <form onSubmit={handleSendSellerReply} className="p-3.5 border-t border-[#C9D1D6] flex gap-2.5 bg-[#F7F8F8]/30">
+                      <form onSubmit={handleSendSellerReply} className="p-3 sm:p-3.5 border-t border-[#C9D1D6] flex gap-2 sm:gap-2.5 bg-[#F7F8F8]/30 shrink-0">
                         <input
                           type="text"
                           placeholder="Reply to client..."
                           value={sellerChatText}
                           onChange={(e) => setSellerChatText(e.target.value)}
-                          className="flex-1 px-3.5 py-2.5 text-xs bg-white border border-[#C9D1D6] rounded-[2px] focus:border-[#1D5FD1]"
+                          aria-label="Reply"
+                          className="flex-1 min-w-0 px-3.5 py-2.5 text-[16px] md:text-xs bg-white border border-[#C9D1D6] rounded-[2px] focus:border-[#1D5FD1]"
                         />
                         <button
                           type="submit"
-                          className="px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white rounded-[2px] text-xs font-bold cursor-pointer transition-colors"
+                          className="shrink-0 px-4 sm:px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white rounded-[2px] text-xs font-bold cursor-pointer transition-colors"
                         >
                           Send
                         </button>
                       </form>
                       {available.length > 0 && (
-                        <div className="px-3.5 pb-3.5 flex gap-2.5 items-center bg-[#F7F8F8]/30">
+                        <div className="px-3 sm:px-3.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-wrap sm:flex-nowrap gap-2 sm:gap-2.5 items-center bg-[#F7F8F8]/30 shrink-0">
                           <label htmlFor="apply-link-vehicle" className="text-[11px] text-[#4E585E] shrink-0">Apply link for</label>
                           <select
                             id="apply-link-vehicle"
                             value={linkVehicle}
                             onChange={(e) => setLinkVehicleId(e.target.value)}
-                            className="flex-1 min-w-0 px-2.5 py-2 text-xs bg-white border border-[#C9D1D6] rounded-[2px] focus:border-[#1D5FD1]"
+                            className="flex-1 min-w-0 px-2.5 py-2 text-[16px] md:text-xs bg-white border border-[#C9D1D6] rounded-[2px] focus:border-[#1D5FD1]"
                           >
                             {available.map((v) => (
                               <option key={v.id} value={v.id}>{v.title}</option>

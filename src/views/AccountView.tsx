@@ -26,6 +26,7 @@ import {
   Trash2,
   Lock,
   X,
+  ArrowLeft,
   ArrowLeftRight,
   Sparkles,
   Calculator,
@@ -77,6 +78,7 @@ export const AccountView: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   // "New message" to the agent: about a listing or a general question.
   const [composing, setComposing] = useState(false);
+  const [chatOpen, setChatOpen] = useState(!!activeConversationId); // phones: the open chat instead of the list
   const [composeAbout, setComposeAbout] = useState('');
   const [composeText, setComposeText] = useState('');
   const [composeBusy, setComposeBusy] = useState(false);
@@ -556,13 +558,13 @@ export const AccountView: React.FC = () => {
 
             {/* 4. MESSAGES TAB */}
             {accountTab === 'messages' && (
-              <div className="bg-white rounded-[2px] border border-[#C9D1D6] overflow-hidden h-[620px] flex flex-col md:flex-row">
-                {/* Conversation List */}
-                <div className="w-full md:w-80 border-r border-[#C9D1D6] flex flex-col bg-[#F7F8F8]/50 max-h-48 md:max-h-none shrink-0">
+              <div className="bg-white rounded-[2px] border border-[#C9D1D6] overflow-hidden h-[calc(100dvh-140px)] min-h-[420px] md:h-[620px] flex flex-col md:flex-row">
+                {/* Conversation List (phones: hidden while a chat is open) */}
+                <div className={`${chatOpen ? 'hidden md:flex' : 'flex'} w-full md:w-80 h-full border-r border-[#C9D1D6] flex-col bg-[#F7F8F8]/50 shrink-0`}>
                   <div className="p-3 pl-4 border-b border-[#C9D1D6] flex items-center justify-between gap-2">
                     <span className="font-bold text-xs uppercase tracking-wider text-[#2A2E31] tabular-nums">Conversations ({conversations.length})</span>
                     <button
-                      onClick={() => { setComposing(true); setComposeAbout(''); setComposeText(''); }}
+                      onClick={() => { setComposing(true); setComposeAbout(''); setComposeText(''); setChatOpen(true); }}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[12px] font-semibold rounded-[2px] cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" aria-hidden="true" /> New message
@@ -577,7 +579,7 @@ export const AccountView: React.FC = () => {
                       conversations.map((conv) => (
                         <div
                           key={conv.id}
-                          onClick={() => { setActiveConversationId(conv.id); setComposing(false); }}
+                          onClick={() => { setActiveConversationId(conv.id); setComposing(false); setChatOpen(true); }}
                           className={`p-4 cursor-pointer transition-colors ${
                             selectedConversation?.id === conv.id
                               ? 'bg-white outline outline-1 outline-[#141517] -outline-offset-1'
@@ -605,11 +607,11 @@ export const AccountView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Chat Thread */}
-                <div className="flex-1 flex flex-col h-full bg-white">
+                {/* Chat Thread (phones: only while open, with a back button) */}
+                <div className={`${chatOpen ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 min-w-0 flex-col h-full bg-white`}>
                   {composing ? (
                     <form
-                      className="flex-1 flex flex-col p-5 gap-4"
+                      className="flex-1 flex flex-col p-4 sm:p-5 gap-4 overflow-y-auto"
                       onSubmit={async (e) => {
                         e.preventDefault();
                         if (!composeText.trim() || composeBusy) return;
@@ -643,28 +645,31 @@ export const AccountView: React.FC = () => {
                           value={composeText}
                           onChange={(e) => setComposeText(e.target.value)}
                           placeholder="Ask about a unit, a viewing, financing, your application..."
-                          className="w-full flex-1 min-h-[120px] px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
+                          className="w-full flex-1 min-h-[120px] px-3 py-2.5 text-[16px] md:text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                         />
                       </label>
                       <div className="flex gap-3">
                         <button type="submit" disabled={!composeText.trim() || composeBusy} className="px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:bg-[#8C989F] text-white text-[13px] font-semibold rounded-[2px] cursor-pointer">
                           {composeBusy ? 'Sending…' : 'Send'}
                         </button>
-                        <button type="button" onClick={() => setComposing(false)} className="px-3 py-2.5 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
+                        <button type="button" onClick={() => { setComposing(false); setChatOpen(false); }} className="px-3 py-2.5 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>
                       </div>
                     </form>
                   ) : selectedConversation ? (
                     <>
                       {/* Chat Header */}
-                      <div className="p-4 border-b border-[#C9D1D6] flex items-center justify-between bg-[#F7F8F8]/50">
-                        <div className="flex items-center gap-3">
+                      <div className="p-3 sm:p-4 border-b border-[#C9D1D6] flex items-center justify-between gap-2 bg-[#F7F8F8]/50 shrink-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <button type="button" onClick={() => setChatOpen(false)} aria-label="Back to conversations" className="md:hidden -ml-1 p-2 text-[#141517] cursor-pointer">
+                            <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+                          </button>
                           {selectedConversation.vehicleImage ? (
                             <img src={selectedConversation.vehicleImage} alt="" className="w-12 h-9 rounded-[2px] object-cover bg-[#141517] border border-gray-800" />
                           ) : (
                             <span className="w-12 h-9 rounded-[2px] grid place-items-center bg-[#EEF1F2] text-[#4E585E]" aria-hidden="true"><MessageSquare className="w-4 h-4" /></span>
                           )}
-                          <div>
-                            <p className="text-xs font-bold text-[#141517]">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-[#141517] truncate">
                               {selectedConversation.sellerName}
                             </p>
                             <p className="text-[11px] text-[#4E585E] truncate max-w-xs">
@@ -678,7 +683,7 @@ export const AccountView: React.FC = () => {
                             onClick={() =>
                               navigateTo('vehicle_detail', { vehicleId: selectedConversation.vehicleId })
                             }
-                            className="text-xs font-semibold text-[#4E585E] hover:text-[#1D5FD1] flex items-center gap-1 cursor-pointer transition-colors"
+                            className="shrink-0 text-xs font-semibold text-[#4E585E] hover:text-[#1D5FD1] flex items-center gap-1 cursor-pointer transition-colors"
                           >
                             <span>Listing</span>
                             <ExternalLink className="w-3.5 h-3.5" />
@@ -687,7 +692,7 @@ export const AccountView: React.FC = () => {
                       </div>
 
                       {/* Messages Flow */}
-                      <div className="flex-1 p-5 overflow-y-auto space-y-3.5">
+                      <div className="flex-1 min-h-0 p-3 sm:p-5 overflow-y-auto space-y-3.5">
                         {selectedConversation.messages.map((msg) => (
                           <div
                             key={msg.id}
@@ -696,7 +701,7 @@ export const AccountView: React.FC = () => {
                             }`}
                           >
                             <div
-                              className={`max-w-sm rounded-[2px] px-4 py-2.5 text-xs leading-relaxed ${
+                              className={`max-w-[85%] sm:max-w-sm rounded-[2px] px-4 py-2.5 text-[13px] sm:text-xs leading-relaxed break-words ${
                                 msg.isSeller
                                   ? 'bg-[#EEF1F2] text-[#141517] rounded-tl-xs'
                                   : 'bg-[#1D5FD1] text-white rounded-tr-xs'
@@ -726,18 +731,19 @@ export const AccountView: React.FC = () => {
                       {/* Message Input Box */}
                       <form
                         onSubmit={handleSendMessage}
-                        className="p-3.5 border-t border-[#C9D1D6] flex gap-2.5 bg-[#F7F8F8]/30"
+                        className="p-3 sm:p-3.5 border-t border-[#C9D1D6] flex gap-2 sm:gap-2.5 bg-[#F7F8F8]/30 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
                       >
                         <input
                           type="text"
                           placeholder="Type your inquiry message..."
                           value={chatInput}
                           onChange={(e) => setChatInput(e.target.value)}
-                          className="flex-1 px-3.5 py-2.5 text-xs bg-white border border-[#C9D1D6] rounded-[2px] focus:border-[#1D5FD1]"
+                          aria-label="Message"
+                          className="flex-1 min-w-0 px-3.5 py-2.5 text-[16px] md:text-xs bg-white border border-[#C9D1D6] rounded-[2px] focus:border-[#1D5FD1]"
                         />
                         <button
                           type="submit"
-                          className="px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white rounded-[2px] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                          className="shrink-0 px-4 sm:px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white rounded-[2px] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
                         >
                           <Send className="w-3.5 h-3.5" />
                           <span>Send</span>
