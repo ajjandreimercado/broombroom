@@ -468,7 +468,7 @@ export const AccountView: React.FC = () => {
                     </div>
                     <p className="font-bold text-[#141517] text-sm">No active applications</p>
                     <p className="text-xs text-[#4E585E] mt-1 max-w-xs mx-auto">
-                      When you find a vehicle you love, click "Apply for this Vehicle" on its listing page.
+                      When you find a vehicle you love, click "Request to apply" on its listing. Your agent sends you the application link in Messages.
                     </p>
                   </div>
                 ) : (

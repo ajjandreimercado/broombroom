@@ -42,6 +42,7 @@ export const VehicleDetailView: React.FC = () => {
     isAuthenticated,
     setAuthModalOpen,
     setPendingAction,
+    requestToApply,
     setReportModalVehicle,
     showToast,
     isInCompare,
@@ -122,7 +123,7 @@ export const VehicleDetailView: React.FC = () => {
       setAuthModalOpen(true);
       return;
     }
-    navigateTo('apply', { vehicleId: vehicle.id });
+    requestToApply(vehicle.id);
   };
 
   const handleShare = () => {
@@ -361,10 +362,11 @@ export const VehicleDetailView: React.FC = () => {
                     onClick={handleApply}
                     className="w-full py-4 px-5 bg-[#1D5FD1] hover:bg-[#174CA8] text-white font-semibold text-[15px] flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    Apply for this vehicle
+                    Request to apply
                     <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
                   </button>
                 )}
+                {vehicle.status === 'available' && <p className="-mt-1 text-[12.5px] text-[#4E585E]">An agent takes you on and sends the application link to your Messages.</p>}
                 <div className="grid grid-cols-3 border border-[#8C989F] divide-x divide-[#8C989F]">
                   <button
                     onClick={handleMessage}

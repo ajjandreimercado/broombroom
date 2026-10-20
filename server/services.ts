@@ -488,15 +488,19 @@ export const createApplication = (me: User, input: any) =>
     if (uploaded < Math.min(MIN_UPLOADS, required.length)) bad(`Upload at least ${Math.min(MIN_UPLOADS, required.length)} document${required.length > 1 ? 's' : ''}.`);
 
     const a = input.address || {};
-    // Through an agent's apply link: a new client becomes theirs, and the client is locked to that agent below.
+    // Clients apply only through the apply link their agent sent them in the chat, for this vehicle.
+    // Finishing it makes the client that agent's (locked below) and sends the agent an automatic message.
     const viaAgent = await agentBySlug(input.viaAgent);
-    let owner = await touchLead(me, v.title, false, input.ref || input.viaAgent);
+    const linkChat = viaAgent ? await store.one<Conversation>('conversations', { buyerId: me.id, sellerName: viaAgent, 'messages.applyVehicleId': v.id }) : undefined;
+    if (!viaAgent || !linkChat) bad('Apply through the application link your agent sends you in Messages.');
+    let owner = await touchLead(me, v.title, false, input.viaAgent);
+    if (owner && owner !== viaAgent) bad(`This link is from ${viaAgent}, who no longer handles your purchase. Ask ${owner} for a new link.`);
     // A client back in Open leads who applies through an agent's link goes to that agent.
-    if (viaAgent && !owner) {
-      await assignLead(me.id, viaAgent, `Applied through ${viaAgent}'s link`);
+    if (!owner) {
+      await assignLead(me.id, viaAgent!, `Applied through ${viaAgent}'s link`);
       owner = viaAgent;
     }
-    const locked = !!viaAgent && owner === viaAgent;
+    const locked = true;
     const app = await store.put<VehicleApplication>('applications', {
       id: newId('app'),
       referenceNo: `GB-${year()}-${pad4(await nextNumber(`app-${year()}`))}`,
@@ -535,6 +539,16 @@ export const createApplication = (me: User, input: any) =>
       const at = now();
       await store.put<ClientLead>('leads', { ...lead, lockedTo: viaAgent, lockedRef: app.referenceNo, lockedAt: at, history: [...lead.history, { at, text: `Locked to ${viaAgent}: applied through their link (${app.referenceNo})` }] });
       await notify('agent', 'Client locked to you', `${me.name} applied for the ${v.title} through your link (${app.referenceNo}). They are locked to you.`, 'leads', viaAgent);
+      // The automatic message in the chat where the link was sent.
+      const chat = (await store.get<Conversation>('conversations', linkChat!.id))!;
+      const t = `I have finished the application for the ${v.title} through your link (${app.referenceNo}). You are now my agent for this purchase.`;
+      await store.put<Conversation>('conversations', {
+        ...chat,
+        lastMessage: t,
+        updatedAt: at,
+        unreadSeller: chat.unreadSeller + 1,
+        messages: [...chat.messages, { id: newId('msg'), senderId: me.id, senderName: me.name, text: t, timestamp: at, isSeller: false, auto: true }],
+      });
     }
     if (quote) {
       await store.put('quotations', { ...quote, status: 'accepted', applicationRef: app.referenceNo });

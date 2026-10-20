@@ -142,8 +142,22 @@ const toApproved = async (ad: Awaited<ReturnType<typeof admin>>, c: Awaited<Retu
   assert.equal((await c.post(`/api/applications/${appId}/info-sheet`, SHEET_OK)).status, 200);
   assert.equal((await ad.post(`/api/applications/${appId}/status`, { status: 'approved' })).status, 200);
 };
+// The client asks to apply; their agent (Carlo claims them if they have none) sends the apply link for this vehicle.
+// Returns the agent's link name for viaAgent.
+const linkFor = async (c: Awaited<ReturnType<typeof newClient>>, vehicleId: string, ref?: string) => {
+  await c.post('/api/conversations', { vehicleId, text: 'I would like to apply. Please send me the link.', ref });
+  let owner = (await c.state()).myAgent as string | undefined;
+  if (!owner) {
+    await (await carlo()).post(`/api/leads/${c.id}/claim`);
+    owner = 'Carlo Santos';
+  }
+  const agent = owner === 'Bea Villanueva' ? await bea() : await carlo();
+  const chat = (await agent.state()).conversations.find((x: any) => x.buyerId === c.id && x.vehicleId === vehicleId);
+  if (chat) await agent.post(`/api/conversations/${chat.id}/messages`, { applyVehicleId: vehicleId }); // refused for a car no longer available
+  return owner === 'Bea Villanueva' ? 'bea-villanueva' : 'carlo-santos';
+};
 const apply = async (c: Awaited<ReturnType<typeof newClient>>, vehicleId: string, extra: any = {}) =>
-  c.post('/api/applications', { vehicleId, purchaseMethod: 'cash', documents: await docs(c, ['id-signature']), address, ...extra });
+  c.post('/api/applications', { vehicleId, purchaseMethod: 'cash', documents: await docs(c, ['id-signature']), address, viaAgent: await linkFor(c, vehicleId, extra.ref), ...extra });
 // A new listing for each test that needs one (no application can hold it yet).
 let units = 0;
 const freeVehicle = async () => {
@@ -218,7 +232,7 @@ test('clients only see their own records; private files only for owner and admin
   // the same upload can't be attached twice, or by someone else
   const up = (await a.upload(PDF, 'application/pdf', 'x.pdf')).data.id;
   const v2 = await freeVehicle();
-  assert.equal((await b.post('/api/applications', { vehicleId: v2.id, purchaseMethod: 'cash', documents: { 'id-signature': up }, address })).status, 400);
+  assert.equal((await b.post('/api/applications', { vehicleId: v2.id, purchaseMethod: 'cash', documents: { 'id-signature': up }, address, viaAgent: await linkFor(b as any, v2.id) })).status, 400);
 });
 
 test('uploads: clients cannot upload public media or unsupported types', async () => {
@@ -239,11 +253,19 @@ test('financing: needs 2 uploads; documents first; reserve -> information sheet 
   const ad = await admin();
   const v = await freeVehicle();
   const base = { vehicleId: v.id, purchaseMethod: 'financing', downPayment: Math.round(v.price * 0.3), financingTermMonths: 36, address };
+  assert.equal((await c.post('/api/applications', { ...base, documents: await docs(c, ['id-applicant', 'payslip']) })).status, 400, 'only through an agent link');
+  assert.equal((await c.post('/api/applications', { ...base, documents: await docs(c, ['id-applicant', 'payslip']), viaAgent: 'carlo-santos' })).status, 400, 'a link the agent really sent');
+  Object.assign(base, { viaAgent: await linkFor(c, v.id) });
   assert.equal((await c.post('/api/applications', { ...base, documents: await docs(c, ['payslip']) })).status, 400);
   const app = (await c.post('/api/applications', { ...base, documents: await docs(c, ['id-applicant', 'payslip']) })).data;
   assert.equal(app.documents.length, 10);
   assert.equal(app.documents.filter((d: any) => d.fileName).length, 2);
-  assert.equal(app.sellerName, 'Broom Broom sales team'); // pool lead, nobody owns them yet
+  assert.equal(app.sellerName, 'Carlo Santos'); // the agent who claimed them and sent the link
+  // the automatic message tells the agent the client finished through their link
+  const chat = (await (await carlo()).state()).conversations.find((x: any) => x.buyerId === c.id && x.vehicleId === v.id);
+  assert.match(chat.messages.at(-1).text, new RegExp(`finished the application .* through your link \\(${app.referenceNo}\\)`));
+  assert.equal(chat.messages.at(-1).auto, true);
+  assert.equal((await (await carlo()).state()).leads.find((l: any) => l.clientId === c.id).lockedTo, 'Carlo Santos');
 
   assert.equal((await reserve(ad, app.id)).status, 400, 'documents first');
   assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 400, 'not straight from review');
@@ -437,6 +459,8 @@ test('reassigning: the release pays the client’s current agent; 24-hour rule r
   assert.equal(app.sellerName, 'Carlo Santos');
   await toApproved(ad, c, app.id);
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Nobody Here' })).status, 400);
+  assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Bea Villanueva' })).status, 400, 'locked to Carlo: applied through his link');
+  assert.equal((await ad.post(`/api/leads/${c.id}/unlock`)).status, 200);
   assert.equal((await ad.post(`/api/leads/${c.id}/assign`, { agentName: 'Bea Villanueva' })).status, 200);
   assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
   let s = await ad.state();
@@ -572,7 +596,7 @@ test('rejecting a document emails the client a re-upload link; only they can sen
   const v = await freeVehicle();
   const app = (await c.post('/api/applications', {
     vehicleId: v.id, purchaseMethod: 'financing', downPayment: Math.round(v.price / 3), financingTermMonths: 36,
-    documents: await docs(c, ['id-applicant', 'payslip']), address,
+    documents: await docs(c, ['id-applicant', 'payslip']), address, viaAgent: await linkFor(c, v.id),
   })).data;
   const sent = outbox.length;
   assert.equal((await ad.post(`/api/applications/${app.id}/documents/0/review`, { approve: false })).status, 400, 'a rejection needs a reason');
@@ -865,11 +889,11 @@ test('change email: an address held by a client can be freed and given to an adm
 
 test('conversations: claiming a client starts a chat with the agent; clients can write to their agent about anything', async () => {
   const ca = await carlo();
-  // a client who only applied (no chat yet) gets one when an agent claims them
+  // a client who asked to apply (chat with the team) gets their agent in that chat once claimed
   const c = await newClient();
   const v = await freeVehicle();
-  await apply(c, v.id);
-  assert.equal((await c.state()).conversations.length, 0);
+  await c.post('/api/conversations', { vehicleId: v.id, text: 'I would like to apply. Please send me the link.' });
+  assert.equal((await c.state()).conversations[0].sellerName, 'Broom Broom sales team');
   assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
   let convs = (await c.state()).conversations;
   assert.equal(convs.length, 1);
@@ -929,20 +953,20 @@ test('editing a listing: details, photos and videos change; removing every photo
 test('agents start the chat: claiming returns it, and Message client opens or starts one for their own clients', async () => {
   const ca = await carlo();
   const c = await newClient();
-  await apply(c, (await freeVehicle()).id);
+  await c.post('/api/conversations', { vehicleId: (await freeVehicle()).id, text: 'I would like to apply. Please send me the link.' });
   const claimed = await ca.post(`/api/leads/${c.id}/claim`);
   assert.equal(claimed.status, 200);
   const convId = claimed.data.conversationId;
   assert.ok(convId, 'the claim returns the chat it started');
   assert.equal((await ca.post(`/api/leads/${c.id}/conversation`)).data.conversationId, convId, 'Message client opens the same chat');
   assert.equal((await (await bea()).post(`/api/leads/${c.id}/conversation`)).status, 403, 'not her client');
-  // a client the admin assigned (no chat yet): Message client starts one with the agent's introduction
+  // a client the admin assigned: Message client opens their chat, now with the agent
   const d = await newClient();
-  await apply(d, (await freeVehicle()).id);
-  await (await admin()).post(`/api/leads/${d.id}/assign`, { agentName: 'Carlo Santos' });
+  await d.post('/api/conversations', { vehicleId: (await freeVehicle()).id, text: 'I would like to apply. Please send me the link.' });
+  assert.equal((await (await admin()).post(`/api/leads/${d.id}/assign`, { agentName: 'Carlo Santos' })).status, 200);
   const started = await ca.post(`/api/leads/${d.id}/conversation`);
   assert.equal(started.status, 200);
   const conv = (await d.state()).conversations.find((x: any) => x.id === started.data.conversationId);
   assert.equal(conv.sellerName, 'Carlo Santos');
-  assert.match(conv.messages[0].text, /your Broom Broom agent/);
+  assert.match(conv.messages[0].text, /I would like to apply/);
 });

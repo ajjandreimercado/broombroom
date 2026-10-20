@@ -35,6 +35,8 @@ export const ApplicationWizardView: React.FC = () => {
     quotations,
     selectedQuotationId,
     myAgent,
+    applyLinkFor,
+    requestToApply,
   } = useApp();
 
   const vehicle = vehicles.find((v) => v.id === selectedVehicleId); // never another car: a removed listing shows "not found"
@@ -99,6 +101,20 @@ export const ApplicationWizardView: React.FC = () => {
   };
 
   const [error, setError] = useState('');
+
+  if (vehicle && !applyLinkFor(vehicle.id)) {
+    return (
+      <div className="min-h-screen bg-[#F7F8F8] flex items-center justify-center p-6">
+        <div className="text-center max-w-sm">
+          <p className="text-base font-semibold text-[#141517]">Apply through your agent’s link</p>
+          <p className="mt-2 text-[13px] text-[#4E585E]">Ask to apply; an agent takes you on and sends you the application link for the {vehicle.title} in Messages.</p>
+          <button onClick={() => requestToApply(vehicle.id)} className="mt-4 px-5 py-2.5 bg-[#1D5FD1] text-white text-xs font-semibold hover:bg-[#174CA8] transition-colors cursor-pointer">
+            Request to apply
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!vehicle) {
     return (

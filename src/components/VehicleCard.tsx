@@ -26,6 +26,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
     isAuthenticated,
     setAuthModalOpen,
     setPendingAction,
+    requestToApply,
     addRecentlyViewed,
     isInCompare,
     toggleCompareVehicle,
@@ -72,7 +73,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
       setAuthModalOpen(true);
       return;
     }
-    navigateTo('apply', { vehicleId: vehicle.id });
+    requestToApply(vehicle.id);
   };
 
   const formattedPrice = new Intl.NumberFormat('en-PH', {

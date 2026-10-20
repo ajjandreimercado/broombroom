@@ -181,6 +181,7 @@ export interface ChatMessage {
   isSeller: boolean;
   // An agent's apply link: the client applies for this vehicle through their agent (and is then locked to them).
   applyVehicleId?: string;
+  auto?: boolean; // sent by the system for the client (e.g. "application finished through your link")
   applyVehicleTitle?: string;
   applyAgent?: string; // agent slug
   byAdmin?: boolean; // sent by the admin during a takeover

@@ -303,6 +303,8 @@ interface AppContextType {
   sendMessage: (conversationId: string, text: string) => Promise<boolean>;
   sendApplyLink: (conversationId: string, vehicleId: string) => Promise<boolean>;
   applyThroughAgent: (vehicleId: string, agentSlug: string) => void;
+  requestToApply: (vehicleId: string) => Promise<void>;
+  applyLinkFor: (vehicleId: string) => string | undefined;
   markConversationRead: (conversationId: string) => void;
 
   // Notifications
@@ -508,7 +510,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const action = pendingAction;
     setPendingAction(null);
     if (!action) return;
-    if (action.type === 'apply') navigateTo('apply', { vehicleId: action.vehicleId });
+    if (action.type === 'apply') void requestToApply(action.vehicleId);
     else if (action.type === 'save') {
       toggleSave(action.vehicleId, true);
       navigateTo('vehicle_detail', { vehicleId: action.vehicleId });
@@ -808,6 +810,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {}
     navigateTo('apply', { vehicleId });
   };
+  // Clients don't open the application form themselves: they ask, an agent claims them and sends the apply link.
+  const requestToApply = async (vehicleId: string) => {
+    const v = data.vehicles?.find((x) => x.id === vehicleId);
+    const conv = await run(
+      () => api<Conversation>('/conversations', { body: { vehicleId, text: `Hi, I would like to apply for the ${v?.title ?? 'vehicle'}. Please send me the application link.`, ref: takeRef() } }),
+      ['Request sent', 'Your agent will send you the application link here in Messages.'],
+      'Request not sent'
+    );
+    if (!conv) return;
+    clearRef();
+    setActiveConversationId(conv.id);
+    navigateTo('account', { accountTab: 'messages' });
+  };
   const takeOverConversation = async (id: string) =>
     done(await run(() => api(`/conversations/${id}/takeover`, { body: {} }), ['Chat taken over', 'You can now reply to the client.']));
   const endTakeover = async (id: string) => done(await run(() => api(`/conversations/${id}/end-takeover`, { body: {} }), ['Handed back', 'The agent answers this chat again.']));
@@ -984,6 +999,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sendMessage,
         sendApplyLink,
         applyThroughAgent,
+        requestToApply,
+        applyLinkFor: takeVia,
         markConversationRead,
 
         markNotificationRead,

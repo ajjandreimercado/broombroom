@@ -44,6 +44,7 @@ export const CompareModal: React.FC = () => {
     isAuthenticated,
     setAuthModalOpen,
     setPendingAction,
+    requestToApply,
     startOrOpenConversation,
     setActiveConversationId,
   } = useApp();
@@ -201,7 +202,7 @@ export const CompareModal: React.FC = () => {
       return;
     }
     setCompareModalOpen(false);
-    navigateTo('apply', { vehicleId });
+    requestToApply(vehicleId);
   };
 
   const handleViewDetail = (vehicleId: string) => {
@@ -448,7 +449,7 @@ export const CompareModal: React.FC = () => {
                               onClick={() => handleApply(vehicle.id)}
                               className="w-full py-2 px-3 bg-[#1D5FD1] hover:bg-[#174CA8] text-white text-[12px] font-bold rounded-[2px] transition-colors flex items-center justify-center gap-1 cursor-pointer"
                             >
-                              <span>Apply Now</span>
+                              <span>Request to apply</span>
                               <ArrowUpRight className="w-3.5 h-3.5" />
                             </button>
                             <div className="grid grid-cols-2 gap-1.5">
