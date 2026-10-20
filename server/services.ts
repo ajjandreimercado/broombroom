@@ -120,7 +120,7 @@ export const ownerOf = async (clientId: string) => (await store.get<ClientLead>(
 // A client's chats, open applications and not-yet-earned commissions follow their owner (or go back to the team).
 const moveClient = async (clientId: string, owner: string | undefined) => {
   const name = owner ?? TEAM_NAME;
-  for (const c of await store.all<Conversation>('conversations', { buyerId: clientId }))
+  for (const c of await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false } }))
     await store.put('conversations', { ...c, sellerName: name, sellerId: owner ? agentSlug(owner) : 'team' });
   const apps = await store.all<VehicleApplication>('applications', { applicantId: clientId });
   for (const a of apps) if (!['completed', 'declined', 'withdrawn'].includes(a.status)) await store.put('applications', { ...a, sellerName: name });
@@ -614,6 +614,30 @@ export const submitInfoSheet = (me: User, id: string, input: any) =>
     return saved;
   });
 
+// After a release the client is free again: no agent, no lock, not in Open leads (until they ask to apply again), and
+// their chats with that agent end (read-only for the client, gone from the agent's list). The agent keeps the commission.
+const endAgentLink = async (clientId: string, agent: string, ref: string) => {
+  const at = now();
+  const lead = await store.get<ClientLead>('leads', clientId);
+  if (lead) {
+    // Another open application keeps the client with their agent.
+    if (await store.one('applications', { applicantId: clientId, referenceNo: { $ne: ref }, status: { $in: [...OPEN, ...HOLDING] } })) return;
+    await store.put<ClientLead>('leads', {
+      ...lead,
+      agentName: undefined,
+      lockedTo: undefined,
+      lockedRef: undefined,
+      lockedAt: undefined,
+      applyVehicleId: undefined,
+      escalatedAt: undefined,
+      doneAt: at,
+      history: [...lead.history, { at, text: `Vehicle released (${ref}): ${agent}'s chat ended; the client can ask to apply again` }],
+    });
+  }
+  for (const c of await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false } }))
+    await store.put<Conversation>('conversations', { ...c, closedAt: at, unreadSeller: 0 });
+};
+
 // Admin: release the vehicle to the client, confirming it now has its OR and CR. Completes the sale.
 export const releaseVehicle = (me: User, id: string, input: any) =>
   tx(async () => {
@@ -653,6 +677,7 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
     });
     const saved = await store.put<VehicleApplication>('applications', { ...app, status: 'completed', releasedAt: now(), orcrConfirmed: true, orcrUrl: fileUrl(orcr._id), orcrFileName: orcr.name, commissionAmount: amount });
     await releaseLock(saved);
+    await endAgentLink(app.applicantId, agent, app.referenceNo);
     await notify('agent', 'Vehicle released: full commission', `The ${app.vehicleTitle} was released to ${app.applicantName}. Your full commission of ₱${amount.toLocaleString()} is approved and awaiting the cash transfer.`, 'commissions', agent);
     await notify('client', 'Vehicle released', `Your ${app.vehicleTitle} has been released to you with its OR and CR. Thank you for choosing Broom Broom.`, 'applications', app.applicantId);
     return saved;
@@ -1057,7 +1082,7 @@ export const startConversation = (me: User, vehicleId: unknown, ref: unknown, me
     if (!(await ownerOf(me.id))) bad(NEEDS_AGENT);
     const v = vehicleId ? need(await store.get<Vehicle>('vehicles', idOf(vehicleId)), 'Listing') : undefined;
     const first = text(message, 'Message', 2000, false);
-    const existing = await store.one<Conversation>('conversations', { buyerId: me.id, vehicleId: v?.id ?? '' });
+    const existing = await store.one<Conversation>('conversations', { buyerId: me.id, vehicleId: v?.id ?? '', closedAt: { $exists: false } });
     if (existing) {
       if (first) await sendMessage(me, existing.id, { text: first });
       return (await store.get<Conversation>('conversations', existing.id))!;
@@ -1092,8 +1117,8 @@ const introduceAgent = async (clientId: string, agent: string): Promise<string |
   if (!client) return undefined;
   const wanted = (await store.get<ClientLead>('leads', clientId))?.applyVehicleId;
   let conv = wanted
-    ? await store.one<Conversation>('conversations', { buyerId: clientId, vehicleId: wanted })
-    : (await store.all<Conversation>('conversations', { buyerId: clientId }, { updatedAt: -1 }))[0];
+    ? await store.one<Conversation>('conversations', { buyerId: clientId, vehicleId: wanted, closedAt: { $exists: false } })
+    : (await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false } }, { updatedAt: -1 }))[0];
   if (!conv) {
     const app = (await store.all<VehicleApplication>('applications', { applicantId: clientId }, { submittedAt: -1 }))[0];
     const quote = (await store.all<Quotation>('quotations', { clientId }, { requestedAt: -1 }))[0];
@@ -1136,6 +1161,7 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     const conv = need(await store.get<Conversation>('conversations', idOf(convId)), 'Conversation');
     const isAgent = me.role === 'seller';
     if (me.role === 'buyer' && conv.buyerId !== me.id) forbidden();
+    if (conv.closedAt) bad('This chat ended when your vehicle was released. Press "Request to apply" on a vehicle to get an agent again.');
     if (me.role === 'buyer' && !(await ownerOf(me.id))) bad(NEEDS_AGENT);
     if (isAgent && conv.sellerName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
     if (me.role === 'admin' && !conv.takenOverAt) forbidden('Admins can read conversations but not reply in them. Take over the chat first.');
@@ -1174,7 +1200,9 @@ export const requestToApply = (me: User, input: any) =>
     rateLimit(`applyreq|${me.id}`, 10, 60 * 60e3, 'Too many requests. Please try again later.');
     const v = need(await store.get<Vehicle>('vehicles', idOf(input?.vehicleId)), 'Listing');
     if (v.status !== 'available') bad('This vehicle is no longer available.');
-    const isNew = !(await store.get<ClientLead>('leads', me.id));
+    const before = await store.get<ClientLead>('leads', me.id);
+    const isNew = !before;
+    if (before?.doneAt) await store.put<ClientLead>('leads', { ...before, doneAt: undefined, pooledAt: now(), escalatedAt: undefined });
     const owner = await touchLead(me, v.title, false, input?.ref);
     const lead = (await store.get<ClientLead>('leads', me.id))!;
     const at = now();

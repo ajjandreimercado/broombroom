@@ -601,7 +601,7 @@ export const AccountView: React.FC = () => {
                           <p className="text-[11px] text-[#1D5FD1] font-semibold truncate mt-0.5">
                             {conv.vehicleTitle}
                           </p>
-                          <p className="text-xs text-[#4E585E] truncate mt-1">{conv.lastMessage}</p>
+                          <p className="text-xs text-[#4E585E] truncate mt-1">{conv.closedAt ? 'Chat ended · ' : ''}{conv.lastMessage}</p>
                         </div>
                       ))
                     )}
@@ -729,7 +729,12 @@ export const AccountView: React.FC = () => {
                         ))}
                       </div>
 
-                      {/* Message Input Box */}
+                      {/* Message Input Box (an ended chat is read-only) */}
+                      {selectedConversation.closedAt ? (
+                        <p className="p-3.5 border-t border-[#C9D1D6] bg-[#F7F8F8] text-[12.5px] text-[#4E585E] shrink-0">
+                          This chat ended when your vehicle was released. To buy another one, press “Request to apply” on its listing.
+                        </p>
+                      ) : (
                       <form
                         onSubmit={handleSendMessage}
                         className="p-3 sm:p-3.5 border-t border-[#C9D1D6] flex gap-2 sm:gap-2.5 bg-[#F7F8F8]/30 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
@@ -750,6 +755,7 @@ export const AccountView: React.FC = () => {
                           <span>Send</span>
                         </button>
                       </form>
+                      )}
                     </>
                   ) : (
                     <div className="flex-1 flex items-center justify-center p-6 text-[#6B767D] text-xs">

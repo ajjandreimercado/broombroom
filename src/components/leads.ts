@@ -36,7 +36,7 @@ export const shouldRelease = (lead: ClientLead, now: number) => {
 };
 
 export const shouldAlertUnclaimed = (lead: ClientLead, now: number) =>
-  !lead.agentName && !lead.escalatedAt && now - t(lead.pooledAt ?? lead.createdAt) >= UNCLAIMED_ALERT_MS;
+  !lead.agentName && !lead.doneAt && !lead.escalatedAt && now - t(lead.pooledAt ?? lead.createdAt) >= UNCLAIMED_ALERT_MS;
 
 // "5h 12m", "45m"
 export const duration = (ms: number) => {

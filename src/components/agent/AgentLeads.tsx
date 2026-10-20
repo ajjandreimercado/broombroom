@@ -18,7 +18,7 @@ export const AgentLeads: React.FC = () => {
     return () => window.clearInterval(id);
   }, []);
 
-  const open = leads.filter((l) => !l.agentName).sort((a, b) => (a.pooledAt ?? a.createdAt).localeCompare(b.pooledAt ?? b.createdAt));
+  const open = leads.filter((l) => !l.agentName && !l.doneAt).sort((a, b) => (a.pooledAt ?? a.createdAt).localeCompare(b.pooledAt ?? b.createdAt));
   const mine = leads.filter((l) => l.agentName === me);
   const lastClientLine = (clientId: string) =>
     conversations

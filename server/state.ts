@@ -33,8 +33,8 @@ export const buildState = async (me?: User) => {
 
   if (role === 'seller') {
     const [conversations, rawLeads, applications, commissions, listingRequests] = await Promise.all([
-      store.all<Conversation>('conversations', { sellerName: me.name }, NEWEST('updatedAt')),
-      store.all<ClientLead>('leads', { agentName: { $in: [null, me.name] } }),
+      store.all<Conversation>('conversations', { sellerName: me.name, closedAt: { $exists: false } }, NEWEST('updatedAt')),
+      store.all<ClientLead>('leads', { $or: [{ agentName: me.name }, { agentName: null, doneAt: { $exists: false } }] }),
       store.all<VehicleApplication>('applications', { sellerName: me.name }, NEWEST('submittedAt')),
       store.all<Commission>('commissions', { agentName: me.name }, NEWEST('createdAt')),
       store.all<ListingRequest>('listing_requests', { agentName: me.name }, NEWEST('createdAt')),

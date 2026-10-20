@@ -482,8 +482,10 @@ test('reassigning: the release pays the client’s current agent; 24-hour rule r
   let s = await ad.state();
   assert.equal(s.commissions.find((x: any) => x.applicationRef === app.referenceNo).agentName, 'Bea Villanueva');
 
-  // the client writes, Bea does not reply for 25 hours
-  await c.post('/api/conversations', { vehicleId: v.id });
+  // after the release the client is free; they ask to apply for another car, Bea claims them, then does not reply for 25 hours
+  await c.post('/api/apply-requests', { vehicleId: (await freeVehicle()).id });
+  assert.equal((await (await bea()).post(`/api/leads/${c.id}/claim`)).status, 200);
+  await ad.post(`/api/leads/${c.id}/unlock`); // the 24-hour rule applies to unlocked clients
   const lead = await store.get<any>('leads', c.id);
   const t = new Date(Date.now() - 25 * 3600e3).toISOString();
   await store.put('leads', { ...lead, lastClientAt: t, claimedAt: t, lastAgentAt: undefined });
@@ -1039,4 +1041,36 @@ test('two applications for the same car: each has its own quotation; the release
   assert.equal(coms[0].applicationRef, second.referenceNo);
   assert.equal(coms[0].clientName, 'Kent Magtibay');
   assert.equal(coms[0].amount, 40000);
+});
+
+test('release frees the client: no agent or lock, the chat with that agent ends, and they can ask to apply again for anyone to claim', async () => {
+  const c = await newClient();
+  const ad = await admin();
+  const v = await freeVehicle();
+  const app = (await apply(c, v.id)).data; // Carlo claims and sends the link
+  await toApproved(ad, c, app.id);
+  const conv = (await c.state()).conversations[0];
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  assert.equal((await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo).agentName, 'Carlo Santos', 'Carlo is still paid');
+  const st = await c.state();
+  assert.equal(st.myAgent, null, 'no agent any more');
+  assert.ok(st.conversations.find((x: any) => x.id === conv.id).closedAt, 'the chat ended');
+  assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { text: 'hi' })).status, 400, 'read-only');
+  const ca = await carlo();
+  assert.ok(!(await ca.state()).conversations.some((x: any) => x.id === conv.id), 'gone from the agent');
+  assert.equal((await ca.post(`/api/conversations/${conv.id}/messages`, { text: 'hi' })).status, 400);
+  const lead = (await ad.state()).leads.find((l: any) => l.clientId === c.id);
+  assert.equal(lead.agentName, undefined);
+  assert.equal(lead.lockedTo, undefined);
+  assert.ok(!(await (await bea()).state()).leads.some((l: any) => l.clientId === c.id), 'not in Open leads until they ask again');
+  // a new vehicle: back in Open leads, and another agent may claim them
+  const v2 = await freeVehicle();
+  assert.equal((await c.post('/api/apply-requests', { vehicleId: v2.id })).status, 200);
+  assert.ok((await (await bea()).state()).leads.some((l: any) => l.clientId === c.id && !l.agentName), 'back in Open leads');
+  assert.equal((await (await bea()).post(`/api/leads/${c.id}/claim`)).status, 200);
+  const chats = (await c.state()).conversations;
+  const fresh = chats.find((x: any) => !x.closedAt);
+  assert.equal(fresh.sellerName, 'Bea Villanueva');
+  assert.equal(fresh.vehicleId, v2.id);
+  assert.equal(chats.find((x: any) => x.id === conv.id).sellerName, 'Carlo Santos', 'the old chat stays as it was');
 });

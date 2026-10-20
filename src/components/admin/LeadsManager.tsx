@@ -43,7 +43,7 @@ export const LeadsManager: React.FC = () => {
         onChange={setFilter}
         options={[
           { value: 'all', label: 'All', count: leads.length },
-          { value: 'open', label: 'Open leads', count: leads.filter((l) => !l.agentName).length },
+          { value: 'open', label: 'Open leads', count: leads.filter((l) => !l.agentName && !l.doneAt).length },
           { value: 'owned', label: 'With an agent', count: leads.filter((l) => l.agentName).length },
         ]}
       />

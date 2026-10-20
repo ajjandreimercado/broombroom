@@ -204,6 +204,7 @@ export interface Conversation {
   messages: ChatMessage[];
   // The admin took over after the client waited 2 days for a reply; the admin can then answer in this chat.
   takenOverAt?: string;
+  closedAt?: string; // ended when the client's vehicle was released: read-only, hidden from the agent
 }
 
 export interface UserProfile {
@@ -413,6 +414,7 @@ export interface ClientLead {
   claimedAt?: string;
   interest: string; // the vehicle that brought the client in (or the latest one they asked to apply for)
   applyVehicleId?: string; // the vehicle the client asked to apply for; the claiming agent's chat is about it
+  doneAt?: string; // their vehicle was released: no agent and not in Open leads until they ask to apply again
   lastClientAt?: string; // client's latest message, application or quotation request
   lastAgentAt?: string; // owning agent's latest reply
   escalatedAt?: string; // admin was told it sat unclaimed
