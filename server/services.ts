@@ -620,8 +620,6 @@ const endAgentLink = async (clientId: string, agent: string, ref: string) => {
   const at = now();
   const lead = await store.get<ClientLead>('leads', clientId);
   if (lead) {
-    // Another open application keeps the client with their agent.
-    if (await store.one('applications', { applicantId: clientId, referenceNo: { $ne: ref }, status: { $in: [...OPEN, ...HOLDING] } })) return;
     await store.put<ClientLead>('leads', {
       ...lead,
       agentName: undefined,
@@ -1200,7 +1198,17 @@ export const requestToApply = (me: User, input: any) =>
     rateLimit(`applyreq|${me.id}`, 10, 60 * 60e3, 'Too many requests. Please try again later.');
     const v = need(await store.get<Vehicle>('vehicles', idOf(input?.vehicleId)), 'Listing');
     if (v.status !== 'available') bad('This vehicle is no longer available.');
-    const before = await store.get<ClientLead>('leads', me.id);
+    let before = await store.get<ClientLead>('leads', me.id);
+    // Still with the agent of a purchase that was already released (nothing else in progress, e.g. released before the
+    // release freed clients): end that link first, so this request goes to Open leads like any other.
+    const last = (await store.all<VehicleApplication>('applications', { applicantId: me.id, status: 'completed' }, { releasedAt: -1 }))[0];
+    if (before?.agentName && last?.releasedAt && (before.claimedAt ?? before.createdAt) <= last.releasedAt) {
+      // Only an application sent after that release keeps the agent.
+      if (!(await store.one('applications', { applicantId: me.id, status: { $in: [...OPEN, ...HOLDING] }, submittedAt: { $gt: last.releasedAt } }))) {
+        await endAgentLink(me.id, before.agentName, last.referenceNo);
+        before = await store.get<ClientLead>('leads', me.id);
+      }
+    }
     const isNew = !before;
     if (before?.doneAt) await store.put<ClientLead>('leads', { ...before, doneAt: undefined, pooledAt: now(), escalatedAt: undefined });
     const owner = await touchLead(me, v.title, false, input?.ref);

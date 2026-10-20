@@ -1077,3 +1077,35 @@ test('release frees the client: no agent or lock, the chat with that agent ends,
   assert.equal((await (await carlo()).post(`/api/leads/${c.id}/claim`)).status, 409, 'first come, first served');
   assert.equal(chats.find((x: any) => x.id === conv.id).sellerName, 'Carlo Santos', 'the old chat stays as it was');
 });
+
+test('release always frees the client (even with an older application still open); stale locks from earlier releases are cleared on the next request', async () => {
+  const ad = await admin();
+  // an older application left open does not keep the lock after a release
+  const c = await newClient();
+  const old = (await apply(c, (await freeVehicle()).id)).data; // Carlo claims; this one stays "submitted"
+  const v = await freeVehicle();
+  const app = (await apply(c, v.id)).data;
+  await toApproved(ad, c, app.id);
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  let lead = (await ad.state()).leads.find((l: any) => l.clientId === c.id);
+  assert.equal(lead.agentName, undefined, 'free, although ' + old.referenceNo + ' is still open');
+  assert.equal(lead.lockedTo, undefined);
+
+  // a client released before this rule existed: still locked to their old agent in the data
+  const d = await newClient();
+  const dv = await freeVehicle();
+  const dapp = (await apply(d, dv.id)).data;
+  await toApproved(ad, d, dapp.id);
+  assert.equal((await ad.post(`/api/applications/${dapp.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  const row = await store.get<any>('leads', d.id);
+  const claimedAt = new Date(Date.now() - 3600e3).toISOString();
+  await store.put('leads', { ...row, agentName: 'Carlo Santos', lockedTo: 'Carlo Santos', lockedRef: dapp.referenceNo, claimedAt, doneAt: undefined });
+  assert.equal((await d.state()).myAgent, 'Carlo Santos', 'stale lock in place');
+  assert.equal((await d.post('/api/apply-requests', { vehicleId: (await freeVehicle()).id })).status, 200);
+  lead = (await ad.state()).leads.find((l: any) => l.clientId === d.id);
+  assert.equal(lead.agentName, undefined, 'back in Open leads');
+  assert.equal(lead.lockedTo, undefined);
+  assert.ok((await (await bea()).state()).leads.some((l: any) => l.clientId === d.id && !l.agentName), 'every agent sees them');
+  assert.equal((await (await bea()).post(`/api/leads/${d.id}/claim`)).status, 200, 'any agent can be first');
+  assert.equal((await d.state()).myAgent, 'Bea Villanueva');
+});
