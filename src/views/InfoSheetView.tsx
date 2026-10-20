@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
-import { AFFIRMATION, PURPOSES, SHEET, cleanInfoSheet, type Dependent, type SheetField } from '../components/infoSheet.ts';
+import { AFFIRMATION, FIELDS, PURPOSES, SHEET, cleanInfoSheet, fieldProblem, type Dependent, type SheetField } from '../components/infoSheet.ts';
 import { checkUpload } from '../components/admin/ui.tsx';
 import { quoteFor } from '../components/quote.ts';
 import { photoDataUrl } from '../media.ts';
@@ -8,6 +8,7 @@ import { dataUrlToBlob } from '../api.ts';
 import { ArrowLeft, Eraser, Paperclip, PenLine, Plus, Trash2, X } from 'lucide-react';
 
 const field = 'w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]';
+const bad = 'border-[#B42318] border-2 bg-[#FEF3F2]'; // a field that is missing or wrong
 
 // Draw the sketch to your home with a finger, pen or mouse. "Use drawing" hands it back as a PNG.
 const SketchPad: React.FC<{ onDone: (blob: Blob) => void; onCancel: () => void }> = ({ onDone, onCancel }) => {
@@ -105,6 +106,10 @@ export const InfoSheetView: React.FC = () => {
   const [drawing, setDrawing] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Red marks: a field shows its problem once the client has left it, or after pressing Send.
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [tried, setTried] = useState(false);
+  const [halfDates, setHalfDates] = useState<Record<string, boolean>>({}); // a date typed only partly reads as empty
 
   const back = () => navigateTo('account', { accountTab: 'applications' });
   // The sheet opens once the client signed their quotation and sent it back.
@@ -127,12 +132,31 @@ export const InfoSheetView: React.FC = () => {
   }
 
   const set = (k: string, v: string) => setAnswers((a) => ({ ...a, [k]: v }));
+  const problemOf = (f: SheetField) => (halfDates[f.key] ? 'Enter the full date (month, day and year).' : fieldProblem(f, (answers[f.key] ?? '').trim()));
+  const shown = (f: SheetField) => (tried || touched[f.key] ? problemOf(f) : '');
+  const leave = (k: string) => setTouched((t) => (t[k] ? t : { ...t, [k]: true }));
   const input = (f: SheetField) => {
-    const common = { id: `sheet-${f.key}`, value: answers[f.key] ?? '', required: f.required, className: field };
+    const err = shown(f);
+    const common = {
+      id: `sheet-${f.key}`,
+      value: answers[f.key] ?? '',
+      required: f.required,
+      className: `${field} ${err ? bad : ''}`,
+      'aria-invalid': err ? true : undefined,
+      'aria-describedby': err ? `sheet-${f.key}-error` : undefined,
+      onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        // A partly typed date may never fire a change: read the field itself when the client leaves it.
+        if (f.type === 'date') {
+          const half = (e.currentTarget as HTMLInputElement).validity.badInput; // read now: the event is gone inside the update
+          setHalfDates((h) => ({ ...h, [f.key]: half }));
+        }
+        leave(f.key);
+      },
+    };
     if (f.type === 'textarea') return <textarea {...common} rows={2} maxLength={1000} onChange={(e) => set(f.key, e.target.value)} />;
     if (f.type === 'select')
       return (
-        <select {...common} onChange={(e) => set(f.key, e.target.value)} className={`${field} cursor-pointer`}>
+        <select {...common} onChange={(e) => set(f.key, e.target.value)} className={`${common.className} cursor-pointer`}>
           <option value="">Choose…</option>
           {f.options!.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
@@ -143,13 +167,35 @@ export const InfoSheetView: React.FC = () => {
         type={f.type === 'date' ? 'date' : 'text'}
         inputMode={f.type === 'number' ? 'numeric' : undefined}
         maxLength={f.type === 'number' ? 3 : 200}
-        onChange={(e) => set(f.key, f.type === 'number' ? e.target.value.replace(/\D/g, '') : e.target.value)}
+        onChange={(e) => {
+          if (f.type === 'date') {
+            const half = e.target.validity.badInput;
+            setHalfDates((h) => ({ ...h, [f.key]: half }));
+          }
+          set(f.key, f.type === 'number' ? e.target.value.replace(/\D/g, '') : e.target.value);
+        }}
+        onInput={f.type === 'date' ? (e) => { const half = e.currentTarget.validity.badInput; setHalfDates((h) => ({ ...h, [f.key]: half })); } : undefined}
       />
     );
   };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTried(true);
+    // Read every date field itself as well (a partly typed date may not have reported a change).
+    const half: Record<string, boolean> = {};
+    for (const f of FIELDS) if (f.type === 'date') half[f.key] = !!(document.getElementById(`sheet-${f.key}`) as HTMLInputElement | null)?.validity.badInput;
+    setHalfDates(half);
+    // Every wrong or missing field is marked; jump to the first one.
+    const first = FIELDS.find((f) => (half[f.key] ? true : fieldProblem(f, (answers[f.key] ?? '').trim())));
+    const otherBad = !purposes.length || (purposes.includes('Others') && !purposeOther.trim()) || !affirmed || !signature.trim();
+    if (first || otherBad) {
+      setError('Please fix the fields marked in red.');
+      const el = first ? document.getElementById(`sheet-${first.key}`) : document.getElementById('sheet-purpose');
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el?.focus({ preventScroll: true });
+      return;
+    }
     const sheet = { answers, dependents: dependents.filter((d) => d.name.trim()), purposes, purposeOther, affirmed: affirmed as true, signature, spouseSignature };
     const checked = cleanInfoSheet(sheet); // the same checks the server does, so mistakes show here first
     if (typeof checked === 'string') {
@@ -189,8 +235,9 @@ export const InfoSheetView: React.FC = () => {
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
                 {s.fields.map((f) => (
                   <label key={f.key} htmlFor={`sheet-${f.key}`} className={`block ${f.wide ? 'sm:col-span-2' : ''}`}>
-                    <span className="gb-label block mb-1.5">{f.label}{f.required ? ' *' : ''}</span>
+                    <span className={`gb-label block mb-1.5 ${shown(f) ? 'text-[#B42318]' : ''}`}>{f.label}{f.required ? ' *' : ''}</span>
                     {input(f)}
+                    {shown(f) && <span id={`sheet-${f.key}-error`} className="mt-1 block text-[12.5px] font-medium text-[#B42318]">{shown(f)}</span>}
                   </label>
                 ))}
               </div>
@@ -218,7 +265,7 @@ export const InfoSheetView: React.FC = () => {
             )}
 
             {s.kind === 'purpose' && (
-              <div className="mt-4 space-y-3">
+              <div id="sheet-purpose" tabIndex={-1} className="mt-4 space-y-3">
                 <div className="flex flex-wrap gap-x-5 gap-y-2">
                   {PURPOSES.map((p) => (
                     <label key={p} className="inline-flex items-center gap-2 text-[14px] text-[#141517] cursor-pointer">
@@ -227,7 +274,8 @@ export const InfoSheetView: React.FC = () => {
                     </label>
                   ))}
                 </div>
-                {purposes.includes('Others') && <input value={purposeOther} onChange={(e) => setPurposeOther(e.target.value)} placeholder="Please state" aria-label="Other purpose" maxLength={200} className={field} />}
+                {tried && !purposes.length && <p className="text-[12.5px] font-medium text-[#B42318]">Check at least one.</p>}
+                {purposes.includes('Others') && <input value={purposeOther} onChange={(e) => setPurposeOther(e.target.value)} placeholder="Please state" aria-label="Other purpose" aria-invalid={tried && !purposeOther.trim() ? true : undefined} maxLength={200} className={`${field} ${tried && !purposeOther.trim() ? bad : ''}`} />}
               </div>
             )}
 
@@ -273,14 +321,15 @@ export const InfoSheetView: React.FC = () => {
                   )}
                 </div>
                 <p className="text-[13.5px] leading-relaxed text-[#2A2E31] max-w-[70ch]">{AFFIRMATION}</p>
-                <label className="flex items-start gap-2 text-[14px] text-[#141517] cursor-pointer">
+                <label className={`flex items-start gap-2 text-[14px] cursor-pointer ${tried && !affirmed ? 'text-[#B42318] font-medium' : 'text-[#141517]'}`}>
                   <input type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} className="mt-0.5 w-4 h-4 accent-[#1D5FD1]" />
                   I affirm that my answers are true and correct. *
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <label className="block">
                     <span className="gb-label block mb-1.5">Applicant's signature (type your full name) *</span>
-                    <input value={signature} onChange={(e) => setSignature(e.target.value)} maxLength={120} className={field} />
+                    <input value={signature} onChange={(e) => setSignature(e.target.value)} maxLength={120} aria-invalid={tried && !signature.trim() ? true : undefined} className={`${field} ${tried && !signature.trim() ? bad : ''}`} />
+                    {tried && !signature.trim() && <span className="mt-1 block text-[12.5px] font-medium text-[#B42318]">Type your full name as your signature.</span>}
                   </label>
                   <label className="block">
                     <span className="gb-label block mb-1.5">Spouse / surety signature (full name)</span>

@@ -135,8 +135,17 @@ export type InfoSheet = {
   sketchUrl?: string; // optional photo of a hand-drawn sketch or map
 };
 
-const FIELDS = SHEET.flatMap((s) => s.fields ?? []);
+export const FIELDS = SHEET.flatMap((s) => s.fields ?? []);
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
+// What is wrong with one answer, or '' when it is fine. The form shows it under the field; the server checks the same.
+export const fieldProblem = (f: SheetField, v: string): string => {
+  if (!v) return f.required ? `${f.label} is required.` : '';
+  if (f.type === 'select' && !f.options!.includes(v)) return 'Choose one of the options.';
+  if (f.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return 'Enter a valid date.';
+  if (f.type === 'number' && !/^\d{1,3}$/.test(v)) return 'Enter a number.';
+  return '';
+};
 
 // Checks and tidies a submitted sheet. Returns the clean sheet, or the first problem as a message.
 export const cleanInfoSheet = (input: any): InfoSheet | string => {
@@ -144,10 +153,8 @@ export const cleanInfoSheet = (input: any): InfoSheet | string => {
   const answers: Record<string, string> = {};
   for (const f of FIELDS) {
     const v = str(raw[f.key], f.type === 'textarea' ? 1000 : 200);
-    if (f.required && !v) return `${SHEET.find((s) => s.fields?.includes(f))!.title}: ${f.label} is required.`;
-    if (v && f.type === 'select' && !f.options!.includes(v)) return `${f.label}: choose one of the options.`;
-    if (v && f.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${f.label}: enter a valid date.`;
-    if (v && f.type === 'number' && !/^\d{1,3}$/.test(v)) return `${f.label}: enter a number.`;
+    const problem = fieldProblem(f, v);
+    if (problem) return `${SHEET.find((s) => s.fields?.includes(f))!.title}: ${problem}`;
     if (v) answers[f.key] = v;
   }
   const dependents = (Array.isArray(input?.dependents) ? input.dependents : [])
