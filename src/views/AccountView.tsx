@@ -734,9 +734,7 @@ export const AccountView: React.FC = () => {
                       {/* Message Input Box (an ended chat is read-only) */}
                       {selectedConversation.closedAt ? (
                         <p className="p-3.5 border-t border-[#C9D1D6] bg-[#F7F8F8] text-[12.5px] text-[#4E585E] shrink-0">
-                          {selectedConversation.closedReason === 'removed_by_agent'
-                            ? 'Your agent removed this conversation. You can start a new one from the vehicle listing.'
-                            : 'This chat ended when your vehicle was released. To buy another one, press “Request to apply” on its listing.'}
+                          This chat ended when your vehicle was released. To buy another one, press “Request to apply” on its listing.
                         </p>
                       ) : (
                       <form

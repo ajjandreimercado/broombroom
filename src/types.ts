@@ -205,8 +205,7 @@ export interface Conversation {
   messages: ChatMessage[];
   // The admin took over after the client waited 2 days for a reply; the admin can then answer in this chat.
   takenOverAt?: string;
-  closedAt?: string; // ended (vehicle released, or the agent removed it): read-only, hidden from the agent
-  closedReason?: 'released' | 'removed_by_agent'; // absent on chats ended before this was recorded (= released)
+  closedAt?: string; // ended when the client's vehicle was released: read-only, hidden from the agent
 }
 
 export interface UserProfile {

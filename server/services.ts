@@ -627,7 +627,7 @@ const endAgentLink = async (clientId: string, agent: string, ref: string, vehicl
   for (const r of await store.all<ApplyRequest>('apply_requests', { clientId, doneAt: { $exists: false }, ...(vehicleId ? { vehicleId } : { claimedBy: agent }) }))
     await store.put<ApplyRequest>('apply_requests', { ...r, doneAt: at });
   for (const c of await store.all<Conversation>('conversations', { buyerId: clientId, sellerName: agent, closedAt: { $exists: false } }))
-    await store.put<Conversation>('conversations', { ...c, closedAt: at, closedReason: 'released', unreadSeller: 0 });
+    await store.put<Conversation>('conversations', { ...c, closedAt: at, unreadSeller: 0 });
   const lead = await store.get<ClientLead>('leads', clientId);
   if (lead && (!lead.agentName || lead.agentName === agent)) {
     await store.put<ClientLead>('leads', {
@@ -1183,12 +1183,7 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     const conv = need(await store.get<Conversation>('conversations', idOf(convId)), 'Conversation');
     const isAgent = me.role === 'seller';
     if (me.role === 'buyer' && conv.buyerId !== me.id) forbidden();
-    if (conv.closedAt)
-      bad(
-        conv.closedReason === 'removed_by_agent'
-          ? 'Your agent removed this conversation. You can start a new one from the vehicle listing.'
-          : 'This chat ended when your vehicle was released. Press "Request to apply" on a vehicle to get an agent again.'
-      );
+    if (conv.closedAt) bad('This chat ended when your vehicle was released. Press "Request to apply" on a vehicle to get an agent again.');
     if (me.role === 'buyer' && conv.sellerName === TEAM_NAME && !conv.takenOverAt) bad(NEEDS_AGENT);
     if (isAgent && conv.sellerName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
     if (me.role === 'admin' && !conv.takenOverAt) forbidden('Admins can read conversations but not reply in them. Take over the chat first.');
@@ -1303,19 +1298,6 @@ export const endTakeover = (convId: string) =>
   tx(async () => {
     const conv = need(await store.get<Conversation>('conversations', idOf(convId)), 'Conversation');
     return store.put<Conversation>('conversations', { ...conv, takenOverAt: undefined });
-  });
-
-// Agent: remove one of their client conversations. The thread closes and leaves the agent's list (their state
-// only loads open chats); the client keeps it read-only and can start a new conversation, and the admin can
-// still see it. The client stays the agent's client: removing a thread is not unassigning them.
-export const removeConversation = (me: User, convId: string) =>
-  tx(async () => {
-    const conv = need(await store.get<Conversation>('conversations', idOf(convId)), 'Conversation');
-    if (conv.sellerName !== me.name) forbidden('This client is not yours, so you cannot remove this conversation.');
-    if (conv.closedAt) return conv;
-    const saved = await store.put<Conversation>('conversations', { ...conv, closedAt: now(), closedReason: 'removed_by_agent', unreadSeller: 0 });
-    await notify('client', 'Conversation removed', `${me.name} removed your conversation (${conv.vehicleTitle}). You can start a new one from the vehicle listing.`, 'messages', conv.buyerId);
-    return saved;
   });
 
 export const markConversationRead = (me: User, convId: string) =>

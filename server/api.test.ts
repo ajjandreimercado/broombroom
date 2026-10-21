@@ -1023,35 +1023,6 @@ test('conversations: claiming a client starts a chat with the agent; clients can
   assert.equal((await lone.post('/api/conversations', { text: 'Hello?' })).status, 400);
 });
 
-test('conversations: an agent can remove their conversation; it leaves their list, stays read-only for the client, who can start a new one', async () => {
-  const ca = await carlo();
-  const be = await bea();
-  const c = await newClient();
-  const v = await freeVehicle();
-  await c.post('/api/apply-requests', { vehicleId: v.id });
-  await ca.post(`/api/leads/${c.id}/claim`);
-  const conv = (await c.state()).conversations[0];
-  assert.ok(conv, 'claim started a chat');
-
-  assert.equal((await be.raw('DELETE', `/api/conversations/${conv.id}`)).status, 403, 'another agent cannot remove it');
-  assert.equal((await c.raw('DELETE', `/api/conversations/${conv.id}`)).status, 403, 'clients cannot remove it');
-  assert.equal((await ca.raw('DELETE', `/api/conversations/${conv.id}`)).status, 200);
-
-  assert.ok(!(await ca.state()).conversations.some((x: any) => x.id === conv.id), 'gone from the agent’s list');
-  const kept = (await c.state()).conversations.find((x: any) => x.id === conv.id);
-  assert.ok(kept.closedAt, 'the client keeps the thread, ended');
-  assert.equal(kept.closedReason, 'removed_by_agent');
-  assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { text: 'Hello?' })).status, 400, 'read-only for the client');
-  assert.ok((await (await admin()).state()).conversations.some((x: any) => x.id === conv.id), 'the admin can still see it');
-
-  // The client stays Carlo's client and can start a new conversation about the same vehicle.
-  const fresh = await c.post('/api/conversations', { vehicleId: v.id, text: 'Starting again' });
-  assert.equal(fresh.status, 200, JSON.stringify(fresh.json));
-  assert.notEqual(fresh.data.id, conv.id);
-  assert.equal(fresh.data.sellerName, 'Carlo Santos');
-  assert.ok((await ca.state()).conversations.some((x: any) => x.id === fresh.data.id), 'the new chat reaches the agent');
-});
-
 test('editing a listing: details, photos and videos change; removing every photo brings back the placeholder', async () => {
   const ad = await admin();
   const v = await freeVehicle();
