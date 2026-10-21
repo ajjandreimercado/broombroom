@@ -27,35 +27,10 @@ const DOCS: { title: string; issuer: string; facts: [string, string][]; file: st
     file: 'business-permit.jpg',
   },
   {
-    title: 'Barangay Business Clearance',
-    issuer: 'Barangay Bading, Butuan City',
-    facts: [['Clearance No.', '2026-12-00173'], ['Valid until', 'Dec 31, 2026']],
-    file: 'barangay-clearance.jpg',
-  },
-  {
-    title: 'Fire Safety Inspection Certificate',
-    issuer: 'Bureau of Fire Protection (BFP)',
-    facts: [['FSIC No.', 'R-13-150102-5984803'], ['Valid until', 'Oct 7, 2027']],
-    file: 'fire-safety-certificate.jpg',
-  },
-  {
-    title: 'Sanitary Permit',
-    issuer: 'Butuan City Health Department',
-    facts: [['Permit No.', '2026-18781'], ['Valid until', 'Dec 31, 2026']],
-    file: 'sanitary-permit.jpg',
-  },
-  {
     title: 'BIR Registration',
     issuer: 'Bureau of Internal Revenue (BIR)',
     facts: [['RSN', '103RC20260000008360'], ['Registered', '2026']],
     file: 'bir-registration.jpg',
-    wide: true,
-  },
-  {
-    title: 'Business Registration Plate',
-    issuer: 'City Government of Butuan',
-    facts: [['Plate No.', '06182'], ['Valid', '3 years from 2026']],
-    file: 'business-registration-plate.jpg',
     wide: true,
   },
 ];
