@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { backdropMotion, drawerMotion } from '../../motion.ts';
@@ -113,9 +114,12 @@ export const ReasonAction: React.FC<{
   );
 };
 
-// Right-hand side panel for detail and actions on one record.
-export const Drawer: React.FC<{ open: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ open, onClose, title, children }) => (
-  <AnimatePresence>
+// Right-hand side panel for detail and actions on one record. Portalled to <body>: drawers are often opened
+// from inside animated lists, and an ancestor's animation/transform would otherwise trap this fixed overlay
+// inside that small box instead of the viewport (clipped, overlapping the row that opened it).
+export const Drawer: React.FC<{ open: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ open, onClose, title, children }) =>
+  createPortal(
+    <AnimatePresence>
     {open && (
       <motion.div key="drawer" {...backdropMotion} className="fixed inset-0 z-50 bg-[#141517]/50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
         <motion.aside
@@ -123,7 +127,7 @@ export const Drawer: React.FC<{ open: boolean; onClose: () => void; title: strin
           role="dialog"
           aria-modal="true"
           aria-label={title}
-          className="w-full max-w-md h-full bg-[#F7F8F8] border-l border-[#141517] overflow-y-auto"
+          className="w-full max-w-md h-full bg-[#F7F8F8] border-l border-[#141517] overflow-y-auto overflow-x-hidden"
         >
           <div className="sticky top-0 z-10 bg-[#F7F8F8] flex items-center justify-between gap-3 px-6 py-4 border-b border-[#C9D1D6]">
             <h3 className="font-display text-[18px] leading-tight text-[#141517]">{title}</h3>
@@ -135,8 +139,9 @@ export const Drawer: React.FC<{ open: boolean; onClose: () => void; title: strin
         </motion.aside>
       </motion.div>
     )}
-  </AnimatePresence>
-);
+    </AnimatePresence>,
+    document.body
+  );
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const checkUpload = (file: File): string | null => {

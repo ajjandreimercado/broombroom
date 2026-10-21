@@ -146,13 +146,16 @@ const DeleteAgent: React.FC<{ account: AccountSummary }> = ({ account }) => {
       <button className={`${btn.danger} inline-flex items-center gap-1.5`} onClick={() => setOpen(true)}>
         <Trash2 className="w-4 h-4" aria-hidden="true" /> Report &amp; delete
       </button>
-      <Drawer open={open} onClose={close} title={`${name} — agent report`}>
+      <Drawer open={open} onClose={close} title={name}>
         <div className="space-y-6">
-          <p className="text-[13.5px] leading-relaxed text-[#4E585E]">
-            Review this report before deleting. Deletion is permanent: download a copy for your records first if you need one.
-          </p>
+          <div>
+            <p className="gb-label">Agent report</p>
+            <p className="mt-2 text-[13.5px] leading-relaxed text-[#4E585E]">
+              Review this report before deleting. Deletion is permanent: download a copy for your records first if you need one.
+            </p>
+          </div>
 
-          <dl className="grid grid-cols-2 gap-y-3 text-[13px]">
+          <dl className="grid grid-cols-[minmax(120px,150px)_minmax(0,1fr)] gap-x-3 gap-y-3 text-[13px]">
             <dt className="text-[#4E585E]">Email</dt><dd className="text-[#141517] break-all">{account.email}</dd>
             <dt className="text-[#4E585E]">Phone</dt><dd className="text-[#141517]">{account.phone || '-'}</dd>
             <dt className="text-[#4E585E]">Member since</dt><dd className="text-[#141517]">{account.memberSince || '-'}</dd>
