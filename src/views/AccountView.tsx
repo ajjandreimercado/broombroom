@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { goodPassword, PASSWORD_RULE } from '../components/password.ts';
+import { PasswordInput } from '../components/PasswordInput.tsx';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts';
 import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
@@ -865,9 +866,9 @@ export const AccountView: React.FC = () => {
                       <label className="gb-label block mb-2">
                         Current Password
                       </label>
-                      <input aria-label="Current Password"
-                        type="password"
+                      <PasswordInput aria-label="Current Password"
                         placeholder="••••••••"
+                        autoComplete="current-password"
                         value={currentPass}
                         onChange={(e) => setCurrentPass(e.target.value)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
@@ -877,9 +878,9 @@ export const AccountView: React.FC = () => {
                       <label className="gb-label block mb-2">
                         New Password
                       </label>
-                      <input aria-label="New Password"
-                        type="password"
+                      <PasswordInput aria-label="New Password"
                         placeholder="8+ characters, letters and numbers"
+                        autoComplete="new-password"
                         value={newPass}
                         onChange={(e) => setNewPass(e.target.value)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"

@@ -4,7 +4,8 @@ import { PORTAL } from '../portals.ts';
 import { AnimatePresence, motion } from 'motion/react';
 import { backdropMotion, modalMotion } from '../motion.ts';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
-import { X, Mail, Lock, Phone, User, Eye, EyeOff } from 'lucide-react';
+import { PasswordInput } from './PasswordInput.tsx';
+import { X, Mail, Lock, Phone, User } from 'lucide-react';
 import { goodPassword, PASSWORD_RULE } from './password.ts';
 import { CONTACT_EMAIL } from '../data/constants.ts';
 import { GoogleButton } from './GoogleButton.tsx';
@@ -14,7 +15,6 @@ export const AuthModal: React.FC = () => {
   const [busy, setBusy] = useState(false);
 
   const [mode, setMode] = useState<'signin' | 'register' | 'forgot'>('signin');
-  const [showPass, setShowPass] = useState(false);
 
   // Sign in
   const [identifier, setIdentifier] = useState('');
@@ -175,24 +175,15 @@ export const AuthModal: React.FC = () => {
                     </button>
                   </div>
                   <div className={iconInputClass}>
-                    <Lock className={iconClass} />
-                    <input aria-label="Password"
-                      type={showPass ? 'text' : 'password'}
+                    <Lock className={`${iconClass} z-10`} />
+                    <PasswordInput aria-label="Password"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className={inputClass + ' pl-10 pr-10'}
+                      className={inputClass + ' pl-10'}
                       required
                       autoComplete="current-password"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B767D] hover:text-[#4E585E] cursor-pointer transition-colors"
-                      aria-label={showPass ? 'Hide password' : 'Show password'}
-                    >
-                      {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
                   </div>
                 </div>
 
@@ -252,11 +243,11 @@ export const AuthModal: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <label className={labelClass}>Password</label>
-                    <input aria-label="Password" type="password" placeholder="8+ characters, letters and numbers" autoComplete="new-password" value={regPass} onChange={(e) => setRegPass(e.target.value)} className={inputClass} required />
+                    <PasswordInput aria-label="Password" placeholder="8+ characters, letters and numbers" autoComplete="new-password" value={regPass} onChange={(e) => setRegPass(e.target.value)} className={inputClass} required />
                   </div>
                   <div>
                     <label className={labelClass}>Confirm</label>
-                    <input aria-label="Confirm password" type="password" placeholder="Repeat" value={regConfirmPass} onChange={(e) => setRegConfirmPass(e.target.value)} className={inputClass} required />
+                    <PasswordInput aria-label="Confirm password" placeholder="Repeat" value={regConfirmPass} onChange={(e) => setRegConfirmPass(e.target.value)} className={inputClass} required />
                   </div>
                 </div>
                 <div className="flex items-start gap-2.5 pt-1">

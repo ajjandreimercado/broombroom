@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import { PasswordInput } from './PasswordInput.tsx';
 import { goodPassword, PASSWORD_RULE } from './password.ts';
 import { PORTAL } from '../portals.ts';
 
@@ -35,18 +36,18 @@ export const SetPassword: React.FC = () => {
             setBusy(false);
           }}
         >
-          <label className="block">
+          <div>
             <span className="gb-label block mb-1.5">Temporary password</span>
-            <input type="password" required autoComplete="current-password" value={temp} onChange={(e) => setTemp(e.target.value)} className={field} />
-          </label>
-          <label className="block">
+            <PasswordInput aria-label="Temporary password" required autoComplete="current-password" value={temp} onChange={(e) => setTemp(e.target.value)} className={field} />
+          </div>
+          <div>
             <span className="gb-label block mb-1.5">New password</span>
-            <input type="password" required autoComplete="new-password" placeholder="8+ characters, letters and numbers" value={next} onChange={(e) => setNext(e.target.value)} className={field} />
-          </label>
-          <label className="block">
+            <PasswordInput aria-label="New password" required autoComplete="new-password" placeholder="8+ characters, letters and numbers" value={next} onChange={(e) => setNext(e.target.value)} className={field} />
+          </div>
+          <div>
             <span className="gb-label block mb-1.5">New password again</span>
-            <input type="password" required autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} className={field} />
-          </label>
+            <PasswordInput aria-label="New password again" required autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} className={field} />
+          </div>
           {error && <p role="alert" className="text-[13px] text-[#B42318]">{error}</p>}
           <div className="flex flex-wrap items-center gap-4 pt-1">
             <button type="submit" disabled={busy} className="px-6 py-3 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:bg-[#8C989F] text-white text-[14px] font-semibold cursor-pointer">
