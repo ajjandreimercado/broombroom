@@ -305,6 +305,7 @@ interface AppContextType {
   // A new message to the client's agent: about a listing, or a general question ('' vehicle). Returns the chat id.
   writeToAgent: (vehicleId: string, text: string) => Promise<string>;
   sendMessage: (conversationId: string, text: string) => Promise<boolean>;
+  removeConversation: (conversationId: string) => Promise<boolean>;
   sendApplyLink: (conversationId: string, vehicleId: string) => Promise<boolean>;
   applyThroughAgent: (vehicleId: string, agentSlug: string) => void;
   requestToApply: (vehicleId: string) => Promise<void>;
@@ -821,6 +822,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
   const sendMessage = async (conversationId: string, text: string) =>
     done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { text } }), undefined, 'Message not sent'));
+  const removeConversation = async (conversationId: string) =>
+    done(await run(() => api(`/conversations/${conversationId}`, { method: 'DELETE' }), ['Conversation removed', 'It has left your list. The client can start a new conversation.'], 'Could not remove the conversation'));
   const sendApplyLink = async (conversationId: string, vehicleId: string) =>
     done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { applyVehicleId: vehicleId } }), ['Apply link sent', 'Once the client applies through it, they are locked to you.'], 'Link not sent'));
   const applyThroughAgent = (vehicleId: string, agentSlug: string) => {
@@ -1023,6 +1026,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         startOrOpenConversation,
         writeToAgent,
         sendMessage,
+        removeConversation,
         sendApplyLink,
         applyThroughAgent,
         requestToApply,

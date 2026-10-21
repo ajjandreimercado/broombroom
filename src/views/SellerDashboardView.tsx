@@ -17,6 +17,7 @@ import {
   ArrowUpRight,
   ArrowLeft,
   Send,
+  Trash2,
   Users,
 } from 'lucide-react';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
@@ -32,6 +33,7 @@ export const SellerDashboardView: React.FC = () => {
     activeConversationId,
     setActiveConversationId,
     sendMessage,
+    removeConversation,
     sendApplyLink,
     leads,
     applyRequests,
@@ -68,6 +70,7 @@ export const SellerDashboardView: React.FC = () => {
 
   // Seller Chat
   const [sellerChatText, setSellerChatText] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false); // removing the open conversation asks first
   const [chatOpen, setChatOpen] = useState(!!activeConversationId); // phones: the open chat instead of the list
   const selectedConv = conversations.find((c) => c.id === activeConversationId) || conversations[0];
 
@@ -263,7 +266,7 @@ export const SellerDashboardView: React.FC = () => {
                     {conversations.map((conv) => (
                       <div
                         key={conv.id}
-                        onClick={() => { setActiveConversationId(conv.id); setChatOpen(true); }}
+                        onClick={() => { setActiveConversationId(conv.id); setConfirmRemove(false); setChatOpen(true); }}
                         className={`p-3.5 cursor-pointer text-xs transition-colors ${
                           selectedConv?.id === conv.id ? 'bg-white font-bold outline outline-1 outline-[#141517] -outline-offset-1' : 'hover:bg-[#EEF1F2]/70'
                         }`}
@@ -290,7 +293,38 @@ export const SellerDashboardView: React.FC = () => {
                           <ArrowLeft className="w-5 h-5" aria-hidden="true" />
                         </button>
                         <span className="min-w-0 truncate">Chatting with {selectedConv.buyerName} ({selectedConv.vehicleTitle})</span>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRemove((v) => !v)}
+                          aria-expanded={confirmRemove}
+                          className="ml-auto shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-[#B42318] text-[#B42318] hover:bg-[#B42318] hover:text-white text-[11px] font-bold cursor-pointer transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" /> Remove
+                        </button>
                       </div>
+                      {confirmRemove && (
+                        <div className="px-3 sm:px-4 py-3 border-b border-[#B42318] bg-white flex flex-wrap items-center gap-x-3 gap-y-2 shrink-0">
+                          <p className="text-[12px] text-[#2A2E31] flex-1 min-w-[220px]">
+                            Remove this conversation with {selectedConv.buyerName}? It closes and leaves your list; they keep the thread read-only and can start a new conversation. They stay your client.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (await removeConversation(selectedConv.id)) {
+                                setConfirmRemove(false);
+                                setActiveConversationId(null);
+                                setChatOpen(false);
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-[#B42318] hover:bg-[#912018] text-white text-[11px] font-bold cursor-pointer transition-colors"
+                          >
+                            Remove conversation
+                          </button>
+                          <button type="button" onClick={() => setConfirmRemove(false)} className="px-2 py-1.5 text-[11px] font-semibold text-[#4E585E] hover:text-[#141517] cursor-pointer">
+                            Cancel
+                          </button>
+                        </div>
+                      )}
                       <div className="flex-1 min-h-0 p-3 sm:p-5 overflow-y-auto space-y-3.5">
                         {selectedConv.messages.map((m) => (
                           <div
