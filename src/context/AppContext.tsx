@@ -352,8 +352,11 @@ const defaultFilters: FilterState = {
   fuel: 'all',
   minPrice: 0,
   maxPrice: 20000000,
-  minYear: 2018,
-  maxYear: 2026,
+  // No year control exists in the filter panel, so the defaults must not hide anything: the full range the
+  // server accepts for a listing (1950 to next year's models). A narrower default silently kept older
+  // vehicles (e.g. a 2014 truck) off the marketplace while they still showed on the homepage.
+  minYear: 1950,
+  maxYear: new Date().getFullYear() + 1,
   location: 'all',
   sortBy: 'recommended',
 };
