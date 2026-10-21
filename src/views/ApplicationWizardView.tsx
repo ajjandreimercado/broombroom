@@ -63,7 +63,8 @@ export const ApplicationWizardView: React.FC = () => {
 
   // Purchase Method
   const [purchaseMethod, setPurchaseMethod] = useState<'cash' | 'financing'>(quote?.method ?? 'financing');
-  const [financingTerm, setFinancingTerm] = useState(quote?.termMonths ?? 36);
+  // Terms stop at 36 months; an older quotation with a longer term falls back to 36.
+  const [financingTerm, setFinancingTerm] = useState(QUOTE_TERMS.includes(quote?.termMonths ?? 36) ? (quote?.termMonths ?? 36) : 36);
   const [downPayment, setDownPayment] = useState(quote?.method === 'financing' ? quote.downPayment : Math.round(price * 0.25));
   const [notes, setNotes] = useState('');
 
@@ -483,7 +484,7 @@ export const ApplicationWizardView: React.FC = () => {
                   <div className="p-5 bg-[#F7F8F8] border border-[#C9D1D6] rounded-[2px] space-y-4 text-xs">
                     <div>
                       <label className="block font-bold text-[#2A2E31] mb-2">Preferred Loan Term</label>
-                      <div className="grid grid-cols-5 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         {QUOTE_TERMS.map((m) => (
                           <button
                             key={m}

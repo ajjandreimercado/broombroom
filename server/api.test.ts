@@ -9,6 +9,7 @@ import { connectDb, closeDb, store } from './db.ts';
 import { seedIfEmpty } from './seed.ts';
 import { createApp } from './app.ts';
 import * as svc from './services.ts';
+import { QUOTE_TERMS } from '../src/components/quote.ts';
 import { outbox } from './mailer.ts';
 
 process.env.NODE_ENV = 'test'; // emails stay in the outbox (no BREVO_API_KEY in tests)
@@ -241,6 +242,16 @@ test('uploads: clients cannot upload public media or unsupported types', async (
   const c = await newClient();
   assert.equal((await c.upload(PNG, 'image/png', 'a.png', 'public')).status, 403);
   assert.equal((await c.upload(new TextEncoder().encode('<script>'), 'text/html', 'a.html')).status, 415);
+});
+
+test('listings: the variant is saved with the vehicle, and loan terms stop at 36 months', async () => {
+  const ad = await admin();
+  const made = await ad.post('/api/vehicles', { title: 'Variant Unit', brand: 'Suzuki', model: 'DA16T', variant: 'Drop Side Pick-up', year: 2014, price: 315000, category: 'trucks' });
+  assert.equal(made.status, 200, JSON.stringify(made.json));
+  assert.equal(made.data.variant, 'Drop Side Pick-up');
+  const listed = (await client('buyer').state()).vehicles.find((v: any) => v.id === made.data.id);
+  assert.equal(listed.variant, 'Drop Side Pick-up', 'clients see the variant in the specifications');
+  assert.deepEqual(QUOTE_TERMS, [12, 24, 36], 'no term longer than 36 months is offered anywhere');
 });
 
 test('public visitors only see active listings', async () => {

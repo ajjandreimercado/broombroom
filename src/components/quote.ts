@@ -1,6 +1,7 @@
 import type { Quotation, VehicleApplication } from '../types.ts';
 
-export const QUOTE_TERMS = [12, 24, 36, 48, 60];
+// Loan terms offered, in months: 36 is the longest, on every listing (new or already listed), application and quotation.
+export const QUOTE_TERMS = [12, 24, 36];
 export const DEFAULT_RATE = 8.5; // same rate as the listing page's financing estimate
 export const DEFAULT_VALID_DAYS = 15;
 

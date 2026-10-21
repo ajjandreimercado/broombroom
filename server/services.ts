@@ -250,7 +250,7 @@ export const runLeadRules = async (): Promise<boolean> => {
 };
 
 // ---------- vehicles and listing requests ----------
-const LISTING_FIELDS = ['title', 'brand', 'model', 'year', 'category', 'price', 'mileage', 'condition', 'transmission', 'fuel', 'bodyType', 'color', 'location', 'description', 'financingAvailable', 'images', 'videos'] as const;
+const LISTING_FIELDS = ['title', 'brand', 'model', 'variant', 'year', 'category', 'price', 'mileage', 'condition', 'transmission', 'fuel', 'bodyType', 'color', 'location', 'description', 'financingAvailable', 'images', 'videos'] as const;
 const CATEGORIES = ['cars', 'motorcycles', 'trucks', 'ebikes', 'scooters', 'atvs'];
 const cleanListing = (input: any, partial: boolean): Partial<Vehicle> => {
   const out: any = {};
@@ -258,6 +258,7 @@ const cleanListing = (input: any, partial: boolean): Partial<Vehicle> => {
   if (!partial || out.title !== undefined) out.title = text(out.title, 'Title', 120);
   if (!partial || out.brand !== undefined) out.brand = text(out.brand, 'Brand', 60);
   if (out.model !== undefined) out.model = text(out.model, 'Model', 80, false);
+  if (out.variant !== undefined) out.variant = text(out.variant, 'Variant', 80, false);
   if (!partial || out.price !== undefined) out.price = money(out.price, 'Price', { min: 1 });
   if (out.mileage !== undefined) out.mileage = money(out.mileage, 'Mileage', { allowZero: true });
   if (out.year !== undefined && (!Number.isInteger(out.year) || out.year < 1950 || out.year > year() + 1)) bad('Enter a valid year.');
@@ -285,6 +286,7 @@ const buildVehicle = (data: Partial<Vehicle>, status: VehicleStatus): Vehicle =>
     title: data.title!,
     brand: data.brand!,
     model: data.model || data.title!,
+    variant: data.variant || '',
     year: data.year || year(),
     category,
     price: data.price!,

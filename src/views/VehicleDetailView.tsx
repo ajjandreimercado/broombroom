@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
+import type { Vehicle } from '../types.ts';
 import { Stamp } from '../components/Stamp.tsx';
 import { portalUrl } from '../portals.ts';
 import { AnimatePresence, motion } from 'motion/react';
@@ -139,15 +140,28 @@ export const VehicleDetailView: React.FC = () => {
     maximumFractionDigits: 0,
   }).format(vehicle.price);
 
+  // Every detail of the vehicle, as listed. Anything not filled in shows a dash rather than a blank.
+  const CATEGORY_LABEL: Record<Vehicle['category'], string> = {
+    cars: 'Cars & Sedans',
+    motorcycles: 'Motorcycles & Superbikes',
+    trucks: 'Trucks & Pickups',
+    ebikes: 'Smart E-Bikes',
+    scooters: 'Scooters & Maxi-Scooters',
+    atvs: 'ATVs & Buggies',
+  };
   const specRows: { label: string; value: React.ReactNode; num?: boolean }[] = [
+    { label: 'Brand', value: vehicle.brand || '—' },
+    { label: 'Model', value: vehicle.model || '—' },
+    { label: 'Variant', value: vehicle.variant || '—' },
+    { label: 'Category', value: CATEGORY_LABEL[vehicle.category] },
     { label: 'Condition', value: vehicle.condition },
     { label: 'Model year', value: vehicle.year, num: true },
     { label: 'Mileage', value: `${vehicle.mileage.toLocaleString()} km`, num: true },
     { label: 'Transmission', value: vehicle.transmission },
     { label: 'Fuel', value: vehicle.fuel },
-    { label: 'Body type', value: vehicle.bodyType },
-    { label: 'Colour', value: vehicle.color },
-    { label: 'Drivetrain', value: vehicle.drivetrain },
+    { label: 'Body type', value: vehicle.bodyType || '—' },
+    { label: 'Colour', value: vehicle.color || '—' },
+    { label: 'Drivetrain', value: vehicle.drivetrain || '—' },
     { label: 'Registered in', value: vehicle.location },
   ];
 
@@ -316,9 +330,9 @@ export const VehicleDetailView: React.FC = () => {
                   </div>
                 ))}
               </dl>
-              {vehicle.specs && Object.keys(vehicle.specs).length > 0 && (
+              {vehicle.specs && Object.values(vehicle.specs).some((v) => v && String(v).trim()) && (
                 <dl className="mt-8 grid grid-cols-1 sm:grid-cols-2 sm:gap-x-10">
-                  {Object.entries(vehicle.specs).map(([k, v]) => (
+                  {Object.entries(vehicle.specs).filter(([, v]) => v && String(v).trim()).map(([k, v]) => (
                     <div key={k} className="flex justify-between gap-4 py-3 border-b border-[#C9D1D6] text-[14px]">
                       <dt className="text-[#4E585E] capitalize">{k.replace(/([A-Z])/g, ' $1')}</dt>
                       <dd className="font-medium text-[#141517] tabular-nums text-right">{v}</dd>
@@ -418,7 +432,7 @@ export const VehicleDetailView: React.FC = () => {
                     <input
                       type="range"
                       min="15"
-                      max="50"
+                      max="30"
                       step="5"
                       value={downPaymentPercent}
                       onChange={(e) => setDownPaymentPercent(Number(e.target.value))}

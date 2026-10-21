@@ -20,6 +20,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
   const [title, setTitle] = useState(editing?.title ?? '');
   const [brand, setBrand] = useState(editing?.brand ?? 'Honda');
   const [model, setModel] = useState(editing?.model ?? '');
+  const [variant, setVariant] = useState(editing?.variant ?? '');
   const [year, setYear] = useState(editing?.year ?? 2025);
   const [category, setCategory] = useState<Exclude<VehicleCategory, 'all'>>((editing?.category as Exclude<VehicleCategory, 'all'>) ?? 'cars');
   const [price, setPrice] = useState<number>(editing?.price ?? 1200000);
@@ -87,6 +88,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
       title: title.trim(),
       brand: brand.trim(),
       model: model.trim() || title.trim(),
+      variant: variant.trim(),
       year: Number(year),
       category,
       price: Number(price),
@@ -126,6 +128,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
     // Reset and route to vehicles list
     setTitle('');
     setModel('');
+    setVariant('');
     setDescription('');
     setLocation('');
     setPhotos([]);
@@ -181,7 +184,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                       <label htmlFor="listing-field-3" className="gb-label block mb-2">Brand *</label>
                       <input id="listing-field-3"
@@ -201,6 +204,17 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                         placeholder="e.g. Civic RS, 911 Carrera"
                         value={model}
                         onChange={(e) => setModel(e.target.value)}
+                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="listing-field-variant" className="gb-label block mb-2">Variant <span className="normal-case tracking-normal font-normal">(optional)</span></label>
+                      <input id="listing-field-variant"
+                        type="text"
+                        placeholder="e.g. DA16T, 1.3 XLE CVT"
+                        value={variant}
+                        onChange={(e) => setVariant(e.target.value)}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                       />
                     </div>

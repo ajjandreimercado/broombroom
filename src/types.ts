@@ -14,6 +14,7 @@ export interface Vehicle {
   title: string;
   brand: string;
   model: string;
+  variant?: string; // trim/grade of the model, e.g. "1.3 XLE CVT" (older listings may not have one)
   year: number;
   category: Exclude<VehicleCategory, 'all'>;
   price: number;
