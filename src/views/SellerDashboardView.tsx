@@ -45,8 +45,8 @@ export const SellerDashboardView: React.FC = () => {
   const openLeads = applyRequests.filter((r) => !r.claimedBy && !r.doneAt).length + leads.filter((l) => !l.agentName && !l.doneAt && !applyRequests.some((r) => r.clientId === l.clientId && !r.claimedBy && !r.doneAt)).length;
   const conversations = allConversations.filter((c) => c.sellerName === me);
   const commissions = allCommissions.filter((c) => c.agentName === me);
-  const payable = commissions.filter((c) => c.status === 'payable');
-  const payableTotal = payable.reduce((sum, c) => sum + c.amount, 0);
+  const receivable = commissions.filter((c) => c.status === 'payable'); // owed to the agent, waiting for the transfer
+  const receivableTotal = receivable.reduce((sum, c) => sum + c.amount, 0);
   const inProgress = applications.filter((a) => a.sellerName === me && ['submitted', 'under_review', 'contacted', 'reserved', 'processing', 'approved'].includes(a.status)).length;
   // Closed sales = completed transactions on the agent's commissions, by when they were completed.
   const closedByPeriod = useMemo(() => {
@@ -93,7 +93,7 @@ export const SellerDashboardView: React.FC = () => {
     { id: 'leads', label: 'Leads', icon: Users, count: openLeads },
     // Chats with messages the agent has not read yet; opening a chat marks it read.
     { id: 'messages', label: 'Client Chats', icon: MessageSquare, count: conversations.filter((c) => c.unreadSeller > 0).length },
-    { id: 'commissions', label: 'Commissions', icon: Wallet, count: payable.length },
+    { id: 'commissions', label: 'Commissions', icon: Wallet, count: receivable.length },
     { id: 'vehicles', label: 'Listings', icon: Car, count: sellerVehicles.length },
   ];
 
@@ -194,7 +194,7 @@ export const SellerDashboardView: React.FC = () => {
                   <dl className="grid grid-cols-2 md:grid-cols-4 border-b border-[#C9D1D6]">
                     {[
                       { label: 'Open leads', value: openLeads.toLocaleString(), note: (() => { const n = leads.filter((l) => l.agentName === me).length; return `${n} client${n === 1 ? ' is' : 's are'} yours`; })() },
-                      { label: 'Commission payable', value: `₱${payableTotal.toLocaleString()}`, note: `${payable.length} released sale${payable.length === 1 ? '' : 's'}, awaiting transfer` },
+                      { label: 'Commission receivable', value: `₱${receivableTotal.toLocaleString()}`, note: `${receivable.length} released sale${receivable.length === 1 ? '' : 's'}, awaiting transfer` },
                       { label: 'Client chats', value: conversations.length.toLocaleString(), note: 'Active conversations' },
                       { label: 'Applications', value: inProgress.toLocaleString(), note: 'In progress for your clients' },
                     ].map((m, i) => (

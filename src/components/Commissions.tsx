@@ -39,7 +39,10 @@ const StageTrack: React.FC<{ status: Stage; stages: typeof ALL_STAGES }> = ({ st
 // Agent commissions. Agents read theirs; the admin approves, pays (with proof) and issues the receipt.
 export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean }> = ({ mode, compact = false }) => {
   const { commissions, payCommission, navigateTo, currentUser, showToast } = useApp();
-  const STAGES = ALL_STAGES; // unreleased (older, receivable) ones are not shown
+  // Same status ('payable'), named from who's looking: the company pays it out, the agent is owed it (receivable).
+  const STAGES = mode === 'agent'
+    ? ALL_STAGES.map((s) => (s.value === 'payable' ? { ...s, label: 'Receivable', explain: 'The vehicle was released. This is owed to you; waiting for the cash transfer.' } : s))
+    : ALL_STAGES; // unreleased (older, receivable) ones are not shown
   const mine = commissions.filter((c) => STAGES.some((s) => s.value === c.status) && (mode === 'admin' || c.agentName === currentUser?.name));
   const [stage, setStage] = useState<Stage | 'all'>(mode === 'admin' ? 'payable' : 'all');
   const [error, setError] = useState('');
@@ -71,7 +74,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
     <section className="space-y-5">
       <SectionHeader
         title={mode === 'admin' ? 'Agent commissions' : 'Commissions'}
-        hint={compact ? undefined : mode === 'admin' ? `The admin sets each commission (standard ${COMMISSION_RATE * 100}% of the sale price). It is payable in full once the vehicle is released, then paid with proof.` : 'Your full commission is payable once your client’s vehicle is released.'}
+        hint={compact ? undefined : mode === 'admin' ? `The admin sets each commission (standard ${COMMISSION_RATE * 100}% of the sale price). It is payable in full once the vehicle is released, then paid with proof.` : 'Your full commission is receivable once your client’s vehicle is released.'}
       >
         {compact && (
           <button
