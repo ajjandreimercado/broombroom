@@ -286,7 +286,7 @@ const buildVehicle = (data: Partial<Vehicle>, status: VehicleStatus): Vehicle =>
     title: data.title!,
     brand: data.brand!,
     model: data.model || data.title!,
-    variant: data.variant || '',
+    variant: data.variant || undefined,
     year: data.year || year(),
     category,
     price: data.price!,
@@ -952,7 +952,8 @@ export const quoteApplication = (id: string) =>
     const me = need(await users.byId(app.applicantId), 'Client');
     const method = app.purchaseMethod;
     const downPayment = method === 'financing' ? app.downPayment ?? 0 : 0;
-    const termMonths = QUOTE_TERMS.includes(app.financingTermMonths ?? 0) ? app.financingTermMonths! : QUOTE_TERMS[0];
+    // Applications made when longer terms existed fall back to the longest term now offered (36).
+    const termMonths = QUOTE_TERMS.includes(app.financingTermMonths ?? 0) ? app.financingTermMonths! : QUOTE_TERMS[QUOTE_TERMS.length - 1];
     const a = me.address;
     const q = await store.put<Quotation>('quotations', {
       id: newId('qt'),
@@ -1015,7 +1016,11 @@ export const saveQuotation = (me: User, id: string, input: any, send: boolean) =
       validUntil: c.validUntil ?? q.validUntil,
     };
     if (method === 'financing' && updated.downPayment >= updated.unitPrice) bad('The down payment must be less than the unit price.');
-    if (!QUOTE_TERMS.includes(updated.termMonths)) bad('Choose a term.');
+    // Quotations written when longer terms existed move to the longest term now offered (36) when next saved.
+    if (!QUOTE_TERMS.includes(updated.termMonths)) {
+      if (updated.termMonths === q.termMonths) updated.termMonths = QUOTE_TERMS[QUOTE_TERMS.length - 1];
+      else bad('Choose a term.');
+    }
     if (updated.annualRate > 60) bad('Check the interest rate.');
     if (send) {
       updated.validUntil = updated.validUntil || daysFromToday(DEFAULT_VALID_DAYS);

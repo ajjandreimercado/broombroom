@@ -591,6 +591,27 @@ test('listings: unsafe media URLs refused; "save hidden" stays hidden; agent req
   assert.equal((await ad.state()).vehicles.find((v: any) => v.id === hidden.data.id).price, 450000);
 });
 
+test('listings: variant and color are stored, shown to buyers, and editable on existing listings; financing terms stop at 36 months', async () => {
+  const ad = await admin();
+  const made = await ad.post('/api/vehicles', { title: 'Variant Unit', brand: 'Suzuki', model: 'DA16T', variant: 'Drop Side 4x2', color: 'Pearl White', year: 2014, price: 315000, category: 'trucks' });
+  assert.equal(made.status, 200, JSON.stringify(made.json));
+  assert.equal(made.data.variant, 'Drop Side 4x2');
+  assert.equal(made.data.color, 'Pearl White');
+  assert.ok((await client('buyer').state()).vehicles.some((v: any) => v.id === made.data.id && v.variant === 'Drop Side 4x2'), 'buyers see the variant in the specifications data');
+  const edited = await ad.patch(`/api/vehicles/${made.data.id}`, { variant: 'Drop Side 4x4', color: 'Red' });
+  assert.equal(edited.status, 200, JSON.stringify(edited.json));
+  assert.equal(edited.data.variant, 'Drop Side 4x4', 'variant can be added/changed when editing an existing listing');
+  assert.equal(edited.data.color, 'Red');
+
+  const c = await newClient();
+  const v = await freeVehicle();
+  const badTerm = await c.post('/api/applications', {
+    vehicleId: v.id, purchaseMethod: 'financing', downPayment: 100000, financingTermMonths: 48,
+    documents: await docs(c, ['id-applicant', 'payslip']), address, viaAgent: await linkFor(c, v.id),
+  });
+  assert.equal(badTerm.status, 400, '48 months is no longer a loan term');
+});
+
 test('accounts: admin creates an agent who can then sign in; disabling signs them out', async () => {
   const ad = await admin();
   assert.equal((await ad.post('/api/users', { name: 'New Agent', email: 'new.agent@test.local', role: 'buyer', password: 'Password1!' })).status, 400);

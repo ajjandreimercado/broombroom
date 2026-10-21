@@ -29,7 +29,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
   const [transmission, setTransmission] = useState<TransmissionType>(editing?.transmission ?? 'Automatic');
   const [fuel, setFuel] = useState<FuelType>(editing?.fuel ?? 'Gasoline');
   const [bodyType, setBodyType] = useState(editing?.bodyType ?? 'Sedan');
-  const [color, setColor] = useState(editing?.color ?? 'Obsidian Black');
+  const [color, setColor] = useState(editing?.color ?? '');
   const [location, setLocation] = useState(editing?.location && editing.location !== 'Philippines' ? editing.location : '');
   const [description, setDescription] = useState(editing?.description ?? '');
   const [financingAvailable, setFinancingAvailable] = useState(editing?.financingAvailable ?? true);
@@ -129,6 +129,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
     setTitle('');
     setModel('');
     setVariant('');
+    setColor('');
     setDescription('');
     setLocation('');
     setPhotos([]);
@@ -184,7 +185,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label htmlFor="listing-field-3" className="gb-label block mb-2">Brand *</label>
                       <input id="listing-field-3"
@@ -209,17 +210,6 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                     </div>
 
                     <div>
-                      <label htmlFor="listing-field-variant" className="gb-label block mb-2">Variant <span className="normal-case tracking-normal font-normal">(optional)</span></label>
-                      <input id="listing-field-variant"
-                        type="text"
-                        placeholder="e.g. DA16T, 1.3 XLE CVT"
-                        value={variant}
-                        onChange={(e) => setVariant(e.target.value)}
-                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
-                      />
-                    </div>
-
-                    <div>
                       <label htmlFor="listing-field-5" className="gb-label block mb-2">Year *</label>
                       <input id="listing-field-5"
                         type="text"
@@ -229,6 +219,41 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                         onChange={(e) => setYear(digits(e.target.value, 4))}
                         className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                         required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label htmlFor="listing-field-14" className="gb-label block mb-2">Variant <span className="normal-case tracking-normal font-normal">(optional)</span></label>
+                      <input id="listing-field-14"
+                        type="text"
+                        placeholder="e.g. 1.3 XLE CVT, 2.8 Conquest 4x4 AT"
+                        value={variant}
+                        onChange={(e) => setVariant(e.target.value)}
+                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="listing-field-15" className="gb-label block mb-2">Color</label>
+                      <input id="listing-field-15"
+                        type="text"
+                        placeholder="e.g. Obsidian Black, Pearl White"
+                        value={color}
+                        onChange={(e) => setColor(e.target.value)}
+                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="listing-field-16" className="gb-label block mb-2">Body Type</label>
+                      <input id="listing-field-16"
+                        type="text"
+                        placeholder="e.g. Pick-up, Sedan, SUV"
+                        value={bodyType}
+                        onChange={(e) => setBodyType(e.target.value)}
+                        className="w-full px-3 py-2.5 text-[14px] bg-white border border-[#8C989F] text-[#141517]"
                       />
                     </div>
                   </div>
