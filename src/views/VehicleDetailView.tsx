@@ -427,8 +427,8 @@ export const VehicleDetailView: React.FC = () => {
                   </label>
                   <div>
                     <span className="gb-label block mb-2">Loan term</span>
-                    <div className="grid grid-cols-4 border border-[#8C989F] divide-x divide-[#8C989F]">
-                      {[12, 24, 36, 48].map((term) => (
+                    <div className="grid grid-cols-3 border border-[#8C989F] divide-x divide-[#8C989F]">
+                      {[12, 24, 36].map((term) => (
                         <button
                           key={term}
                           onClick={() => setLoanTermMonths(term)}
