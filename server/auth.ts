@@ -93,6 +93,12 @@ export const users = {
     await users_().updateOne({ _id: id }, { $set: { active } }, opts());
     if (!active) await raw('sessions').deleteMany({ userId: id }, opts());
   },
+  // Permanent deletion: the account and every sign-in session go. Records that name the person (commissions,
+  // sales) are kept by the caller under their name, so the books still read correctly.
+  async remove(id: string) {
+    await users_().deleteOne({ _id: id }, opts());
+    await raw('sessions').deleteMany({ userId: id }, opts());
+  },
   async checkPassword(id: string, password: string) {
     const doc = await users_().findOne({ _id: id }, { projection: { passwordHash: 1 }, ...opts() });
     return !!doc && passwordMatches(password, doc.passwordHash);

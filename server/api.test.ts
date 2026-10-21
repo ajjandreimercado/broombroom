@@ -610,6 +610,37 @@ test('accounts: admin creates an agent who can then sign in; disabling signs the
   assert.equal((await again.post('/api/me/password', { current: 'ResetPass11', next: 'MyOwnPass100' })).status, 200);
 });
 
+test('accounts: deleting an agent returns their clients to Open leads, keeps name-based records, and ends their sign-in', async () => {
+  const ad = await admin();
+  const made = await ad.post('/api/users', { name: 'Delete Me', email: 'delete.me@test.local', role: 'seller', password: 'Password1!' });
+  assert.equal(made.status, 200);
+  await setOwnPassword('seller', 'delete.me@test.local', 'Password1!', 'DeleteMePass1');
+  const agent = await signedIn('seller', 'delete.me@test.local', 'DeleteMePass1');
+  const c = await newClient();
+  await store.put('leads', {
+    id: c.id, clientId: c.id, clientName: 'Client 1', clientEmail: c.email, agentName: 'Delete Me', source: 'pool',
+    createdAt: new Date().toISOString(), interest: 'A test car', lockedTo: 'Delete Me', lockedRef: 'GB-2026-0001', history: [],
+  });
+
+  // Only admins can delete, and only agent accounts.
+  assert.equal((await agent.raw('DELETE', `/api/users/${made.data.id}`)).status, 403, 'agents cannot delete accounts');
+  const clientAcct = (await ad.state()).users.find((u: any) => u.id === c.id);
+  assert.equal((await ad.raw('DELETE', `/api/users/${clientAcct.id}`)).status, 400, 'client accounts are not deleted here');
+
+  const out = await ad.raw('DELETE', `/api/users/${made.data.id}`);
+  assert.equal(out.status, 200, JSON.stringify(out.json));
+  assert.equal(out.data.clientsReturned, 1);
+  const st = await ad.state();
+  assert.ok(!st.users.some((u: any) => u.id === made.data.id), 'account gone');
+  assert.ok(!st.agents.includes('Delete Me'), 'no longer an agent');
+  assert.equal(st.leads.find((l: any) => l.clientId === c.id).agentName, undefined, 'client back in Open leads');
+  assert.equal(st.leads.find((l: any) => l.clientId === c.id).lockedTo, undefined, 'lock cleared');
+  assert.ok(st.notifications.some((nt: any) => nt.title === 'Agent account deleted'), 'admin has the deletion on record');
+  assert.equal((await agent.state()).me, null, 'signed out everywhere');
+  assert.equal((await client('seller').login('delete.me@test.local', 'DeleteMePass1')).status, 401, 'can no longer sign in');
+  assert.equal((await ad.raw('DELETE', `/api/users/${made.data.id}`)).status, 404, 'already deleted');
+});
+
 test('password change needs the current password and signs out other sessions', async () => {
   const c = await newClient();
   const other = client('buyer');

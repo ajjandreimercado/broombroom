@@ -340,6 +340,7 @@ interface AppContextType {
   resetPassword: (userId: string, password: string) => Promise<boolean>;
   changeEmail: (userId: string, email: string) => Promise<boolean>;
   setAccountActive: (userId: string, active: boolean) => Promise<boolean>;
+  deleteAgentAccount: (userId: string) => Promise<boolean>;
 }
 
 const defaultFilters: FilterState = {
@@ -900,6 +901,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     done(await run(() => api(`/users/${userId}/password`, { body: { password } }), ['Password reset', 'Share it with them privately; they must set their own when they next sign in.']));
   const setAccountActive = async (userId: string, active: boolean) =>
     done(await run(() => api(`/users/${userId}/active`, { body: { active } }), [active ? 'Account enabled' : 'Account disabled']));
+  const deleteAgentAccount = async (userId: string) =>
+    done(
+      await run(() => api(`/users/${userId}`, { method: 'DELETE' }), ['Agent account deleted', 'Their clients are back in Open leads; sales and commission records stay under their name.'], 'Could not delete the account')
+    );
 
   return (
     <AppContext.Provider
@@ -1044,6 +1049,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         resetPassword,
         changeEmail,
         setAccountActive,
+        deleteAgentAccount,
       }}
     >
       {children}

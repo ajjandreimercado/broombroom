@@ -422,6 +422,8 @@ export const createApp = () => {
       await users.setActive(target.id, !!body(req).active);
     })
   );
+  // Agents only, and only after the admin has reviewed the agent's report (Accounts does that before calling).
+  api.delete('/users/:id', requireRole('admin'), act((req) => svc.deleteAgentAccount(String(req.params.id))));
 
   api.use((_req, _res, next) => next(new HttpError(404, 'Unknown API route.')));
   app.use('/api', api);

@@ -1508,6 +1508,52 @@ export const createAccount = async (input: any) => {
   });
 };
 
+// Admin: delete an agent's account, after reviewing their report in Accounts. Their clients go back to Open
+// leads (open chats and applications move to the sales team, like any reassignment to nobody), claimed apply
+// requests reopen, pending listing requests are rejected, and they are signed out everywhere. Completed sales
+// and commissions stay on record under their name: the money is still owed and the books must still balance.
+export const deleteAgentAccount = (id: string) =>
+  tx(async () => {
+    const target = need(await users.byId(idOf(id)), 'Account');
+    if (target.role !== 'seller') bad('Only agent accounts can be deleted here. Disable other accounts instead.');
+    const name = target.name;
+    const at = now();
+    const leads = await store.all<ClientLead>('leads', { $or: [{ agentName: name }, { lockedTo: name }] });
+    for (const lead of leads) {
+      if (lead.doneAt) {
+        await store.put<ClientLead>('leads', { ...lead, agentName: undefined, lockedTo: undefined, lockedRef: undefined, lockedAt: undefined });
+        continue;
+      }
+      await store.put<ClientLead>('leads', {
+        ...lead,
+        agentName: undefined,
+        lockedTo: undefined,
+        lockedRef: undefined,
+        lockedAt: undefined,
+        claimedAt: undefined,
+        source: 'pool',
+        pooledAt: at,
+        escalatedAt: undefined,
+        history: [...lead.history, { at, text: `${name}'s account was deleted; returned to Open leads` }],
+      });
+      await moveClient(lead.clientId, undefined);
+    }
+    // Anything still naming them without a lead row (older records) goes to the sales team too.
+    for (const c of await store.all<Conversation>('conversations', { sellerName: name, closedAt: { $exists: false } }))
+      await store.put('conversations', { ...c, sellerName: TEAM_NAME, sellerId: 'team' });
+    for (const a of await store.all<VehicleApplication>('applications', { sellerName: name, status: { $nin: ['completed', 'declined', 'withdrawn'] } }))
+      await store.put('applications', { ...a, sellerName: TEAM_NAME });
+    for (const r of await store.all<ApplyRequest>('apply_requests', { claimedBy: name, doneAt: { $exists: false } }))
+      await store.put<ApplyRequest>('apply_requests', { ...r, claimedBy: undefined, claimedAt: undefined, conversationId: undefined });
+    for (const r of await store.all<ListingRequest>('listing_requests', { agentName: name, status: 'pending' }))
+      await store.put<ListingRequest>('listing_requests', { ...r, status: 'rejected', reason: 'Agent account deleted', decidedAt: at });
+    await store.removeWhere('notifications', { audience: 'agent', recipient: name });
+    await users.remove(target.id);
+    const clientsReturned = leads.filter((l) => !l.doneAt).length;
+    await notify('admin', 'Agent account deleted', `${name} (${target.email}) was deleted. ${clientsReturned} client${clientsReturned === 1 ? '' : 's'} returned to Open leads; sales and commission records were kept under their name.`, 'accounts');
+    return { name, clientsReturned };
+  });
+
 export const registerClient = async (input: any) => {
   const email = text(input?.email, 'Email', 200).toLowerCase();
   if (!EMAIL.test(email)) bad('Enter a valid email.');
