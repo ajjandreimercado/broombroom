@@ -73,7 +73,7 @@ npm run lint    # type-check
 | `SUPPORT_EMAIL` | Optional. Where Help-page messages go; default `broombroombookingservices@gmail.com` |
 | `GOOGLE_CLIENT_ID` | Optional. Turns on "Continue with Google" for clients (see below) |
 | `APP_URL` | The client site's address, used for links in emails (e.g. `https://broombroom.onrender.com`) |
-| `NODE_VERSION` | `22` |
+| `NODE_VERSION` | `22.23.4` or later 22.x (security release of 2026-10-20: TLS hostname checks, Brotli, and the eMudhra certificate compromise). Change it and redeploy to update |
 
 Render sets `PORT` and `RENDER` itself.
 
