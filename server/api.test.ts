@@ -5,7 +5,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { startDevMongo } from './devdb.ts';
-import { connectDb, closeDb, store } from './db.ts';
+import { connectDb, closeDb, store, raw } from './db.ts';
 import { seedIfEmpty } from './seed.ts';
 import { createApp } from './app.ts';
 import * as svc from './services.ts';
@@ -1219,4 +1219,54 @@ test('a client with an agent asks to apply for another car: that request is open
   await toApproved(ad, c, app2.id);
   assert.equal((await ad.post(`/api/applications/${app2.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
   assert.equal((await ad.state()).commissions.find((x: any) => x.applicationRef === app2.referenceNo).agentName, winner);
+});
+
+// ---------------- file storage on R2 ----------------
+test('R2 storage: files go to the bucket (signed), come back with the same access rules, support ranges, and are deleted there', async () => {
+  const http = await import('node:http');
+  const objects = new Map<string, Buffer>();
+  const seen: string[] = [];
+  const fake = http.createServer((req, res) => {
+    const key = decodeURIComponent((req.url ?? '').split('?')[0]);
+    seen.push(`${req.method} ${key} auth=${String(req.headers.authorization).startsWith('AWS4-HMAC-SHA256')}`);
+    if (req.method === 'PUT') {
+      const parts: Buffer[] = [];
+      req.on('data', (d) => parts.push(d)).on('end', () => { objects.set(key, Buffer.concat(parts)); res.writeHead(200).end(); });
+    } else if (req.method === 'DELETE') { objects.delete(key); res.writeHead(204).end(); }
+    else {
+      const body = objects.get(key);
+      if (!body) return void res.writeHead(404).end();
+      const m = /bytes=(\d+)-(\d*)/.exec(String(req.headers.range ?? ''));
+      if (m) {
+        const from = Number(m[1]); const to = m[2] ? Number(m[2]) : body.length - 1;
+        res.writeHead(206, { 'content-length': String(to - from + 1), 'content-range': `bytes ${from}-${to}/${body.length}` }).end(body.subarray(from, to + 1));
+      } else res.writeHead(200, { 'content-length': String(body.length) }).end(body);
+    }
+  });
+  await new Promise<void>((r) => fake.listen(0, '127.0.0.1', r));
+  Object.assign(process.env, { R2_ENDPOINT: `http://127.0.0.1:${(fake.address() as any).port}`, R2_ACCESS_KEY_ID: 'k', R2_SECRET_ACCESS_KEY: 's', R2_BUCKET: 'bk' });
+  try {
+    const c = await newClient();
+    const other = await newClient();
+    const up = (await c.upload(PDF, 'application/pdf', 'doc.pdf')).data;
+    assert.ok([...objects.keys()].some((k) => k === `/bk/${up.id}`), 'the file is in the bucket');
+    assert.ok(seen.some((s) => s.startsWith('PUT') && s.endsWith('auth=true')), 'the request was signed');
+    assert.equal((await c.get(up.url)).status, 200, 'the owner reads it back');
+    assert.equal((await other.get(up.url)).status, 403, 'someone else cannot');
+    assert.equal((await client('buyer').get(up.url)).status, 403, 'nor a visitor');
+    assert.equal((await raw('uploads').findOne({ _id: up.id as any }))?.store, 'r2', 'the record says where it lives');
+    // ranges (video seeking) pass through, and are checked like any other request
+    const ranged = await c.raw('GET', up.url, undefined, { Range: 'bytes=0-4' });
+    assert.equal(ranged.status, 206);
+    assert.equal(ranged.json, '%PDF-');
+    assert.equal((await other.raw('GET', up.url, undefined, { Range: 'bytes=0-4' })).status, 403);
+    assert.equal((await (await admin()).get(up.url)).status, 200, 'an admin can read it');
+    // an abandoned upload is removed from the bucket too
+    await raw('uploads').updateOne({ _id: up.id as any }, { $set: { createdAt: new Date(Date.now() - 2 * 864e5) } });
+    await svc.removeAbandonedUploads();
+    assert.ok(!objects.has(`/bk/${up.id}`), 'deleted from the bucket');
+  } finally {
+    for (const k of ['R2_ENDPOINT', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET']) delete process.env[k];
+    fake.close();
+  }
 });

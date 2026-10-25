@@ -73,6 +73,7 @@ npm run lint    # type-check
 | `SUPPORT_EMAIL` | Optional. Where Help-page messages go; default `broombroombookingservices@gmail.com` |
 | `GOOGLE_CLIENT_ID` | Optional. Turns on "Continue with Google" for clients (see below) |
 | `APP_URL` | The client site's address, used for links in emails (e.g. `https://broombroom.onrender.com`) |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Cloudflare R2 for uploaded photos, videos and client documents (a **private** bucket; the token should be limited to it). Without them files stay in MongoDB (512 MB on Atlas's free plan, which videos fill quickly) |
 | `NODE_VERSION` | `22.23.4` or later 22.x (security release of 2026-10-20: TLS hostname checks, Brotli, and the eMudhra certificate compromise). Change it and redeploy to update |
 
 Render sets `PORT` and `RENDER` itself.

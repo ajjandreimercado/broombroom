@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import express, { type Request, type Response, type NextFunction } from 'express';
-import { raw, files, ping } from './db.ts';
+import { raw, ping } from './db.ts';
 import { HttpError, sessionUser, requireRole, startSession, endSession, portalOf, users, throttle, publicUser, validPassword, PASSWORD_RULE, rateLimit, type User, type Portal } from './auth.ts';
 import { buildState } from './state.ts';
 import { eventStream, broadcastChange } from './events.ts';
@@ -8,6 +8,7 @@ import * as svc from './services.ts';
 import { sendMail, resubmitEmail, supportEmail, infoSheetEmail } from './mailer.ts';
 import { CONTACT_EMAIL } from '../src/data/constants.ts';
 import { verifyGoogleToken } from './google.ts';
+import { putFile, readFile } from './storage.ts';
 
 type Handler = (req: Request, res: Response) => unknown;
 // Runs a change, tells every open portal to refresh, and replies with the result.
@@ -79,7 +80,7 @@ export const createApp = () => {
     next();
   });
 
-  // ---------- files (stored in MongoDB GridFS) ----------
+  // ---------- files (stored in Cloudflare R2, or MongoDB GridFS when R2 is not set up; see storage.ts) ----------
   // Any portal's session may open a file: public files are for everyone, private ones only for their owner and admins.
   app.get(
     '/files/:id',
@@ -97,10 +98,11 @@ export const createApp = () => {
       res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
       res.setHeader('Content-Length', String(row.size));
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(row.name)}"`);
-      files()
-        .openDownloadStream(row._id as any)
-        .on('error', () => (res.headersSent ? res.end() : res.status(404).send('Not found')))
-        .pipe(res);
+      const out = await readFile(row as any, req.get('range'));
+      if (!out) return void res.status(404).send('Not found');
+      res.status(out.status);
+      for (const [k, v] of Object.entries(out.headers)) res.setHeader(k, v); // a range reply carries its own length
+      out.stream.on('error', () => (res.headersSent ? res.end() : res.status(404).send('Not found'))).pipe(res);
     })
   );
 
@@ -168,14 +170,8 @@ export const createApp = () => {
       if (!SIGNATURE[mime](buf)) throw new HttpError(415, 'That file is damaged or is not the type its name says. Try another file.');
       const name = String(req.query.name || 'file').replace(/[\\/\r\n"]/g, '_').slice(0, 150);
       const id = svc.newId('f');
-      await new Promise<void>((resolve, reject) => {
-        files()
-          .openUploadStreamWithId(id as any, name, { metadata: { mime } })
-          .on('finish', () => resolve())
-          .on('error', reject)
-          .end(buf);
-      });
-      await raw('uploads').insertOne({ _id: id, ownerId: u.id, uploadedBy: u.id, visibility, mime, name, size: buf.length, attached: false, createdAt: new Date() });
+      const store = await putFile(id, name, mime, buf);
+      await raw('uploads').insertOne({ _id: id, ownerId: u.id, uploadedBy: u.id, visibility, mime, name, size: buf.length, attached: false, createdAt: new Date(), ...(store ? { store } : {}) });
       res.json({ ok: true, data: { id, url: `/files/${id}`, name, mime } });
     })
   );

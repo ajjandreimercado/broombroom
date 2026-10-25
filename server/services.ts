@@ -30,7 +30,8 @@ import { agentSlug, canTakeOver, shouldAlertUnclaimed, shouldRelease } from '../
 import { DEFAULT_RATE, DEFAULT_VALID_DAYS, QUOTE_TERMS, daysFromToday, isExpired } from '../src/components/quote.ts';
 import { DOCS, MIN_UPLOADS } from '../src/components/requirements.ts';
 import { accountBalance, creditAvailable } from '../src/components/accounting/ledger.ts';
-import { store, tx, nextNumber, raw, opts, files } from './db.ts';
+import { store, tx, nextNumber, raw, opts } from './db.ts';
+import { deleteFile } from './storage.ts';
 import { users, HttpError, validPassword, PASSWORD_RULE, rateLimit, type User } from './auth.ts';
 import type { GoogleProfile } from './google.ts';
 import { cleanInfoSheet, type InfoSheet } from '../src/components/infoSheet.ts';
@@ -106,9 +107,9 @@ const IMG = /^image\/(png|jpeg|webp|gif|heic|heif)$/;
 
 // Files uploaded but never attached to anything (a form left half-way) are deleted after a day.
 export const removeAbandonedUploads = async () => {
-  const old = await raw('uploads').find({ attached: false, createdAt: { $lt: new Date(Date.now() - 864e5) } }, { projection: { _id: 1 } }).limit(200).toArray();
+  const old = await raw('uploads').find({ attached: false, createdAt: { $lt: new Date(Date.now() - 864e5) } }, { projection: { _id: 1, store: 1 } }).limit(200).toArray();
   for (const u of old) {
-    await files().delete(u._id as any).catch(() => {}); // already gone is fine
+    await deleteFile({ _id: u._id as string, store: u.store }).catch((e) => console.error('could not delete', u._id, e.message)); // kept for the next round if R2 is unreachable
     await raw('uploads').deleteOne({ _id: u._id });
   }
 };
