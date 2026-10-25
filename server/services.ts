@@ -296,7 +296,6 @@ const buildVehicle = (data: Partial<Vehicle>, status: VehicleStatus): Vehicle =>
     fuel: (data.fuel || 'Gasoline') as Vehicle['fuel'],
     bodyType: data.bodyType || 'Sedan',
     color: data.color || '',
-    drivetrain: 'Front-Wheel Drive',
     location: data.location || 'Philippines',
     province: '',
     region: '',

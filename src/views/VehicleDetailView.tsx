@@ -161,7 +161,6 @@ export const VehicleDetailView: React.FC = () => {
     { label: 'Fuel', value: vehicle.fuel },
     { label: 'Body type', value: vehicle.bodyType || '—' },
     { label: 'Colour', value: vehicle.color || '—' },
-    { label: 'Drivetrain', value: vehicle.drivetrain || '—' },
     { label: 'Registered in', value: vehicle.location },
   ];
 

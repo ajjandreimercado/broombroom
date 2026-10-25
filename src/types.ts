@@ -27,7 +27,6 @@ export interface Vehicle {
   fuel: FuelType;
   bodyType: string;
   color: string;
-  drivetrain: string;
   location: string;
   province: string;
   region: string;
