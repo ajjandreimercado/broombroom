@@ -512,6 +512,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     else apply('smooth');
   };
 
+  // The browser's Back/Forward buttons step through the sections the visitor opened. The address does not change;
+  // each section change adds a history entry that remembers where the visitor was, and Back restores it.
+  const place = { view: currentView, vehicleId: selectedVehicleId, guideSlug: selectedGuideSlug, accountTab, sellerTab, adminTab, quotationId: selectedQuotationId, applicationId: selectedApplicationId };
+  const placeKey = JSON.stringify(place);
+  useEffect(() => {
+    if (history.state?.place === placeKey) return; // already the current entry (e.g. just restored by Back)
+    if (history.state?.place) history.pushState({ place: placeKey }, '');
+    else history.replaceState({ place: placeKey }, ''); // first page load: tag the entry the visitor arrived on
+  }, [placeKey]);
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      if (typeof e.state?.place !== 'string') return;
+      const p: typeof place = JSON.parse(e.state.place);
+      setCurrentView(p.view);
+      setSelectedVehicleId(p.vehicleId);
+      setSelectedGuideSlug(p.guideSlug);
+      setAccountTab(p.accountTab);
+      setSellerTab(p.sellerTab);
+      setAdminTab(p.adminTab);
+      setSelectedQuotationId(p.quotationId);
+      setSelectedApplicationId(p.applicationId);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   // ----- Auth -----
   const afterSignIn = (name: string, title: string) => {
     setAuthModalOpen(false);
