@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { VehicleCategory, VehicleCondition, TransmissionType, FuelType, Vehicle } from '../types.ts';
-import { MAX_PHOTOS, MAX_VIDEOS, MAX_VIDEO_BYTES, photoDataUrl } from '../media.ts';
+import { MAX_PHOTOS, MAX_VIDEOS, MAX_VIDEO_BYTES, compressVideo, photoDataUrl } from '../media.ts';
 import { uploadFile, dataUrlToBlob } from '../api.ts';
 import { StoredVideo } from './StoredVideo.tsx';
 import { ImagePlus, X } from 'lucide-react';
@@ -38,6 +38,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
   const [videos, setVideos] = useState<string[]>(editing?.videos ?? []);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState('');
+  const [mediaStatus, setMediaStatus] = useState('');
 
   const [saving, setSaving] = useState(false);
 
@@ -58,9 +59,11 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
           setPhotos((p) => [...p, up.url]);
         } else if (file.type.startsWith('video/')) {
           if (nVideos >= MAX_VIDEOS) { problems.push(`Up to ${MAX_VIDEOS} videos. ${file.name} was skipped.`); continue; }
-          if (file.size > MAX_VIDEO_BYTES) { problems.push(`${file.name} is over 100 MB. Use a shorter or smaller video.`); continue; }
           nVideos++;
-          const up = await uploadFile(file, file.name, 'public');
+          const small = await compressVideo(file, (pct) => setMediaStatus(`Compressing… ${pct}%`));
+          setMediaStatus('');
+          if (small.size > MAX_VIDEO_BYTES) { nVideos--; problems.push(`${file.name} is over 100 MB even after compressing. Use a shorter video.`); continue; }
+          const up = await uploadFile(small, small.name, 'public');
           setVideos((v) => [...v, up.url]);
         } else {
           problems.push(`${file.name} is not a photo or video.`);
@@ -378,7 +381,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                       {(photos.length < MAX_PHOTOS || videos.length < MAX_VIDEOS) && (
                         <label className={`aspect-[4/3] flex flex-col items-center justify-center gap-1 border border-dashed border-[#8C989F] text-[12px] font-semibold text-[#141517] transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-[#1D5FD1] ${mediaBusy ? 'opacity-60' : 'hover:bg-[#EEF1F2] cursor-pointer'}`}>
                           <ImagePlus className="w-5 h-5" aria-hidden="true" />
-                          {mediaBusy ? 'Uploading…' : 'Add files'}
+                          {mediaBusy ? mediaStatus || 'Uploading…' : 'Add files'}
                           <input
                             type="file"
                             accept="image/*,video/*"
