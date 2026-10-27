@@ -46,7 +46,6 @@ export interface Vehicle {
     topSpeed?: string;
   };
   financingAvailable: boolean;
-  minMonthlyPayment?: number;
   status: VehicleStatus;
   featured?: boolean;
   createdAt: string;

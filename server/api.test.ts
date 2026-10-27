@@ -9,7 +9,7 @@ import { connectDb, closeDb, store, raw } from './db.ts';
 import { seedIfEmpty } from './seed.ts';
 import { createApp } from './app.ts';
 import * as svc from './services.ts';
-import { QUOTE_TERMS } from '../src/components/quote.ts';
+import { DEFAULT_RATE, QUOTE_TERMS, fromMonthly, monthlyPayment } from '../src/components/quote.ts';
 import { outbox } from './mailer.ts';
 
 process.env.NODE_ENV = 'test'; // emails stay in the outbox (no BREVO_API_KEY in tests)
@@ -252,6 +252,9 @@ test('listings: the variant is saved with the vehicle, and loan terms stop at 36
   const listed = (await client('buyer').state()).vehicles.find((v: any) => v.id === made.data.id);
   assert.equal(listed.variant, 'Drop Side Pick-up', 'clients see the variant in the specifications');
   assert.deepEqual(QUOTE_TERMS, [12, 24, 36], 'no term longer than 36 months is offered anywhere');
+  // the "from ₱/mo" on cards and Compare is the same calculation at its lowest: 30% down, 36 months, 8.5% (₱350,000 → ₱7,734)
+  assert.equal(fromMonthly(350000), 7734);
+  assert.equal(Math.round(monthlyPayment(350000 * 0.85, DEFAULT_RATE, 36)), 9391, 'the listing page at 15% down and 36 months');
 });
 
 test('public visitors only see active listings', async () => {

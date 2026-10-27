@@ -1,3 +1,4 @@
+import { DEFAULT_RATE, MAX_DOWN_PCT, QUOTE_TERMS, monthlyPayment } from '../components/quote.ts';
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import type { Vehicle } from '../types.ts';
@@ -90,12 +91,7 @@ export const VehicleDetailView: React.FC = () => {
   // Financial calculations
   const downPaymentAmount = Math.round((vehicle.price * downPaymentPercent) / 100);
   const principalLoan = vehicle.price - downPaymentAmount;
-  const annualRate = 0.085;
-  const monthlyRate = annualRate / 12;
-  const estimatedMonthly = Math.round(
-    (principalLoan * (monthlyRate * Math.pow(1 + monthlyRate, loanTermMonths))) /
-      (Math.pow(1 + monthlyRate, loanTermMonths) - 1)
-  );
+  const estimatedMonthly = Math.round(monthlyPayment(principalLoan, DEFAULT_RATE, loanTermMonths));
 
   const handleSave = () => {
     if (!isAuthenticated) {
@@ -431,7 +427,7 @@ export const VehicleDetailView: React.FC = () => {
                     <input
                       type="range"
                       min="15"
-                      max="30"
+                      max={MAX_DOWN_PCT}
                       step="5"
                       value={downPaymentPercent}
                       onChange={(e) => setDownPaymentPercent(Number(e.target.value))}
@@ -441,7 +437,7 @@ export const VehicleDetailView: React.FC = () => {
                   <div>
                     <span className="gb-label block mb-2">Loan term</span>
                     <div className="grid grid-cols-3 border border-[#8C989F] divide-x divide-[#8C989F]">
-                      {[12, 24, 36].map((term) => (
+                      {QUOTE_TERMS.map((term) => (
                         <button
                           key={term}
                           onClick={() => setLoanTermMonths(term)}

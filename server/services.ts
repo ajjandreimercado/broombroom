@@ -308,7 +308,6 @@ const buildVehicle = (data: Partial<Vehicle>, status: VehicleStatus): Vehicle =>
     videos: data.videos?.length ? data.videos : undefined,
     specs: { engine: '', horsepower: '', seating: '', doors: '' },
     financingAvailable: data.financingAvailable ?? true,
-    minMonthlyPayment: Math.round(data.price! * 0.018),
     status,
     featured: false,
     createdAt: now(),
@@ -333,7 +332,7 @@ export const updateVehicle = (id: string, input: any) =>
     if (changes.images && !changes.images.length) changes.images = [generateVehicleSvg((changes.category ?? v.category) === 'motorcycles' ? 'bike' : 'car', '#111827', changes.title ?? v.title)];
     if (changes.videos && !changes.videos.length) changes.videos = undefined;
     if (changes.location !== undefined) changes.sellerLocation = changes.location || 'Philippines';
-    return store.put('vehicles', { ...v, ...changes, minMonthlyPayment: Math.round((changes.price ?? v.price) * 0.018) });
+    return store.put('vehicles', { ...v, ...changes });
   });
 
 export const setVehicleStatus = (id: string, status: unknown) =>

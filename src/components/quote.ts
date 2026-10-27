@@ -14,6 +14,11 @@ export const monthlyPayment = (principal: number, annualRatePct: number, months:
   return (principal * r * f) / (f - 1);
 };
 
+// The lowest monthly figure a listing can show: the biggest down payment (30%) over the longest term (36 months).
+// Cards and Compare show this as "from"; the listing page's calculator lands on it at 30% down and 36 months.
+export const MAX_DOWN_PCT = 30;
+export const fromMonthly = (price: number) => Math.round(monthlyPayment((price * (100 - MAX_DOWN_PCT)) / 100, DEFAULT_RATE, Math.max(...QUOTE_TERMS)));
+
 // Everything a quotation shows, derived from what the admin entered.
 export const quoteFigures = (q: Pick<Quotation, 'method' | 'unitPrice' | 'downPayment' | 'termMonths' | 'annualRate' | 'insurance' | 'registration' | 'chattelMortgage'>) => {
   const financing = q.method === 'financing';

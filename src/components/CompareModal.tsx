@@ -1,3 +1,4 @@
+import { fromMonthly } from './quote.ts';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { AnimatePresence, motion } from 'motion/react';
@@ -157,7 +158,7 @@ export const CompareModal: React.FC = () => {
     if (winner) {
       if (activeTag === 'price') {
         verdictTitle = `Best Price Choice: ${winner.title}`;
-        verdictDescription = `Offers the most accessible cost of ownership with an estimated monthly payment of ₱${winner.minMonthlyPayment?.toLocaleString() || 'N/A'}/mo.`;
+        verdictDescription = `Offers the most accessible cost of ownership with an estimated monthly payment of ₱${winner.financingAvailable ? fromMonthly(winner.price).toLocaleString() : 'N/A'}/mo.`;
       } else if (activeTag === 'mileage') {
         verdictTitle = `Lowest Wear Choice: ${winner.title}`;
         verdictDescription = `With just ${winner.mileage.toLocaleString()} km on the odometer, this vehicle exhibits significantly less wear and tear compared to rivals.`;
@@ -436,9 +437,9 @@ export const CompareModal: React.FC = () => {
                             <span className="text-[17px] font-bold text-[#141517] tabular-nums">
                               ₱{vehicle.price.toLocaleString()}
                             </span>
-                            {vehicle.minMonthlyPayment && (
+                            {vehicle.financingAvailable && (
                               <span className="block text-[12px] tabular-nums text-[#4E585E]">
-                                from ₱{vehicle.minMonthlyPayment.toLocaleString()}/mo
+                                from ₱{fromMonthly(vehicle.price).toLocaleString()}/mo
                               </span>
                             )}
                           </div>

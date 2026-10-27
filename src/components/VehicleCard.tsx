@@ -1,3 +1,4 @@
+import { fromMonthly } from './quote.ts';
 import React, { useRef } from 'react';
 import { Vehicle } from '../types.ts';
 import { useApp } from '../context/AppContext.tsx';
@@ -143,9 +144,9 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
         <div className="mt-auto pt-4 flex flex-col gap-3">
           <div className="min-w-0">
             <div className="font-display text-[22px] leading-none tabular-nums text-[#141517]">{formattedPrice}</div>
-            {vehicle.minMonthlyPayment ? (
+            {vehicle.financingAvailable ? (
               <div className="text-[12px] tabular-nums mt-1.5 text-[#4E585E]">
-                from ₱{vehicle.minMonthlyPayment.toLocaleString()}/mo
+                from ₱{fromMonthly(vehicle.price).toLocaleString()}/mo
               </div>
             ) : vehicle.originalPrice ? (
               <div className="text-[12px] tabular-nums mt-1.5 text-[#6B767D] line-through">
