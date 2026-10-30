@@ -8,7 +8,7 @@ import * as svc from './services.ts';
 import { sendMail, resubmitEmail, supportEmail, infoSheetEmail } from './mailer.ts';
 import { CONTACT_EMAIL } from '../src/data/constants.ts';
 import { verifyGoogleToken } from './google.ts';
-import { putFile, readFile } from './storage.ts';
+import { putFile, readFile, r2Link } from './storage.ts';
 
 type Handler = (req: Request, res: Response) => unknown;
 // Runs a change, tells every open portal to refresh, and replies with the result.
@@ -91,6 +91,11 @@ export const createApp = () => {
         const viewers = ((await Promise.all((['buyer', 'seller', 'admin'] as Portal[]).map((p) => sessionUser(req, p)))).filter(Boolean) as User[]).filter((u) => !u.mustChangePassword);
         if (!viewers.some((u) => u.role === 'admin' || u.id === row.ownerId)) return void res.status(403).send('Not allowed');
         res.setHeader('Cache-Control', 'private, no-store');
+      } else if (row.store === 'r2') {
+        // Public photos and videos download straight from R2. Private files (documents, receipts' images) stay
+        // here: they need the owner check on every read and the PDF receipts draw them as same-site images.
+        res.setHeader('Cache-Control', 'public, max-age=3600'); // shorter than the link's lifetime
+        return void res.redirect(302, await r2Link(row as any));
       } else {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       }

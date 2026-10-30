@@ -25,7 +25,7 @@ const CSP = [
   "frame-src 'self' https://accounts.google.com/gsi/",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
-  "media-src 'self' blob:",
+  "media-src 'self' blob: https://*.r2.cloudflarestorage.com", // listing videos play straight from R2
   "connect-src 'self' https://accounts.google.com/gsi/",
   "worker-src 'self' blob:",
   "object-src 'none'",

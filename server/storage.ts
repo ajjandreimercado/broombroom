@@ -46,6 +46,18 @@ export const deleteFile = async (row: StoredRow) => {
   } else await files().delete(row._id as any).catch(() => {}); // already gone is fine
 };
 
+// A signed link that lets the browser download a public file straight from R2 (Cloudflare does not charge for R2
+// downloads; streaming through this server used up the host's bandwidth). Signed as of the start of the UTC day, so
+// the link stays the same all day and browsers cache the file; it works for two days.
+export const r2Link = async (row: StoredRow) => {
+  const { aws, url } = r2();
+  const u = new URL(url(row._id));
+  u.searchParams.set('X-Amz-Expires', String(2 * 86400));
+  u.searchParams.set('response-cache-control', 'public, max-age=86400');
+  const day = new Date().toISOString().slice(0, 10).replace(/-/g, '') + 'T000000Z';
+  return (await aws.sign(u.toString(), { method: 'GET', aws: { signQuery: true, datetime: day } })).url;
+};
+
 // A file's bytes, with the status and headers to send. `range` (e.g. "bytes=0-1023") is passed through for R2 so videos can seek.
 export const readFile = async (row: StoredRow, range?: string): Promise<{ status: number; headers: Record<string, string>; stream: Readable } | undefined> => {
   if (row.store === 'r2') {

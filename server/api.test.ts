@@ -1264,6 +1264,17 @@ test('R2 storage: files go to the bucket (signed), come back with the same acces
     assert.equal(ranged.json, '%PDF-');
     assert.equal((await other.raw('GET', up.url, undefined, { Range: 'bytes=0-4' })).status, 403);
     assert.equal((await (await admin()).get(up.url)).status, 200, 'an admin can read it');
+    assert.equal((await fetch(base + up.url, { redirect: 'manual' })).status, 403, 'a private file is never handed out as a link');
+    // public listing photos are sent to R2 with a signed link, the same one all day so browsers can cache it
+    const photo = (await (await admin()).upload(PNG, 'image/png', 'car.png', 'public')).data;
+    const go = await fetch(base + photo.url, { redirect: 'manual' });
+    assert.equal(go.status, 302);
+    const link = new URL(go.headers.get('location')!);
+    assert.equal(link.pathname, `/bk/${photo.id}`);
+    assert.ok(link.searchParams.get('X-Amz-Signature') && link.searchParams.get('X-Amz-Expires') === '172800');
+    assert.equal(link.searchParams.get('X-Amz-Date'), new Date().toISOString().slice(0, 10).replace(/-/g, '') + 'T000000Z');
+    assert.equal((await fetch(base + photo.url, { redirect: 'manual' })).headers.get('location'), link.href, 'stable link');
+    assert.equal((await fetch(link)).status, 200, 'the link opens the file');
     // an abandoned upload is removed from the bucket too
     await raw('uploads').updateOne({ _id: up.id as any }, { $set: { createdAt: new Date(Date.now() - 2 * 864e5) } });
     await svc.removeAbandonedUploads();
