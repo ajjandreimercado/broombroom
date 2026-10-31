@@ -50,6 +50,7 @@ export interface Vehicle {
   featured?: boolean;
   createdAt: string;
   viewsCount: number;
+  preorder?: boolean; // a pre-order unit: shown only on the Pre-Order page, never reserved or sold itself
 }
 
 export type ApplicationStatus =
@@ -109,6 +110,9 @@ export interface VehicleApplication {
   orcrUrl?: string; // the OR/CR file the admin uploaded on release (image or PDF)
   orcrFileName?: string;
   commissionAmount?: number; // the agent's commission the admin set on approval; paid out after release
+  preorderRef?: string; // made from this pre-order (its unit is a pre-order unit)
+  downPct?: number; // pre-order financing: the down payment as one of PREORDER_DOWN_PCTS
+  netAmount?: number; // pre-order: the net the admin entered; the commission is 10% of it
 }
 
 // A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).
@@ -400,6 +404,11 @@ export interface Quotation {
   clientReply?: string; // the client's note when sending it back
   returnedAt?: string;
   confirmedAt?: string;
+  // Pre-order quotations: the price lines, the down payment as a percent, and add-on interest per month.
+  preorderRef?: string;
+  breakdown?: { label: string; amount: number }[];
+  downPct?: number;
+  monthlyAddOn?: number;
 }
 
 // Which agent a client belongs to. One per client: every chat, application and commission follows it.
@@ -441,4 +450,46 @@ export interface ClientLead {
   lockedTo?: string;
   lockedRef?: string;
   lockedAt?: string;
+}
+
+// ---------- pre-orders ----------
+export interface PreOrderAccessory {
+  id: string;
+  name: string;
+  price: number;
+}
+export interface PreOrderSettings {
+  accessories: PreOrderAccessory[]; // the admin adds, edits and deletes them
+  offRoadPrice: number; // the Off-Road Set Up package (its inclusions are fixed)
+}
+// A client's order for a unit built to their choices. Prices are copied in when submitted, so later price changes
+// never touch it. The client cannot edit it once sent; their agent and the admin can, until the quotation is sent.
+export interface PreOrder {
+  id: string;
+  refNo: string; // PO-2026-0001
+  clientId: string;
+  clientName: string;
+  unitId: string;
+  unitTitle: string;
+  unitImage: string;
+  unitPrice: number;
+  variant: string;
+  transmission: string;
+  seat: string;
+  color: string;
+  note?: string;
+  suggestions?: string;
+  photoUrl?: string; // the client's photo of the unit they want
+  photoName?: string;
+  accessories: { name: string; price: number }[];
+  offRoad: boolean;
+  offRoadPrice: number;
+  additionalAmount: number; // Additional Customization: the admin's price for the suggestions
+  additionalDescription?: string;
+  requestId: string; // the "request to apply" agents claim
+  agentName?: string; // the agent who claimed it
+  locked?: boolean; // its quotation is out with the client: no edits until the admin reopens it
+  applicationRef?: string; // the application made through the agent's apply link
+  history: { at: string; by: string; text: string }[];
+  createdAt: string;
 }

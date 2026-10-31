@@ -24,11 +24,14 @@ import type {
   ReferralStatus,
   ApplyRequest,
   LedgerAccount,
+  PreOrder,
+  PreOrderSettings,
 } from '../src/types.ts';
 import { TEAM_NAME, COMMISSION_RATE, generateVehicleSvg } from '../src/data/constants.ts';
 import { agentSlug, canTakeOver, shouldAlertUnclaimed, shouldRelease } from '../src/components/leads.ts';
 import { DEFAULT_RATE, DEFAULT_VALID_DAYS, QUOTE_TERMS, daysFromToday, isExpired } from '../src/components/quote.ts';
 import { DOCS, MIN_UPLOADS } from '../src/components/requirements.ts';
+import { PREORDER_COMMISSION_RATE, PREORDER_DOWN_PCTS, PREORDER_MONTHLY_ADD_ON, breakdownLines, preorderBreakdown } from '../src/components/preorder.ts';
 import { accountBalance, creditAvailable } from '../src/components/accounting/ledger.ts';
 import { store, tx, nextNumber, raw, opts } from './db.ts';
 import { deleteFile } from './storage.ts';
@@ -478,11 +481,18 @@ export const createApplication = (me: User, input: any) =>
       quote = need(await store.get<Quotation>('quotations', idOf(input.quotationId)), 'Quotation');
       if (quote.clientId !== me.id || quote.vehicleId !== v.id || quote.status !== 'sent' || isExpired(quote)) bad('That quotation can no longer be used.');
     }
-    const price = quote?.unitPrice ?? v.price;
+    // A pre-order unit: the price is the client's pre-order, and the down payment one of the pre-order percents.
+    const preorder = v.preorder ? need(await store.one<PreOrder>('preorders', { clientId: me.id, unitId: v.id, applicationRef: { $exists: false } }), 'Pre-order') : undefined;
+    const price = preorder ? preorderBreakdown(preorder).total : quote?.unitPrice ?? v.price;
     let downPayment: number | undefined;
+    let downPct: number | undefined;
     let term: number | undefined;
     if (method === 'financing') {
-      downPayment = money(input.downPayment, 'Down payment', { min: 1 });
+      if (preorder) {
+        downPct = Number(input.downPct);
+        if (!PREORDER_DOWN_PCTS.includes(downPct)) bad(`Choose a down payment of ${PREORDER_DOWN_PCTS.join('%, ')}%.`);
+        downPayment = downOf(price, downPct);
+      } else downPayment = money(input.downPayment, 'Down payment', { min: 1 });
       if (downPayment >= price) bad('The down payment must be less than the price.');
       term = Number(input.financingTermMonths);
       if (!QUOTE_TERMS.includes(term)) bad('Choose a loan term.');
@@ -548,7 +558,10 @@ export const createApplication = (me: User, input: any) =>
       documents,
       quotationNo: quote?.quoteNo,
       viaAgentLink: locked ? viaAgent : undefined,
+      preorderRef: preorder?.refNo,
+      downPct,
     });
+    if (preorder) await store.put<PreOrder>('preorders', { ...preorder, applicationRef: app.referenceNo, history: [...preorder.history, { at: now(), by: me.name, text: `Application ${app.referenceNo} sent (${method})` }] });
     if (locked) {
       const lead = (await store.get<ClientLead>('leads', me.id))!;
       const at = now();
@@ -581,6 +594,11 @@ export const createApplication = (me: User, input: any) =>
 // The agent's commission on a sale, set by the admin; without one it is the standard rate of the price.
 const commissionAmount = (app: VehicleApplication, v: unknown) =>
   v === undefined || v === null || v === '' ? Math.round(app.vehiclePrice * COMMISSION_RATE) : money(v, 'Agent commission', { allowZero: true });
+// A pre-order's commission is always 10% of the net the admin enters (or entered at approval).
+const preorderCommission = (app: VehicleApplication, net: unknown) => {
+  const netAmount = net === undefined || net === null || net === '' ? app.netAmount ?? bad('Enter the net amount; the agent gets 10% of it.') : money(net, 'Net amount', { allowZero: true });
+  return { netAmount, commissionAmount: Math.round(netAmount * PREORDER_COMMISSION_RATE) };
+};
 
 // Admin: reserve the vehicle for the client. Their documents must be approved; the reservation payment is confirmed
 // and released as an acknowledgement receipt in the client's name. The client then fills in the information sheet.
@@ -591,8 +609,10 @@ export const reserveApplication = (me: User, id: string, input: any) =>
     if ((app.documents || []).some((d) => d.status !== 'approved')) bad('Approve every document before reserving the vehicle.');
     const vehicle = await store.get<Vehicle>('vehicles', app.vehicleId);
     if (!vehicle || vehicle.status === 'sold') bad('This vehicle is no longer available.');
-    if (await store.one('applications', { vehicleId: app.vehicleId, status: { $in: HOLDING }, id: { $ne: app.id } })) bad('This vehicle is already reserved for another client.');
-    await store.put('vehicles', { ...vehicle!, status: 'reserved' });
+    if (!vehicle!.preorder) {
+      if (await store.one('applications', { vehicleId: app.vehicleId, status: { $in: HOLDING }, id: { $ne: app.id } })) bad('This vehicle is already reserved for another client.');
+      await store.put('vehicles', { ...vehicle!, status: 'reserved' });
+    }
     await store.put<VehicleApplication>('applications', { ...app, status: 'reserved', reservedAt: now() });
     const receipt = await addPayment(me, app.id, { amount: input?.amount, description: input?.description || `Reservation fee for ${app.vehicleTitle}`, remarks: input?.remarks, fileId: input?.fileId });
     await notify('client', 'Vehicle reserved', `The ${app.vehicleTitle} is reserved for you (${app.referenceNo}). Next: the admin team sends you a quotation to sign.`, 'applications', app.applicantId);
@@ -652,10 +672,11 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
     if (!input?.orcrFileId) bad('Upload the OR/CR of the vehicle before releasing it.');
     const orcr = await attachUpload(input.orcrFileId, me, app.applicantId, IMG_OR_PDF); // the client can open it too
     const vehicle = await store.get<Vehicle>('vehicles', app.vehicleId);
-    if (vehicle) await store.put('vehicles', { ...vehicle, status: 'sold' });
+    if (vehicle && !vehicle.preorder) await store.put('vehicles', { ...vehicle, status: 'sold' });
     // The commission exists only from the release: the agent who has the client gets it in full, payable at once.
     const existing = await store.one<Commission>('commissions', { applicationRef: app.referenceNo }); // older sales had one from approval
-    const amount = input?.commission === undefined ? (app.commissionAmount ?? existing?.amount ?? commissionAmount(app, undefined)) : commissionAmount(app, input.commission);
+    const pre = app.preorderRef ? preorderCommission(app, input?.net) : undefined;
+    const amount = pre ? pre.commissionAmount : input?.commission === undefined ? (app.commissionAmount ?? existing?.amount ?? commissionAmount(app, undefined)) : commissionAmount(app, input.commission);
     const agent = app.sellerName !== TEAM_NAME ? app.sellerName : (await ownerOf(app.applicantId)) ?? existing?.agentName ?? app.sellerName;
     const c: Commission = existing ?? {
       id: newId('com'),
@@ -680,7 +701,7 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
       completedAt: now(),
       approvedAt: c.approvedAt ?? now(),
     });
-    const saved = await store.put<VehicleApplication>('applications', { ...app, status: 'completed', releasedAt: now(), orcrConfirmed: true, orcrUrl: fileUrl(orcr._id), orcrFileName: orcr.name, commissionAmount: amount });
+    const saved = await store.put<VehicleApplication>('applications', { ...app, ...pre, status: 'completed', releasedAt: now(), orcrConfirmed: true, orcrUrl: fileUrl(orcr._id), orcrFileName: orcr.name, commissionAmount: amount });
     await releaseLock(saved);
     await endAgentLink(app.applicantId, agent, app.referenceNo, app.vehicleId);
     await notify('agent', 'Vehicle released: full commission', `The ${app.vehicleTitle} was released to ${app.applicantName}. Your full commission of ₱${amount.toLocaleString()} is approved and awaiting the cash transfer.`, 'commissions', agent);
@@ -688,7 +709,7 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
     return saved;
   });
 
-export const setApplicationStatus = (me: User, id: string, status: ApplicationStatus, note?: unknown, commission?: unknown) =>
+export const setApplicationStatus = (me: User, id: string, status: ApplicationStatus, note?: unknown, commission?: unknown, net?: unknown) =>
   tx(async () => {
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
     if (me.role === 'buyer' && (app.applicantId !== me.id || status !== 'withdrawn')) forbidden();
@@ -697,7 +718,7 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
 
     const vehicle = await store.get<Vehicle>('vehicles', app.vehicleId);
     const setVehicle = async (s: VehicleStatus) => {
-      if (vehicle) await store.put('vehicles', { ...vehicle, status: s });
+      if (vehicle && !vehicle.preorder) await store.put('vehicles', { ...vehicle, status: s });
     };
 
     // Reserving, the information sheet and the release have their own steps (they need more than a status).
@@ -708,7 +729,7 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
     let extra: Partial<VehicleApplication> = {};
     if (status === 'approved') {
       // After the information sheet: the commission is receivable from now (cash and financing).
-      extra = { commissionAmount: commissionAmount(app, commission), approvedAt: now(), ciComments: reason || undefined, ...(app.purchaseMethod === 'financing' ? { financingApprovedAt: now() } : {}) };
+      extra = { ...(app.preorderRef ? preorderCommission(app, net) : { commissionAmount: commissionAmount(app, commission) }), approvedAt: now(), ciComments: reason || undefined, ...(app.purchaseMethod === 'financing' ? { financingApprovedAt: now() } : {}) };
       await notify('client', 'Application approved', `${app.referenceNo} for the ${app.vehicleTitle} was approved. We will tell you when the vehicle is ready for release.`, 'applications', app.applicantId);
     } else if (status === 'declined' || status === 'withdrawn') {
       if (HOLDING.includes(app.status)) await setVehicle('available');
@@ -954,6 +975,22 @@ export const quoteApplication = (id: string) =>
     // Applications made when longer terms existed fall back to the longest term now offered (36).
     const termMonths = QUOTE_TERMS.includes(app.financingTermMonths ?? 0) ? app.financingTermMonths! : QUOTE_TERMS[QUOTE_TERMS.length - 1];
     const a = me.address;
+    const p = app.preorderRef ? need(await store.one<PreOrder>('preorders', { refNo: app.preorderRef }), 'Pre-order') : undefined;
+    const total = p ? preorderBreakdown(p).total : app.vehiclePrice;
+    const pre: Partial<Quotation> = p
+      ? {
+          preorderRef: p.refNo,
+          breakdown: breakdownLines(p),
+          downPct: app.downPct,
+          monthlyAddOn: PREORDER_MONTHLY_ADD_ON,
+          unitType: v.title,
+          variant: `${p.variant} · ${p.seat}`,
+          color: p.color,
+          transmission: p.transmission,
+          downPayment: method === 'financing' ? downOf(total, app.downPct) : 0,
+          annualRate: 0,
+        }
+      : {};
     const q = await store.put<Quotation>('quotations', {
       id: newId('qt'),
       status: 'requested',
@@ -975,7 +1012,7 @@ export const quoteApplication = (id: string) =>
       chassisNo: '',
       color: v.color,
       transmission: v.transmission,
-      unitPrice: app.vehiclePrice,
+      unitPrice: total,
       downPayment,
       termMonths,
       annualRate: DEFAULT_RATE,
@@ -983,6 +1020,7 @@ export const quoteApplication = (id: string) =>
       registration: 0,
       chattelMortgage: 0,
       remarks: '',
+      ...pre,
     });
     return q;
   });
@@ -1014,6 +1052,12 @@ export const saveQuotation = (me: User, id: string, input: any, send: boolean) =
       remarks: text(c.remarks ?? q.remarks, 'Remarks', 1000, false),
       validUntil: c.validUntil ?? q.validUntil,
     };
+    if (q.preorderRef) {
+      // The price follows the pre-order (changed there), and financing uses the pre-order down payments and add-on rate.
+      const pct = Number(c.downPct ?? q.downPct);
+      if (method === 'financing' && !PREORDER_DOWN_PCTS.includes(pct)) bad(`Choose a down payment of ${PREORDER_DOWN_PCTS.join('%, ')}%.`);
+      Object.assign(updated, { unitPrice: q.unitPrice, downPct: method === 'financing' ? pct : undefined, downPayment: method === 'financing' ? downOf(q.unitPrice, pct) : 0, annualRate: 0, monthlyAddOn: PREORDER_MONTHLY_ADD_ON, breakdown: q.breakdown });
+    }
     if (method === 'financing' && updated.downPayment >= updated.unitPrice) bad('The down payment must be less than the unit price.');
     // Quotations written when longer terms existed move to the longest term now offered (36) when next saved.
     if (!QUOTE_TERMS.includes(updated.termMonths)) {
@@ -1069,6 +1113,190 @@ export const confirmQuotation = (id: string) =>
     const client = await users.byId(q.clientId);
     await notify('client', 'Quotation confirmed', `${q.quoteNo} is final.${app ? ` Next: fill in the Applicant's Information Sheet for ${app.referenceNo}.` : ''}`, 'applications', q.clientId);
     return { quotation: saved, email: app && client ? { to: client.email, name: client.name, appId: app.id, referenceNo: app.referenceNo, vehicle: app.vehicleTitle } : undefined };
+  });
+
+// ---------- pre-orders ----------
+// A pre-order rides on the normal flow: it creates a "request to apply" for its unit (a hidden listing marked
+// preorder), the claiming agent sends the apply link, and the application, quotation, reservation and release work as
+// for any vehicle, except that the unit itself is never reserved or sold.
+export const preorderSettings = async (): Promise<PreOrderSettings> => {
+  const s = await store.get<PreOrderSettings & { id: string }>('settings', 'preorder');
+  return { accessories: s?.accessories ?? [], offRoadPrice: s?.offRoadPrice ?? 0 };
+};
+
+export const savePreorderSettings = (input: any) =>
+  tx(async () => {
+    const list: any[] = Array.isArray(input?.accessories) ? input.accessories : bad('Send the accessories list.');
+    if (list.length > 50) bad('Up to 50 accessories.');
+    const accessories = list.map((a, i) => ({
+      id: typeof a?.id === 'string' && /^acc-[\w-]+$/.test(a.id) ? a.id : newId('acc'),
+      name: text(a?.name, `Accessory ${i + 1} name`, 80),
+      price: money(a?.price, `${a?.name || `Accessory ${i + 1}`} price`, { allowZero: true }),
+    }));
+    if (new Set(accessories.map((a) => a.name.toLowerCase())).size !== accessories.length) bad('Two accessories have the same name.');
+    return store.put('settings', { id: 'preorder', accessories, offRoadPrice: money(input?.offRoadPrice, 'Off-Road Set Up price', { allowZero: true }) });
+  });
+
+// Admin: a unit clients can pre-order (name, base price, photos). Hidden ones stay off the Pre-Order page.
+export const savePreorderUnit = (id: string | null, input: any) =>
+  tx(async () => {
+    const data = cleanListing({ title: input?.title, brand: 'Pre-order', price: input?.price, images: input?.images ?? [], description: input?.description ?? '' }, false);
+    const status: VehicleStatus = input?.hidden ? 'unpublished' : 'available';
+    await markMediaAttached(data.images);
+    if (!id) return store.put<Vehicle>('vehicles', { ...buildVehicle(data, status), preorder: true });
+    const v = need(await store.get<Vehicle>('vehicles', idOf(id)), 'Unit');
+    if (!v.preorder) bad('That is a marketplace listing, not a pre-order unit.');
+    return store.put<Vehicle>('vehicles', { ...v, ...data, images: data.images?.length ? data.images : v.images, sellerLocation: v.sellerLocation, status });
+  });
+
+export const deletePreorderUnit = (id: string) =>
+  tx(async () => {
+    const v = need(await store.get<Vehicle>('vehicles', idOf(id)), 'Unit');
+    if (!v.preorder) bad('That is a marketplace listing, not a pre-order unit.');
+    if (await store.one('preorders', { unitId: v.id })) bad('Clients have pre-ordered this unit. Hide it instead, so their pre-orders keep it.');
+    await store.remove('vehicles', v.id);
+  });
+
+const choice = (v: unknown, field: string) => text(v, field, 60);
+// The accessories picked, at the price they had when picked: kept ones keep their old price, new ones take today's.
+const pickAccessories = (ids: unknown, settings: PreOrderSettings, kept: { name: string; price: number }[] = []) => {
+  if (ids !== undefined && !Array.isArray(ids)) bad('Choose the accessories from the list.');
+  const want = new Set(((ids as unknown[]) ?? []).map(idOf));
+  return settings.accessories
+    .filter((a) => want.has(a.id))
+    .map((a) => kept.find((k) => k.name === a.name) ?? { name: a.name, price: a.price });
+};
+
+export const submitPreorder = (me: User, input: any) =>
+  tx(async () => {
+    rateLimit(`preorder|${me.id}`, 10, 60 * 60e3, 'Too many pre-orders. Please try again later.');
+    const unit = need(await store.get<Vehicle>('vehicles', idOf(input?.unitId)), 'Unit');
+    if (!unit.preorder || unit.status !== 'available') bad('Choose a unit from the Pre-Order page.');
+    const settings = await preorderSettings();
+    const photo = input?.photoFileId ? await attachUpload(input.photoFileId, me, me.id, IMG) : undefined;
+    const base = {
+      variant: choice(input.variant, 'Variant'),
+      transmission: choice(input.transmission, 'Transmission'),
+      seat: choice(input.seat, 'Seat'),
+      color: text(input.color, 'Color', 60),
+      note: text(input.note, 'Note', 1000, false) || undefined,
+      suggestions: text(input.suggestions, 'Others / suggestions', 1000, false) || undefined,
+    };
+    // The agents' "request to apply" for the unit; a client who already has an agent goes straight to them.
+    await requestToApply(me, { vehicleId: unit.id, ref: input.ref });
+    const req = need(await store.one<ApplyRequest>('apply_requests', { clientId: me.id, vehicleId: unit.id, doneAt: { $exists: false } }), 'Request');
+    const at = now();
+    const p = await store.put<PreOrder>('preorders', {
+      id: newId('po'),
+      refNo: `PO-${year()}-${pad4(await nextNumber(`po-${year()}`))}`,
+      clientId: me.id,
+      clientName: me.name,
+      unitId: unit.id,
+      unitTitle: unit.title,
+      unitImage: unit.images[0],
+      unitPrice: unit.price,
+      ...base,
+      photoUrl: photo ? fileUrl(photo._id) : undefined,
+      photoName: photo?.name,
+      accessories: pickAccessories(input.accessoryIds, settings),
+      offRoad: !!input.offRoad,
+      offRoadPrice: settings.offRoadPrice,
+      additionalAmount: 0,
+      requestId: req.id,
+      history: [{ at, by: me.name, text: 'Pre-order submitted' }],
+      createdAt: at,
+    });
+    const owner = await ownerOf(me.id);
+    const agent = owner ? (await users.agents()).find((a) => a.name === owner) : undefined;
+    if (agent) await claimRequest(agent, req.id);
+    await notify('admin', 'New pre-order', `${me.name} pre-ordered the ${unit.title} (${p.refNo}).`, 'preorders');
+    return p;
+  });
+
+// The pre-order's quotation once it is out of the admin's hands (sent, signed, confirmed): the pre-order is then locked.
+const LOCKING: Quotation['status'][] = ['sent', 'returned', 'confirmed', 'accepted'];
+const preorderQuote = async (p: PreOrder) => (p.applicationRef ? await store.one<Quotation>('quotations', { applicationRef: p.applicationRef, status: { $ne: 'accepted' } }) : undefined) ?? undefined;
+const downOf = (total: number, pct?: number) => Math.round((total * (pct ?? 0)) / 100);
+
+// After an edit: the application's price and the quotation being prepared follow the pre-order.
+const syncPreorder = async (p: PreOrder) => {
+  if (!p.applicationRef) return;
+  const total = preorderBreakdown(p).total;
+  const app = await store.one<VehicleApplication>('applications', { referenceNo: p.applicationRef });
+  if (app) await store.put<VehicleApplication>('applications', { ...app, vehiclePrice: total, ...(app.purchaseMethod === 'financing' ? { downPayment: downOf(total, app.downPct) } : {}) });
+  const q = await preorderQuote(p);
+  if (q?.status === 'requested')
+    await store.put<Quotation>('quotations', {
+      ...q,
+      unitPrice: total,
+      breakdown: breakdownLines(p),
+      variant: `${p.variant} · ${p.seat}`,
+      color: p.color,
+      transmission: p.transmission,
+      ...(q.method === 'financing' ? { downPayment: downOf(total, q.downPct) } : {}),
+    });
+};
+
+// The client's agent or the admin changes the choices (the client cannot). Only the admin sets Additional
+// Customization. Locked once the quotation is sent, until the admin reopens it.
+export const editPreorder = (me: User, id: string, input: any) =>
+  tx(async () => {
+    const p = need(await store.get<PreOrder>('preorders', idOf(id)), 'Pre-order');
+    if (me.role === 'seller' && (await store.get<ApplyRequest>('apply_requests', p.requestId))?.claimedBy !== me.name) forbidden('This pre-order is not your client’s.');
+    const q = await preorderQuote(p);
+    if (q && LOCKING.includes(q.status)) bad('The quotation was already sent, so this pre-order is locked. The admin can reopen it for changes.');
+    const app = p.applicationRef ? await store.one<VehicleApplication>('applications', { referenceNo: p.applicationRef }) : undefined;
+    if (app && ['completed', 'declined', 'withdrawn'].includes(app.status)) bad('This pre-order is closed.');
+    const c = input || {};
+    const next: PreOrder = {
+      ...p,
+      variant: c.variant === undefined ? p.variant : choice(c.variant, 'Variant'),
+      transmission: c.transmission === undefined ? p.transmission : choice(c.transmission, 'Transmission'),
+      seat: c.seat === undefined ? p.seat : choice(c.seat, 'Seat'),
+      color: c.color === undefined ? p.color : text(c.color, 'Color', 60),
+      note: c.note === undefined ? p.note : text(c.note, 'Note', 1000, false) || undefined,
+      suggestions: c.suggestions === undefined ? p.suggestions : text(c.suggestions, 'Others / suggestions', 1000, false) || undefined,
+      accessories: c.accessoryIds === undefined ? p.accessories : pickAccessories(c.accessoryIds, await preorderSettings(), p.accessories),
+      offRoad: c.offRoad === undefined ? p.offRoad : !!c.offRoad,
+    };
+    if (me.role === 'admin') {
+      if (c.additionalAmount !== undefined) next.additionalAmount = money(c.additionalAmount, 'Additional Customization', { allowZero: true });
+      if (c.additionalDescription !== undefined) next.additionalDescription = text(c.additionalDescription, 'Additional Customization description', 200, false) || undefined;
+    } else if (c.additionalAmount !== undefined || c.additionalDescription !== undefined) forbidden('Only the admin sets Additional Customization.');
+    const peso0 = (n: number) => `₱${n.toLocaleString()}`;
+    const show: Record<string, (x: PreOrder) => string> = {
+      Variant: (x) => x.variant,
+      Transmission: (x) => x.transmission,
+      Seat: (x) => x.seat,
+      Color: (x) => x.color,
+      Note: (x) => x.note || '(none)',
+      'Others / suggestions': (x) => x.suggestions || '(none)',
+      Accessories: (x) => x.accessories.map((a) => a.name).join(', ') || '(none)',
+      'Off-Road Set Up': (x) => (x.offRoad ? 'Yes' : 'No'),
+      'Additional Customization': (x) => `${peso0(x.additionalAmount)}${x.additionalDescription ? ` (${x.additionalDescription})` : ''}`,
+    };
+    const changes = Object.entries(show).filter(([, f]) => f(p) !== f(next)).map(([k, f]) => `${k}: ${f(p)} → ${f(next)}`);
+    if (!changes.length) return p;
+    const at = now();
+    const saved = await store.put<PreOrder>('preorders', { ...next, history: [...p.history, ...changes.map((t) => ({ at, by: me.name, text: t }))] });
+    await syncPreorder(saved);
+    await notify('client', 'Pre-order updated', `${me.role === 'admin' ? 'Broom Broom' : me.name} updated your pre-order ${p.refNo}: ${changes.join('; ')}.`, 'preorders', p.clientId);
+    if (me.role === 'seller') await notify('admin', 'Pre-order updated', `${me.name} updated ${p.refNo} (${p.clientName}): ${changes.join('; ')}.`, 'preorders');
+    return saved;
+  });
+
+// Admin: take back a sent quotation so the pre-order can change; it is then edited and sent again for signing.
+export const reopenPreorder = (me: User, id: string) =>
+  tx(async () => {
+    const p = need(await store.get<PreOrder>('preorders', idOf(id)), 'Pre-order');
+    const q = await preorderQuote(p);
+    if (!q || !LOCKING.includes(q.status)) bad('This pre-order is not locked.');
+    const app = await store.one<VehicleApplication>('applications', { referenceNo: p.applicationRef });
+    if (app?.status !== 'reserved') bad('Only a pre-order still waiting for its information sheet can be reopened.');
+    await store.put<Quotation>('quotations', { ...q!, status: 'requested', conforme: undefined, clientReply: undefined, returnedAt: undefined, confirmedAt: undefined });
+    const at = now();
+    await store.put<PreOrder>('preorders', { ...p, history: [...p.history, { at, by: me.name, text: `Reopened for changes (quotation ${q!.quoteNo ?? ''} taken back)` }] });
+    await notify('client', 'Quotation being revised', `Your quotation for pre-order ${p.refNo} is being revised. We will send the new one to sign.`, 'preorders', p.clientId);
   });
 
 // ---------- commissions: payable (from the release) -> paid (with proof) ----------

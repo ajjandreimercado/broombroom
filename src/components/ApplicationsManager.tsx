@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { COMMISSION_RATE } from '../data/constants.ts';
+import { PREORDER_COMMISSION_RATE } from './preorder.ts';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
 import { PaymentReceipt, VehicleApplication } from '../types.ts';
@@ -234,20 +235,28 @@ const ReserveAction: React.FC<{ app: VehicleApplication; blocked: boolean }> = (
 };
 
 // The agent's commission on this sale, set by the admin (digits only). Paid in full to the agent on release.
-const CommissionField: React.FC<{ app: VehicleApplication; value: string; onChange: (v: string) => void; agent?: string }> = ({ app, value, onChange, agent }) => (
+// A pre-order's is always 10% of the net the admin enters, so the admin types the net instead.
+const CommissionField: React.FC<{ app: VehicleApplication; value: string; onChange: (v: string) => void; agent?: string }> = ({ app, value, onChange, agent }) =>
+  app.preorderRef ? (
+    <label className="block max-w-xs">
+      <span className="gb-label block mb-1.5">Net amount (₱){agent ? ` · ${agent}` : ''}</span>
+      <input value={value} inputMode="numeric" maxLength={9} onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))} className="w-full px-3 py-2 text-[14px] tabular-nums bg-white border border-[#8C989F] text-[#141517]" />
+      <span className="mt-1 block text-[12px] text-[#4E585E]">Pre-order {app.preorderRef}: the agent gets {PREORDER_COMMISSION_RATE * 100}% of the net, {peso(Math.round(Number(value || 0) * PREORDER_COMMISSION_RATE))}, in full on release.</span>
+    </label>
+  ) : (
   <label className="block max-w-xs">
     <span className="gb-label block mb-1.5">Agent commission (₱){agent ? ` · ${agent}` : ''}</span>
     <input value={value} inputMode="numeric" maxLength={9} onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))} className="w-full px-3 py-2 text-[14px] tabular-nums bg-white border border-[#8C989F] text-[#141517]" />
     <span className="mt-1 block text-[12px] text-[#4E585E]">Standard {COMMISSION_RATE * 100}% is {peso(Math.round(app.vehiclePrice * COMMISSION_RATE))}. Payable in full to the client’s agent on release.</span>
   </label>
-);
+  );
 
 // Admin: approve after reading the information sheet, with optional credit investigation (C.I.) comments.
 const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const { updateApplicationStatus } = useApp();
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState('');
-  const [commission, setCommission] = useState(String(app.commissionAmount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
+  const [commission, setCommission] = useState(app.preorderRef ? String(app.netAmount ?? '') : String(app.commissionAmount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
   if (!open)
     return (
       <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => setOpen(true)}>
@@ -260,7 +269,8 @@ const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
       className="w-full space-y-2 animate-fade-up"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (await updateApplicationStatus(app.id, 'approved', comments.trim() || undefined, Number(commission || 0))) setOpen(false);
+        const n = Number(commission || 0);
+        if (await updateApplicationStatus(app.id, 'approved', comments.trim() || undefined, app.preorderRef ? undefined : n, app.preorderRef ? n : undefined)) setOpen(false);
       }}
     >
       <CommissionField app={app} value={commission} onChange={setCommission} />
@@ -284,7 +294,7 @@ const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const [file, setFile] = useState<File | undefined>();
   const [problem, setProblem] = useState('');
   const current = commissions.find((c) => c.applicationRef === app.referenceNo);
-  const [commission, setCommission] = useState(String(app.commissionAmount ?? current?.amount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
+  const [commission, setCommission] = useState(app.preorderRef ? String(app.netAmount ?? '') : String(app.commissionAmount ?? current?.amount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
   if (!open)
     return (
       <button className={`${btn.ink} flex items-center gap-1.5`} onClick={() => { setOrcr(false); setOpen(true); }}>
@@ -297,7 +307,8 @@ const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
       className="w-full space-y-2 animate-fade-up"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (orcr && file && (await releaseVehicle(app.id, Number(commission || 0), file))) setOpen(false);
+        const n = Number(commission || 0);
+        if (orcr && file && (await releaseVehicle(app.id, app.preorderRef ? 0 : n, file, app.preorderRef ? n : undefined))) setOpen(false);
       }}
     >
       <CommissionField app={app} value={commission} onChange={setCommission} agent={current?.agentName} />

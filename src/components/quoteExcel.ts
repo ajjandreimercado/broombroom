@@ -1,5 +1,5 @@
 import type { Quotation } from '../types.ts';
-import { quoteFigures } from './quote.ts';
+import { quoteFigures, termText } from './quote.ts';
 
 // The quotation as an Excel file, laid out like the PDF: header, client, unit details, price and terms, fees, remarks.
 // exceljs is loaded only when someone downloads one.
@@ -69,11 +69,12 @@ export const downloadQuotationXlsx = async (q: Quotation) => {
   row('Transmission', q.transmission || '-');
 
   section('PRICE AND TERMS');
-  row('Unit price', q.unitPrice, true);
+  for (const l of q.breakdown ?? []) row(l.label, l.amount);
+  row(q.breakdown ? 'Total Amount' : 'Unit price', q.unitPrice, true);
   if (financing) {
-    row('Down payment', q.downPayment);
+    row(q.downPct ? `Down payment (${q.downPct}%)` : 'Down payment', q.downPayment);
     row('Amount financed', f.amountFinanced, true);
-    row('Term', `${q.termMonths} months at ${q.annualRate}% a year`);
+    row('Term', termText(q));
     row('Monthly amortization', f.monthly, true);
   } else row('Payment', 'Cash');
 

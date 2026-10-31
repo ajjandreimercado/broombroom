@@ -5,6 +5,7 @@ import { Quotation } from '../../types.ts';
 import { downloadQuotationPdf, openQuotation, reserveWindow } from '../receipt.ts';
 import { downloadQuotationXlsx } from '../quoteExcel.ts';
 import { QUOTE_TERMS, daysFromToday, DEFAULT_VALID_DAYS, quoteFigures, quoteLabel, isExpired } from '../quote.ts';
+import { PREORDER_DOWN_PCTS } from '../preorder.ts';
 import { money } from '../accounting/ledger.ts';
 import { Drawer, EmptyState, FilterTabs, SectionHeader, btn, shortDate } from './ui.tsx';
 import { Check, Download, FileSpreadsheet, FileText, Send } from 'lucide-react';
@@ -46,7 +47,7 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
     setError('');
     setBusy(true);
     const win = send ? reserveWindow() : null; // opened during the click so the browser allows it
-    const saved = await saveQuotation(quote.id, { ...d, downPayment: financing ? d.downPayment : 0 }, send);
+    const saved = await saveQuotation(quote.id, { ...d, downPayment: financing ? d.downPayment : 0, ...(d.preorderRef ? { downPct: d.downPct ?? PREORDER_DOWN_PCTS[0] } : {}) }, send);
     setBusy(false);
     if (!saved) return win?.close();
     if (send) {
@@ -97,6 +98,32 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
             </button>
           ))}
         </div>
+        {d.preorderRef ? (
+          <div className="space-y-3">
+            <dl className="bg-white border border-[#C9D1D6] divide-y divide-[#DDE3E6] text-[13px] tabular-nums">
+              {(d.breakdown ?? []).map((l) => (
+                <div key={l.label} className="flex justify-between gap-3 px-3 py-1.5"><dt className="text-[#2A2E31]">{l.label}</dt><dd>{money(l.amount)}</dd></div>
+              ))}
+              <div className="flex justify-between gap-3 px-3 py-2 font-semibold"><dt>Total Amount</dt><dd>{money(d.unitPrice)}</dd></div>
+            </dl>
+            <p className="text-[12.5px] text-[#4E585E]">Pre-order {d.preorderRef}: change the price in Pre-orders (Additional Customization), not here.</p>
+            {financing && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Down payment">
+                  <select className={`${input} cursor-pointer`} value={d.downPct ?? PREORDER_DOWN_PCTS[0]} onChange={(e) => { const pct = Number(e.target.value); setD((x) => ({ ...x, downPct: pct, downPayment: Math.round((x.unitPrice * pct) / 100) })); }}>
+                    {PREORDER_DOWN_PCTS.map((p) => <option key={p} value={p}>{p}% · {money(Math.round((d.unitPrice * p) / 100))}</option>)}
+                  </select>
+                </Field>
+                <Field label="Term">
+                  <select className={`${input} cursor-pointer`} value={d.termMonths} onChange={(e) => set('termMonths', Number(e.target.value))}>
+                    {QUOTE_TERMS.map((m) => <option key={m} value={m}>{m} months</option>)}
+                  </select>
+                </Field>
+                <p className="col-span-2 text-[12.5px] text-[#4E585E]">Interest: {d.monthlyAddOn}% a month (add-on) on the amount financed.</p>
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Unit price (₱)"><input type="number" min="0" className={input} value={d.unitPrice || ''} onChange={(e) => set('unitPrice', num(e.target.value))} /></Field>
           {financing && (
@@ -115,6 +142,7 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
             <Field label="Interest rate (% a year)"><input type="number" min="0" step="0.1" className={input} value={d.annualRate} onChange={(e) => set('annualRate', num(e.target.value))} /></Field>
           )}
         </div>
+        )}
         <details className="group border-t border-[#C9D1D6] pt-3">
           <summary className="cursor-pointer text-[13px] font-semibold text-[#141517] list-none flex items-center justify-between">
             Fees for the all-in amount (optional)

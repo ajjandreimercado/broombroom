@@ -5,6 +5,7 @@ import { indicatorTransition } from '../motion.ts';
 import { Stamp } from '../components/Stamp.tsx';
 import { VehicleApplication } from '../types.ts';
 import { isExpired, QUOTE_TERMS } from '../components/quote.ts';
+import { PREORDER_DOWN_PCTS, PREORDER_MONTHLY_ADD_ON, addOnMonthly, preorderBreakdown } from '../components/preorder.ts';
 import {
   ArrowLeft,
   ArrowRight,
@@ -37,12 +38,17 @@ export const ApplicationWizardView: React.FC = () => {
     myAgent,
     applyLinkFor,
     requestToApply,
+    preorderUnits,
+    preorders,
   } = useApp();
 
-  const vehicle = vehicles.find((v) => v.id === selectedVehicleId); // never another car: a removed listing shows "not found"
+  // never another car: a removed listing shows "not found". A pre-order unit is applied for through the agent's link too.
+  const vehicle = vehicles.find((v) => v.id === selectedVehicleId) ?? preorderUnits.find((v) => v.id === selectedVehicleId);
+  const preorder = vehicle?.preorder ? preorders.find((p) => p.unitId === vehicle.id && !p.applicationRef) : undefined;
   // Applying from a sent quotation: its method, down payment, term and price carry over.
   const quote = quotations.find((q) => q.id === selectedQuotationId && q.vehicleId === vehicle?.id && q.status === 'sent' && !isExpired(q));
-  const price = quote?.unitPrice ?? vehicle?.price ?? 0;
+  const price = preorder ? preorderBreakdown(preorder).total : quote?.unitPrice ?? vehicle?.price ?? 0;
+  const [downPct, setDownPct] = useState(PREORDER_DOWN_PCTS[0]);
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [confirmedApp, setConfirmedApp] = useState<VehicleApplication | null>(null);
@@ -177,7 +183,8 @@ export const ApplicationWizardView: React.FC = () => {
       },
       purchaseMethod,
       financingTermMonths: purchaseMethod === 'financing' ? financingTerm : undefined,
-      downPayment: purchaseMethod === 'financing' ? downPayment : undefined,
+      downPayment: purchaseMethod === 'financing' && !preorder ? downPayment : undefined,
+      downPct: purchaseMethod === 'financing' && preorder ? downPct : undefined,
       notes: notes.trim(),
       documents: Object.fromEntries(requiredDocs.filter((d) => docs[d.key]?.fileId).map((d) => [d.key, docs[d.key].fileId!])),
       quotationId: quote?.id,
@@ -502,6 +509,21 @@ export const ApplicationWizardView: React.FC = () => {
                       </div>
                     </div>
 
+                    {preorder ? (
+                      <div>
+                        <span className="block font-bold text-[#2A2E31] mb-2">Down payment (pre-order)</span>
+                        <div className="grid grid-cols-5 gap-2" role="radiogroup" aria-label="Down payment">
+                          {PREORDER_DOWN_PCTS.map((pct) => (
+                            <button key={pct} type="button" role="radio" aria-checked={downPct === pct} onClick={() => setDownPct(pct)} className={`py-2 rounded-[2px] text-xs font-bold cursor-pointer ${downPct === pct ? 'bg-[#141517] text-white' : 'bg-white border border-[#C9D1D6] text-[#2A2E31] hover:border-[#141517]'}`}>
+                              {pct}%
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-[12px] text-[#4E585E] tabular-nums">
+                          ₱{Math.round((price * downPct) / 100).toLocaleString()} down, then about ₱{Math.round(addOnMonthly(price - Math.round((price * downPct) / 100), PREORDER_MONTHLY_ADD_ON, financingTerm)).toLocaleString()} a month ({PREORDER_MONTHLY_ADD_ON}% a month add-on). Your quotation shows the final figures.
+                        </p>
+                      </div>
+                    ) : (
                     <div>
                       <div className="flex justify-between font-medium text-[#2A2E31] mb-1.5">
                         <span>Down Payment Target</span>
@@ -517,6 +539,7 @@ export const ApplicationWizardView: React.FC = () => {
                         className="w-full accent-[#1D5FD1] cursor-pointer"
                       />
                     </div>
+                    )}
                   </div>
                 )}
 

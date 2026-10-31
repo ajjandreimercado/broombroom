@@ -14,6 +14,7 @@ import { CompareModal } from './components/CompareModal.tsx';
 import { IntroView } from './views/IntroView.tsx';
 import { MarketplaceView } from './views/MarketplaceView.tsx';
 import { DealsView } from './views/DealsView.tsx';
+import { PreOrderView } from './views/PreOrderView.tsx';
 import { VehicleDetailView } from './views/VehicleDetailView.tsx';
 import { ApplicationWizardView } from './views/ApplicationWizardView.tsx';
 import { AccountView } from './views/AccountView.tsx';
@@ -112,6 +113,8 @@ const AppContent: React.FC = () => {
         return <IntroView />;
       case 'deals':
         return <DealsView />;
+      case 'preorder':
+        return <PreOrderView />;
       case 'vehicle_detail':
         return <VehicleDetailView />;
       case 'apply':

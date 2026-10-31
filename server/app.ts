@@ -302,7 +302,7 @@ export const createApp = () => {
     return i;
   };
   api.post('/applications', requireRole('buyer'), act((req) => svc.createApplication(me(req), body(req))));
-  api.post('/applications/:id/status', requireRole('buyer', 'admin'), act((req) => svc.setApplicationStatus(me(req), req.params.id, body(req).status, body(req).note, me(req).role === 'admin' ? body(req).commission : undefined)));
+  api.post('/applications/:id/status', requireRole('buyer', 'admin'), act((req) => svc.setApplicationStatus(me(req), req.params.id, body(req).status, body(req).note, me(req).role === 'admin' ? body(req).commission : undefined, me(req).role === 'admin' ? body(req).net : undefined)));
   api.post(
     '/applications/:id/documents/:i/review',
     requireRole('admin'),
@@ -322,6 +322,15 @@ export const createApp = () => {
   );
   api.post('/apply-requests', requireRole('buyer'), act((req) => svc.requestToApply(me(req), body(req))));
   api.post('/apply-requests/:id/claim', requireRole('seller'), act((req) => svc.claimRequest(me(req), req.params.id)));
+
+  // ---------- pre-orders ----------
+  api.post('/preorders', requireRole('buyer'), act((req) => svc.submitPreorder(me(req), body(req))));
+  api.patch('/preorders/:id', requireRole('seller', 'admin'), act((req) => svc.editPreorder(me(req), req.params.id, body(req))));
+  api.post('/preorders/:id/reopen', requireRole('admin'), act((req) => svc.reopenPreorder(me(req), req.params.id)));
+  api.post('/preorder-settings', requireRole('admin'), act((req) => svc.savePreorderSettings(body(req))));
+  api.post('/preorder-units', requireRole('admin'), act((req) => svc.savePreorderUnit(null, body(req))));
+  api.patch('/preorder-units/:id', requireRole('admin'), act((req) => svc.savePreorderUnit(req.params.id, body(req))));
+  api.delete('/preorder-units/:id', requireRole('admin'), act((req) => svc.deletePreorderUnit(req.params.id)));
   api.post('/applications/:id/info-sheet', requireRole('buyer'), act((req) => svc.submitInfoSheet(me(req), req.params.id, body(req))));
   api.post('/applications/:id/release', requireRole('admin'), act((req) => svc.releaseVehicle(me(req), req.params.id, body(req))));
   api.patch('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.updatePayment(me(req), req.params.id, req.params.arNo, body(req))));

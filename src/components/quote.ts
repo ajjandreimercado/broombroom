@@ -1,4 +1,5 @@
 import type { Quotation, VehicleApplication } from '../types.ts';
+import { addOnMonthly } from './preorder.ts';
 
 // Loan terms offered, in months: 36 is the longest, on every listing (new or already listed), application and quotation.
 export const QUOTE_TERMS = [12, 24, 36];
@@ -20,11 +21,12 @@ export const MAX_DOWN_PCT = 30;
 export const fromMonthly = (price: number) => Math.round(monthlyPayment((price * (100 - MAX_DOWN_PCT)) / 100, DEFAULT_RATE, Math.max(...QUOTE_TERMS)));
 
 // Everything a quotation shows, derived from what the admin entered.
-export const quoteFigures = (q: Pick<Quotation, 'method' | 'unitPrice' | 'downPayment' | 'termMonths' | 'annualRate' | 'insurance' | 'registration' | 'chattelMortgage'>) => {
+export const quoteFigures = (q: Pick<Quotation, 'method' | 'unitPrice' | 'downPayment' | 'termMonths' | 'annualRate' | 'insurance' | 'registration' | 'chattelMortgage' | 'monthlyAddOn'>) => {
   const financing = q.method === 'financing';
   const fees = q.insurance + q.registration + (financing ? q.chattelMortgage : 0);
   const amountFinanced = financing ? Math.max(0, q.unitPrice - q.downPayment) : 0;
-  const monthly = financing ? monthlyPayment(amountFinanced, q.annualRate, q.termMonths) : 0;
+  // Pre-orders use add-on interest per month; other quotations a reducing-balance yearly rate.
+  const monthly = !financing ? 0 : q.monthlyAddOn ? addOnMonthly(amountFinanced, q.monthlyAddOn, q.termMonths) : monthlyPayment(amountFinanced, q.annualRate, q.termMonths);
   return {
     fees,
     amountFinanced,
@@ -34,6 +36,10 @@ export const quoteFigures = (q: Pick<Quotation, 'method' | 'unitPrice' | 'downPa
     totalOfPayments: financing ? q.downPayment + monthly * q.termMonths : q.unitPrice,
   };
 };
+
+// How a quotation prints its interest.
+export const termText = (q: Pick<Quotation, 'termMonths' | 'annualRate' | 'monthlyAddOn'>) =>
+  `${q.termMonths} months at ${q.monthlyAddOn ? `${q.monthlyAddOn}% a month (add-on)` : `${q.annualRate}% a year`}`;
 
 export const nextQuoteNo = (quotes: Quotation[], year = new Date().getFullYear()) => {
   const used = quotes.map((q) => q.quoteNo).filter((n): n is string => !!n && n.startsWith(`QT-${year}-`)).map((n) => Number(n.slice(8)));

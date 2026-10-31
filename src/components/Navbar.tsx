@@ -83,6 +83,7 @@ export const Navbar: React.FC = () => {
         { label: 'Home', view: 'intro' as const },
         { label: 'Marketplace', view: 'marketplace' as const },
         { label: 'Deals', view: 'deals' as const },
+        { label: 'Pre-Order', view: 'preorder' as const },
         { label: 'How It Works', view: 'how_it_works' as const },
         { label: 'Business Permits', view: 'permits' as const },
       ]

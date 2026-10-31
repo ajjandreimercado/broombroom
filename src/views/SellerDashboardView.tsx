@@ -7,6 +7,7 @@ import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { Commissions } from '../components/Commissions.tsx';
 import { AgentListings } from '../components/agent/AgentListings.tsx';
 import { AgentLeads } from '../components/agent/AgentLeads.tsx';
+import { PreOrderPanel } from '../components/PreOrderPanel.tsx';
 import {
   LayoutDashboard,
   BarChart3,
@@ -18,6 +19,7 @@ import {
   ArrowLeft,
   Send,
   Users,
+  ClipboardList,
 } from 'lucide-react';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 
@@ -37,6 +39,8 @@ export const SellerDashboardView: React.FC = () => {
     applyRequests,
     applications,
     markConversationRead,
+    preorders,
+    preorderUnits,
   } = useApp();
 
   // Every agent can sell every listing; chats and commissions are only for the agent's own clients.
@@ -71,7 +75,8 @@ export const SellerDashboardView: React.FC = () => {
   const [chatOpen, setChatOpen] = useState(!!activeConversationId); // phones: the open chat instead of the list
   const selectedConv = conversations.find((c) => c.id === activeConversationId) || conversations[0];
 
-  const available = vehicles.filter((v) => v.status === 'available');
+  // Listings, plus the pre-order unit this chat is about (so the agent can send its apply link again).
+  const available = [...vehicles, ...preorderUnits.filter((u) => u.id === selectedConv?.vehicleId)].filter((v) => v.status === 'available');
   const [linkVehicleId, setLinkVehicleId] = useState('');
   const linkVehicle = available.find((v) => v.id === linkVehicleId) ? linkVehicleId : available.find((v) => v.id === selectedConv?.vehicleId)?.id || available[0]?.id || '';
 
@@ -91,6 +96,7 @@ export const SellerDashboardView: React.FC = () => {
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'sales_report', label: 'Sales Report', icon: BarChart3 },
     { id: 'leads', label: 'Leads', icon: Users, count: openLeads },
+    { id: 'preorders', label: 'Pre-orders', icon: ClipboardList, count: preorders.filter((p) => !p.locked).length || undefined },
     // Chats with messages the agent has not read yet; opening a chat marks it read.
     { id: 'messages', label: 'Client Chats', icon: MessageSquare, count: conversations.filter((c) => c.unreadSeller > 0).length },
     { id: 'commissions', label: 'Commissions', icon: Wallet, count: receivable.length },
@@ -250,6 +256,15 @@ export const SellerDashboardView: React.FC = () => {
             {/* 3. VEHICLES MANAGEMENT */}
             {sellerTab === 'vehicles' && <AgentListings vehicles={sellerVehicles} />}
             {sellerTab === 'leads' && <AgentLeads />}
+            {sellerTab === 'preorders' && (
+              <div className="space-y-4">
+                <div className="pb-3 border-b-2 border-[#141517]">
+                  <h2 className="font-display text-[22px] leading-none text-[#141517]">Pre-orders</h2>
+                  <p className="mt-2 text-[13px] text-[#4E585E] max-w-[60ch]">Your clients’ pre-orders. Update what they want customized until the quotation is sent; the admin sets Additional Customization and the prices.</p>
+                </div>
+                {preorders.length === 0 ? <p className="text-[14px] text-[#4E585E] py-6">No pre-orders yet. Claim a client’s pre-order in Leads.</p> : preorders.map((p) => <PreOrderPanel key={p.id} p={p} mode="agent" />)}
+              </div>
+            )}
 
             {/* 6. MESSAGES TAB */}
             {sellerTab === 'messages' && (

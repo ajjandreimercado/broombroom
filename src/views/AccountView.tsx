@@ -5,6 +5,7 @@ import { StatusMark } from '../components/StatusMark.tsx';
 import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts';
 import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
 import { MyQuotations } from '../components/MyQuotations.tsx';
+import { PreOrderPanel } from '../components/PreOrderPanel.tsx';
 import { quoteFor } from '../components/quote.ts';
 import { useApp } from '../context/AppContext.tsx';
 import { AccountTab } from '../context/AppContext.tsx';
@@ -66,6 +67,7 @@ export const AccountView: React.FC = () => {
     setAuthModalOpen,
     selectedApplicationId,
     resubmitDocument,
+    preorders,
   } = useApp();
   // Clients only see notifications meant for them.
   const notifications = allNotifications.filter((n) => (n.audience ?? 'client') === 'client');
@@ -173,6 +175,7 @@ export const AccountView: React.FC = () => {
     { id: 'compare', label: 'Compare Vehicles', icon: ArrowLeftRight, badge: comparedVehicleIds.length || undefined },
     { id: 'applications', label: 'My Applications', icon: FileText, badge: userApplications.length },
     { id: 'quotations', label: 'My Quotations', icon: Calculator, badge: quotations.filter((q) => q.clientId === currentUser?.id).length || undefined },
+    { id: 'preorders', label: 'My Pre-orders', icon: FileText, badge: preorders.length || undefined },
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: conversations.filter((c) => c.unreadBuyer > 0).length },
     { id: 'recently_viewed', label: 'Recently Viewed', icon: Clock },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: notifications.filter((n) => !n.read).length },
@@ -453,6 +456,20 @@ export const AccountView: React.FC = () => {
 
             {/* 3. MY APPLICATIONS TAB */}
             {accountTab === 'quotations' && <MyQuotations />}
+
+            {accountTab === 'preorders' && (
+              <div className="space-y-4">
+                <h2 className="font-display text-[22px] text-[#141517] pb-3 border-b-2 border-[#141517]">My Pre-orders</h2>
+                {preorders.length === 0 ? (
+                  <p className="text-[14px] text-[#4E585E]">
+                    No pre-orders yet.{' '}
+                    <button className="font-semibold text-[#1D5FD1] hover:underline cursor-pointer" onClick={() => navigateTo('preorder')}>Pre-order a unit</button>
+                  </p>
+                ) : (
+                  preorders.map((p) => <PreOrderPanel key={p.id} p={p} mode="client" />)
+                )}
+              </div>
+            )}
 
             {accountTab === 'applications' && (
               <div className="space-y-6">

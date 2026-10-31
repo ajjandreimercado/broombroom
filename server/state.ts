@@ -1,10 +1,19 @@
 /// <reference types="node" />
-import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount, Referral, ApplyRequest } from '../src/types.ts';
+import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount, Referral, ApplyRequest, PreOrder } from '../src/types.ts';
 import { store } from './db.ts';
 import { users, publicUser, type User } from './auth.ts';
-import { notificationScope, ownerOf } from './services.ts';
+import { notificationScope, ownerOf, preorderSettings } from './services.ts';
 
 const NEWEST = (field: string) => ({ [field]: -1 as const });
+
+// Pre-orders with the agent who claimed each one's request (the agent can change when an account is removed).
+const withAgents = async (filter: object) => {
+  const list = await store.all<PreOrder>('preorders', filter, NEWEST('createdAt'));
+  const reqs = await store.all<ApplyRequest>('apply_requests', { id: { $in: list.map((p) => p.requestId) } });
+  // Locked: its quotation is out with the client (sent, signed or confirmed); only the admin can reopen it.
+  const quotes = await store.all<Quotation>('quotations', { applicationRef: { $in: list.map((p) => p.applicationRef).filter(Boolean) }, status: { $in: ['sent', 'returned', 'confirmed', 'accepted'] } });
+  return list.map((p) => ({ ...p, agentName: reqs.find((r) => r.id === p.requestId)?.claimedBy, locked: quotes.some((q) => q.applicationRef === p.applicationRef) }));
+};
 
 // Everything one person may see, in one response. The site refetches it whenever the server announces a change.
 // ponytail: whole-state refetch is fine for a dealership's volume; page large lists (notifications, chats) when they grow.
@@ -20,13 +29,15 @@ export const buildState = async (me?: User) => {
   const notifications = (await store.all<AppNotification>('notifications', notificationScope(me), NEWEST('createdAt'))).slice(0, 200);
 
   if (role === 'buyer') {
-    const [applications, conversations, quotations, myAgent] = await Promise.all([
+    const [applications, conversations, quotations, myAgent, preorders, settings] = await Promise.all([
       store.all<VehicleApplication>('applications', { applicantId: me.id }, NEWEST('submittedAt')),
       store.all<Conversation>('conversations', { buyerId: me.id }, NEWEST('updatedAt')),
       store.all<Quotation>('quotations', { clientId: me.id }, NEWEST('requestedAt')),
       ownerOf(me.id),
+      withAgents({ clientId: me.id }),
+      preorderSettings(),
     ]);
-    return { ...base, notifications, applications, conversations, quotations, myAgent: myAgent ?? null };
+    return { ...base, notifications, applications, conversations, quotations, myAgent: myAgent ?? null, preorders, preorderSettings: settings };
   }
 
   const agents = (await users.agents()).map((a) => a.name);
@@ -50,7 +61,10 @@ export const buildState = async (me?: User) => {
       })
     );
     const applyRequests = await store.all<ApplyRequest>('apply_requests', { doneAt: { $exists: false }, $or: [{ claimedBy: null }, { claimedBy: me.name }] }, NEWEST('createdAt'));
-    return { ...base, notifications, agents, conversations, leads, applyRequests, applications: applications.map(({ infoSheet, ciComments, ...a }) => a), commissions, listingRequests };
+    // The agent's own clients' pre-orders (claimed, including finished ones).
+    const mine = (await store.all<ApplyRequest>('apply_requests', { claimedBy: me.name })).map((r) => r.id);
+    const [preorders, settings] = await Promise.all([withAgents({ requestId: { $in: mine } }), preorderSettings()]);
+    return { ...base, notifications, agents, conversations, leads, applyRequests, applications: applications.map(({ infoSheet, ciComments, ...a }) => a), commissions, listingRequests, preorders, preorderSettings: settings };
   }
 
   // Admin: everything, plus the account list (never password hashes).
@@ -71,6 +85,7 @@ export const buildState = async (me?: User) => {
     store.all<Referral>('referrals', {}, NEWEST('createdAt')),
     store.all<ApplyRequest>('apply_requests', {}, NEWEST('createdAt')),
   ]);
+  const [preorders, settings] = await Promise.all([withAgents({}), preorderSettings()]);
   return {
     ...base,
     notifications,
@@ -90,5 +105,7 @@ export const buildState = async (me?: User) => {
     ledgerAccounts,
     referrals,
     applyRequests,
+    preorders,
+    preorderSettings: settings,
   };
 };

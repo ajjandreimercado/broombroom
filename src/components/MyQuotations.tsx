@@ -82,6 +82,11 @@ export const MyQuotations: React.FC = () => {
                         <StatusMark status={quoteLabel(q)} />
                       </div>
                       <h3 className="font-bold text-[#141517] text-sm mt-1">{q.vehicleTitle}</h3>
+                      {q.breakdown && q.status !== 'requested' && (
+                        <p className="text-xs text-[#4E585E] mt-0.5 tabular-nums">
+                          {q.breakdown.filter((l) => l.amount).map((l) => `${l.label.split(' (')[0]} ₱${Math.round(l.amount).toLocaleString()}`).join(' · ')}
+                        </p>
+                      )}
                       <p className="text-xs text-[#4E585E] mt-0.5">
                         {q.status === 'requested'
                           ? 'The admin team is preparing your quotation.'

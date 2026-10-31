@@ -24,6 +24,8 @@ import {
   Referral,
   ReferralStatus,
   ApplyRequest,
+  PreOrder,
+  PreOrderSettings,
 } from '../types.ts';
 import { api, uploadFile, ApiError } from '../api.ts';
 import type { InfoSheet } from '../components/infoSheet.ts';
@@ -33,6 +35,7 @@ export type CurrentView =
   | 'intro'
   | 'marketplace'
   | 'deals'
+  | 'preorder'
   | 'vehicle_detail'
   | 'apply'
   | 'account'
@@ -56,7 +59,8 @@ export type AccountTab =
   | 'recently_viewed'
   | 'settings'
   | 'notifications'
-  | 'quotations';
+  | 'quotations'
+  | 'preorders';
 
 export type SellerTab =
   | 'dashboard'
@@ -64,7 +68,8 @@ export type SellerTab =
   | 'vehicles'
   | 'messages'
   | 'commissions'
-  | 'leads';
+  | 'leads'
+  | 'preorders';
 
 export type AdminTab =
   | 'dashboard'
@@ -85,7 +90,9 @@ export type AdminTab =
   | 'acc_receipts'
   | 'quotations'
   | 'leads'
-  | 'accounts';
+  | 'accounts'
+  | 'preorders'
+  | 'preorder_setup';
 
 export interface FilterState {
   searchQuery: string;
@@ -140,6 +147,8 @@ interface ServerState {
   ledgerAccounts?: LedgerAccount[];
   referrals?: Referral[];
   applyRequests?: ApplyRequest[];
+  preorders?: PreOrder[];
+  preorderSettings?: PreOrderSettings;
   agents?: string[];
   users?: AccountSummary[];
   myAgent?: string | null;
@@ -154,10 +163,26 @@ export type ApplicationInput = {
   purchaseMethod: 'cash' | 'financing';
   financingTermMonths?: number;
   downPayment?: number;
+  downPct?: number; // pre-order financing
   notes: string;
   documents: Record<string, string>; // requirement key -> uploaded file id
   quotationId?: string;
 };
+
+// What the client picks on the Pre-Order page (and the agent or admin may change later).
+export type PreOrderInput = {
+  unitId: string;
+  variant: string;
+  transmission: string;
+  seat: string;
+  color: string;
+  note: string;
+  suggestions: string;
+  accessoryIds: string[];
+  offRoad: boolean;
+};
+export type PreOrderEdit = Partial<Omit<PreOrderInput, 'unitId'>> & { additionalAmount?: number; additionalDescription?: string };
+export type PreOrderUnitInput = { title: string; price: number; images: string[]; description: string; hidden: boolean };
 
 export type ReceiptInput = Pick<ManualReceipt, 'receivedFrom' | 'lines' | 'remarks'> & { date: string }; // date yyyy-mm-dd
 export type PaymentEdit = { amount: number; description: string; remarks?: string };
@@ -207,7 +232,10 @@ interface AppContextType {
   dismissToast: (id: string) => void;
 
   // Data
-  vehicles: Vehicle[];
+  vehicles: Vehicle[]; // marketplace listings (never pre-order units)
+  preorderUnits: Vehicle[];
+  preorders: PreOrder[];
+  preorderSettings: PreOrderSettings;
   guides: Guide[];
   applications: VehicleApplication[];
   conversations: Conversation[];
@@ -269,10 +297,10 @@ interface AppContextType {
 
   // Applications
   createApplication: (input: ApplicationInput) => Promise<VehicleApplication | undefined>;
-  updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string, commission?: number) => Promise<boolean>;
+  updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string, commission?: number, net?: number) => Promise<boolean>;
   reserveApplication: (id: string, payment: { amount: number; description: string; remarks?: string }, screenshot?: Blob & { name?: string }) => Promise<PaymentReceipt | undefined>;
   submitInfoSheet: (id: string, sheet: Omit<InfoSheet, 'sketchUrl'>, sketch?: Blob & { name?: string }) => Promise<boolean>;
-  releaseVehicle: (id: string, commission: number, orcr: Blob & { name?: string }) => Promise<boolean>;
+  releaseVehicle: (id: string, commission: number, orcr: Blob & { name?: string }, net?: number) => Promise<boolean>;
   withdrawApplication: (id: string) => Promise<boolean>;
   reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => Promise<boolean>;
   attachDocumentForClient: (appId: string, docIndex: number, file: File) => Promise<boolean>;
@@ -299,6 +327,14 @@ interface AppContextType {
 
   // Commissions
   payCommission: (id: string, proof: File) => Promise<boolean>;
+
+  // Pre-orders
+  submitPreorder: (input: PreOrderInput, photo?: File) => Promise<PreOrder | undefined>;
+  editPreorder: (id: string, changes: PreOrderEdit) => Promise<boolean>;
+  reopenPreorder: (id: string) => Promise<boolean>;
+  savePreorderSettings: (s: PreOrderSettings) => Promise<boolean>;
+  savePreorderUnit: (id: string | null, u: PreOrderUnitInput) => Promise<boolean>;
+  deletePreorderUnit: (id: string) => Promise<boolean>;
 
   // Messaging
   startOrOpenConversation: (vehicleId: string) => Promise<string>;
@@ -626,7 +662,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => setFilters((prev) => ({ ...prev, [key]: value }));
   const resetFilters = () => setFilters(defaultFilters);
 
-  const vehicles = data.vehicles;
+  // Pre-order units travel with the listings (the apply link and application need them) but never show as listings.
+  const vehicles = useMemo(() => data.vehicles.filter((v) => !v.preorder), [data.vehicles]);
+  const preorderUnits = useMemo(() => data.vehicles.filter((v) => v.preorder), [data.vehicles]);
   const availableBrands = useMemo(() => ['all', ...Array.from(new Set(vehicles.map((v) => v.brand))).sort()], [vehicles]);
 
   const filteredVehicles = useMemo(
@@ -736,8 +774,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     return app;
   };
-  const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note, commission) =>
-    done(await run(() => api(`/applications/${id}/status`, { body: { status, note, commission } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
+  const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note, commission, net) =>
+    done(await run(() => api(`/applications/${id}/status`, { body: { status, note, commission, net } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
   const reserveApplication: AppContextType['reserveApplication'] = (id, payment, screenshot) =>
     run(async () => {
       const up = screenshot ? await uploadFile(screenshot, screenshot.name || 'payment.jpg', 'private') : undefined;
@@ -750,10 +788,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return api(`/applications/${id}/info-sheet`, { body: { ...sheet, sketchFileId: up?.id } });
       }, ['Information sheet sent', 'Your application is now processing.'], 'Could not send the information sheet')
     );
-  const releaseVehicle: AppContextType['releaseVehicle'] = async (id, commission, orcr) =>
+  const releaseVehicle: AppContextType['releaseVehicle'] = async (id, commission, orcr, net) =>
     done(await run(async () => {
       const up = await uploadFile(orcr, orcr.name || 'or-cr', 'private');
-      return api(`/applications/${id}/release`, { body: { orcrConfirmed: true, commission, orcrFileId: up.id } });
+      return api(`/applications/${id}/release`, { body: { orcrConfirmed: true, commission, net, orcrFileId: up.id } });
     }, ['Vehicle released', 'The sale is complete; the agent’s full commission is now payable.']));
   const withdrawApplication = async (id: string) =>
     done(await run(() => api(`/applications/${id}/status`, { body: { status: 'withdrawn' } }), ['Application withdrawn', 'Your application has been canceled.']));
@@ -824,6 +862,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return api(`/commissions/${id}/pay`, { body: { fileId: up.id } });
       }, ['Commission paid', 'The agent was notified and can download the receipt.'])
     );
+
+  // ----- Pre-orders -----
+  const submitPreorder: AppContextType['submitPreorder'] = async (input, photo) => {
+    const p = await run(async () => {
+      const up = photo ? await uploadFile(photo, photo.name, 'private') : undefined;
+      return api<PreOrder>('/preorders', { body: { ...input, photoFileId: up?.id, ref: takeRef() } });
+    }, undefined, 'Pre-order not sent');
+    if (p) {
+      clearRef();
+      showToast('Pre-order sent', `${p.refNo}. Your agent will message you with the application link.`);
+    }
+    return p;
+  };
+  const editPreorder: AppContextType['editPreorder'] = async (id, changes) =>
+    done(await run(() => api(`/preorders/${id}`, { method: 'PATCH', body: changes }), ['Pre-order updated', 'The change is in its history.']));
+  const reopenPreorder = async (id: string) =>
+    done(await run(() => api(`/preorders/${id}/reopen`, { body: {} }), ['Pre-order reopened', 'Make the changes, then send the quotation again.']));
+  const savePreorderSettings: AppContextType['savePreorderSettings'] = async (s) =>
+    done(await run(() => api('/preorder-settings', { body: s }), ['Pre-order settings saved', 'New pre-orders use these prices.']));
+  const savePreorderUnit: AppContextType['savePreorderUnit'] = async (id, u) =>
+    done(await run(() => (id ? api(`/preorder-units/${id}`, { method: 'PATCH', body: u }) : api('/preorder-units', { body: u })), [id ? 'Unit saved' : 'Unit added']));
+  const deletePreorderUnit = async (id: string) => done(await run(() => api(`/preorder-units/${id}`, { method: 'DELETE' }), ['Unit deleted']));
 
   // ----- Chat -----
   const startOrOpenConversation = async (vehicleId: string) => {
@@ -963,6 +1023,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dismissToast,
 
         vehicles,
+        preorderUnits,
+        preorders: data.preorders ?? [],
+        preorderSettings: data.preorderSettings ?? { accessories: [], offRoadPrice: 0 },
         guides: GUIDES,
         applications: data.applications ?? [],
         conversations: data.conversations ?? [],
@@ -1046,6 +1109,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         saveQuotation,
 
         payCommission,
+
+        submitPreorder,
+        editPreorder,
+        reopenPreorder,
+        savePreorderSettings,
+        savePreorderUnit,
+        deletePreorderUnit,
 
         startOrOpenConversation,
         writeToAgent,

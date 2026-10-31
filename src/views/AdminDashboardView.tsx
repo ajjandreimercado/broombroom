@@ -17,6 +17,7 @@ import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { ReceiptsPage } from '../components/accounting/ReceiptsPage.tsx';
 import { LeadsManager } from '../components/admin/LeadsManager.tsx';
 import { AccountsManager } from '../components/admin/AccountsManager.tsx';
+import { PreOrdersList, PreOrderSetup } from '../components/admin/PreOrders.tsx';
 import {
   ShieldAlert,
   LayoutDashboard,
@@ -37,13 +38,15 @@ import {
   ReceiptText,
   Users,
   UserCog,
+  ClipboardList,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 
 type NavItem = { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number };
 
 export const AdminDashboardView: React.FC = () => {
-  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations, leads, referrals } = useApp();
+  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations, leads, referrals, preorders } = useApp();
   const open = ['submitted', 'under_review', 'contacted'];
 
   // Grouped so the admin reads the sidebar as: what needs me, what I manage, who I oversee.
@@ -60,6 +63,7 @@ export const AdminDashboardView: React.FC = () => {
           count: applications.filter((a) => open.includes(a.status) && docSummary(a).tone !== 'good').length,
         },
         { id: 'commissions', label: 'Commissions', icon: Wallet, count: commissions.filter((c) => c.status !== 'paid').length },
+        { id: 'preorders', label: 'Pre-orders', icon: ClipboardList, count: preorders.filter((p) => !p.locked && !p.additionalAmount && !!p.applicationRef).length || undefined },
       ],
     },
     {
@@ -77,6 +81,7 @@ export const AdminDashboardView: React.FC = () => {
       items: [
         { id: 'vehicles', label: 'Listings', icon: Car, count: vehicles.length },
         { id: 'add_vehicle', label: 'Add listing', icon: PlusCircle },
+        { id: 'preorder_setup', label: 'Pre-order setup', icon: SlidersHorizontal },
         { id: 'reports', label: 'Reports', icon: Flag, count: reports.filter((r) => r.status === 'pending').length },
       ],
     },
@@ -165,6 +170,8 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'acc_receipts' && <ReceiptsPage />}
             {adminTab === 'leads' && <LeadsManager />}
             {adminTab === 'accounts' && <AccountsManager />}
+            {adminTab === 'preorders' && <PreOrdersList />}
+            {adminTab === 'preorder_setup' && <PreOrderSetup />}
             </ErrorBoundary>
           </main>
         </div>

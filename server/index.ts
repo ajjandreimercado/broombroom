@@ -37,6 +37,9 @@ app.use((_req, res, next) => {
   res.setHeader('Content-Security-Policy', CSP);
   next();
 });
+// Built scripts and styles have their content hash in the name, so browsers keep them for a year and returning
+// visitors download nothing again (Render's free bandwidth is 5 GB a month). index.html is revalidated each visit.
+app.use('/assets', express.static(path.join(dist, 'assets'), { index: false, immutable: true, maxAge: '1y', fallthrough: false }));
 app.use(express.static(dist, { index: false, maxAge: '1h' }));
 // Single-page app: every other path gets index.html.
 app.get(/^(?!\/(api|files)\/).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));

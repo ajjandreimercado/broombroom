@@ -1,6 +1,6 @@
 import { Commission, ManualReceipt, PaymentReceipt, Quotation, ReceiptLine, VehicleApplication } from '../types.ts';
 import { pesoWords } from './ar.ts';
-import { quoteFigures } from './quote.ts';
+import { quoteFigures, termText } from './quote.ts';
 import pdfLib from 'html2pdf.js/dist/html2pdf.bundle.min.js?url';
 import { AFFIRMATION } from './infoSheet.ts';
 
@@ -222,12 +222,13 @@ const quotationHtml = (q: Quotation) => {
     row('Transmission', q.transmission || '-'),
   ].join('');
   const price = [
-    row('Unit price', peso2(q.unitPrice), true),
+    ...(q.breakdown ?? []).map((l) => row(l.label, peso2(l.amount))),
+    row(q.breakdown ? 'Total Amount' : 'Unit price', peso2(q.unitPrice), true),
     ...(financing
       ? [
-          row('Down payment', peso2(q.downPayment)),
+          row(q.downPct ? `Down payment (${q.downPct}%)` : 'Down payment', peso2(q.downPayment)),
           row('Amount financed', peso2(f.amountFinanced), true),
-          row('Term', `${q.termMonths} months at ${q.annualRate}% a year`),
+          row('Term', termText(q)),
           row('Monthly amortization', peso2(f.monthly), true),
         ]
       : [row('Payment', 'Cash')]),

@@ -24,6 +24,8 @@ export const COLLECTIONS = [
   'ledger_accounts',
   'referrals',
   'apply_requests',
+  'preorders',
+  'settings',
 ] as const;
 export type Table = (typeof COLLECTIONS)[number];
 
@@ -38,6 +40,8 @@ export const connectDb = async (uri: string, dbName = process.env.MONGODB_DB || 
     col('applications').createIndex({ applicantId: 1 }),
     col('applications').createIndex({ sellerName: 1 }),
     col('applications').createIndex({ referenceNo: 1 }),
+    col('preorders').createIndex({ clientId: 1 }),
+    col('preorders').createIndex({ requestId: 1 }),
     col('conversations').createIndex({ buyerId: 1, vehicleId: 1 }),
     col('conversations').createIndex({ sellerName: 1 }),
     col('leads').createIndex({ agentName: 1 }),

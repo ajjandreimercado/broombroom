@@ -1284,3 +1284,96 @@ test('R2 storage: files go to the bucket (signed), come back with the same acces
     fake.close();
   }
 });
+
+test('pre-order: client orders, their agent edits, admin prices, quotation locks it, 10% of net on release', async () => {
+  const { DOCS } = await import('../src/components/requirements.ts');
+  const { quoteFigures } = await import('../src/components/quote.ts');
+  const { addOnMonthly } = await import('../src/components/preorder.ts');
+  assert.equal(Math.round(addOnMonthly(100000, 2.5, 12) * 100) / 100, 10833.33, 'add-on: 100k + 2.5% x 12 months, over 12');
+
+  const ad = await admin();
+  const ca = await carlo();
+  assert.equal((await ca.post('/api/preorder-settings', { accessories: [], offRoadPrice: 1 })).status, 403, 'admins only');
+  assert.equal((await ad.post('/api/preorder-settings', { accessories: [{ name: 'Extension Seat', price: 15000 }, { name: 'Reverse Camera', price: 8000 }], offRoadPrice: 60000 })).status, 200);
+  const unit = (await ad.post('/api/preorder-units', { title: 'DA64V Every Van', price: 400000 })).data;
+  assert.ok(unit.preorder);
+  const [ext, cam] = (await ad.state()).preorderSettings.accessories;
+
+  const c = await newClient();
+  assert.ok((await c.state()).vehicles.some((v: any) => v.id === unit.id && v.preorder), 'clients see the unit for the Pre-Order page');
+  const wrong = await c.post('/api/preorders', { unitId: (await freeVehicle()).id, variant: '4x4', transmission: 'Manual', seat: 'Captain Seat', color: 'Red' });
+  assert.equal(wrong.status, 400, 'only pre-order units');
+  const sent = await c.post('/api/preorders', { unitId: unit.id, variant: '4x4', transmission: 'Tiptronic', seat: 'Captain Seat', color: 'Pearl White', accessoryIds: [ext.id], offRoad: true, suggestions: 'Snorkel' });
+  assert.equal(sent.status, 200, JSON.stringify(sent.json));
+  const po = sent.data;
+  assert.match(po.refNo, /^PO-\d{4}-\d{4}$/);
+  assert.deepEqual(po.accessories, [{ name: 'Extension Seat', price: 15000 }]);
+  assert.equal(po.offRoadPrice, 60000);
+  assert.equal((await c.patch(`/api/preorders/${po.id}`, { color: 'Blue' })).status, 403, 'the client cannot edit after sending');
+
+  // the first agent to claim gets it, and only they (and the admin) can edit
+  assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
+  assert.equal((await (await bea()).patch(`/api/preorders/${po.id}`, { color: 'Blue' })).status, 403);
+  assert.equal((await ca.patch(`/api/preorders/${po.id}`, { additionalAmount: 1 })).status, 403, 'only the admin prices the customization');
+  await ad.post('/api/preorder-settings', { accessories: [{ ...ext, price: 20000 }, cam], offRoadPrice: 70000 });
+  const edited = (await ca.patch(`/api/preorders/${po.id}`, { seat: 'Straight Seat', accessoryIds: [ext.id, cam.id] })).data;
+  assert.deepEqual(edited.accessories, [{ name: 'Extension Seat', price: 15000 }, { name: 'Reverse Camera', price: 8000 }], 'kept items keep their price');
+  assert.equal(edited.offRoadPrice, 60000);
+  assert.ok(edited.history.some((h: any) => h.by === 'Carlo Santos' && h.text === 'Seat: Captain Seat → Straight Seat'));
+  const agentView = (await ca.state()).preorders.find((p: any) => p.id === po.id);
+  assert.equal(agentView.agentName, 'Carlo Santos');
+
+  // the client applies through the apply link the claim sent: financing at one of the pre-order down payments
+  const keys = DOCS.financing.flatMap((g) => g.items.map((i) => i.key));
+  const base = { vehicleId: unit.id, purchaseMethod: 'financing', financingTermMonths: 36, address, viaAgent: 'carlo-santos' };
+  assert.equal((await c.post('/api/applications', { ...base, documents: await docs(c, keys), downPct: 25 })).status, 400, '25% is not offered');
+  const made = await c.post('/api/applications', { ...base, documents: await docs(c, keys), downPct: 20 });
+  assert.equal(made.status, 200, JSON.stringify(made.json));
+  const app = made.data;
+  assert.equal(app.vehiclePrice, 483000);
+  assert.equal(app.downPayment, 96600);
+  assert.equal(app.preorderRef, po.refNo);
+
+  // the admin prices the suggestions; the application follows
+  await ad.patch(`/api/preorders/${po.id}`, { additionalAmount: 17000, additionalDescription: 'Snorkel' });
+  const priced = (await ad.state()).applications.find((a: any) => a.id === app.id);
+  assert.equal(priced.vehiclePrice, 500000);
+  assert.equal(priced.downPayment, 100000);
+
+  await approveDocs(ad, app.id);
+  const r = await reserve(ad, app.id);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal((await ad.state()).vehicles.find((v: any) => v.id === unit.id).status, 'available', 'the unit is never reserved');
+  const q = (await ad.post(`/api/applications/${app.id}/quotation`)).data;
+  assert.equal(q.unitPrice, 500000);
+  assert.equal(q.downPayment, 100000);
+  assert.equal(q.monthlyAddOn, 2.5);
+  assert.deepEqual(q.breakdown.map((l: any) => l.amount), [400000, 23000, 60000, 17000]);
+  assert.equal(Math.round(quoteFigures(q).monthly), Math.round((400000 * 1.9) / 36), '36 months at 2.5% a month on 400,000');
+  assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: { downPct: 25 }, send: true })).status, 400);
+  assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: { unitPrice: 1 }, send: true })).status, 200);
+  assert.equal((await ad.state()).quotations.find((x: any) => x.id === q.id).unitPrice, 500000, 'the price comes from the pre-order');
+
+  // sent: locked, until the admin reopens it
+  assert.equal((await ca.patch(`/api/preorders/${po.id}`, { color: 'Blue' })).status, 400);
+  assert.equal((await ad.post(`/api/preorders/${po.id}/reopen`)).status, 200);
+  await ad.patch(`/api/preorders/${po.id}`, { additionalAmount: 27000 });
+  const requoted = (await ad.state()).quotations.find((x: any) => x.id === q.id);
+  assert.equal(requoted.status, 'requested');
+  assert.equal(requoted.unitPrice, 510000);
+  assert.equal(requoted.downPayment, 102000);
+  assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: {}, send: true })).status, 200);
+  assert.equal((await c.post(`/api/quotations/${q.id}/return`, { conforme: 'Juan Cruz' })).status, 200);
+  assert.equal((await ad.post(`/api/quotations/${q.id}/confirm`)).status, 200);
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 200);
+
+  // commission: 10% of the net the admin enters
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved' })).status, 400, 'needs the net');
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved', net: 50000, commission: 999999 })).status, 200);
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  const com = (await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo);
+  assert.equal(com.amount, 5000);
+  assert.equal(com.agentName, 'Carlo Santos');
+  assert.equal((await ad.state()).vehicles.find((v: any) => v.id === unit.id).status, 'available', 'nor sold');
+  assert.equal((await ad.raw('DELETE', `/api/preorder-units/${unit.id}`)).status, 400, 'kept while pre-orders use it');
+});
