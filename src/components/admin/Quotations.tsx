@@ -124,8 +124,20 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
             )}
           </div>
         ) : (
+        <>
+        {d.breakdown && (
+          <div className="space-y-1.5">
+            <dl className="bg-white border border-[#C9D1D6] divide-y divide-[#DDE3E6] text-[13px] tabular-nums">
+              {d.breakdown.map((l) => (
+                <div key={l.label} className="flex justify-between gap-3 px-3 py-1.5"><dt className="text-[#2A2E31]">{l.label}</dt><dd>{money(l.amount)}</dd></div>
+              ))}
+              <div className="flex justify-between gap-3 px-3 py-2 font-semibold"><dt>Total Amount</dt><dd>{money(d.unitPrice)}</dd></div>
+            </dl>
+            <p className="text-[12.5px] text-[#4E585E]">This application has add-ons: change them (and Additional Customization) on the application, not here.</p>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Unit price (₱)"><input type="number" min="0" className={input} value={d.unitPrice || ''} onChange={(e) => set('unitPrice', num(e.target.value))} /></Field>
+          {!d.breakdown && <Field label="Unit price (₱)"><input type="number" min="0" className={input} value={d.unitPrice || ''} onChange={(e) => set('unitPrice', num(e.target.value))} /></Field>}
           {financing && (
             <Field label="Down payment (₱)" hint={d.unitPrice ? `${Math.round((d.downPayment / d.unitPrice) * 100)}% of the price` : undefined}>
               <input type="number" min="0" className={input} value={d.downPayment || ''} onChange={(e) => set('downPayment', num(e.target.value))} />
@@ -142,6 +154,7 @@ const QuotationEditor: React.FC<{ quote: Quotation; onDone: () => void }> = ({ q
             <Field label="Interest rate (% a year)"><input type="number" min="0" step="0.1" className={input} value={d.annualRate} onChange={(e) => set('annualRate', num(e.target.value))} /></Field>
           )}
         </div>
+        </>
         )}
         <details className="group border-t border-[#C9D1D6] pt-3">
           <summary className="cursor-pointer text-[13px] font-semibold text-[#141517] list-none flex items-center justify-between">

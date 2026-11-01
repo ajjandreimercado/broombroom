@@ -26,6 +26,7 @@ import type {
   LedgerAccount,
   PreOrder,
   PreOrderSettings,
+  AddOns,
 } from '../src/types.ts';
 import { TEAM_NAME, COMMISSION_RATE, generateVehicleSvg } from '../src/data/constants.ts';
 import { agentSlug, canTakeOver, shouldAlertUnclaimed, shouldRelease } from '../src/components/leads.ts';
@@ -483,7 +484,10 @@ export const createApplication = (me: User, input: any) =>
     }
     // A pre-order unit: the price is the client's pre-order, and the down payment one of the pre-order percents.
     const preorder = v.preorder ? need(await store.one<PreOrder>('preorders', { clientId: me.id, unitId: v.id, applicationRef: { $exists: false } }), 'Pre-order') : undefined;
-    const price = preorder ? preorderBreakdown(preorder).total : quote?.unitPrice ?? v.price;
+    // A ready unit may come with add-ons (the same accessories and off-road set up as pre-orders), at today's prices.
+    const listPrice = quote?.unitPrice ?? v.price;
+    const addOns = preorder ? undefined : await cleanAddOns(input.addOns, me.name);
+    const price = preorder ? preorderBreakdown(preorder).total : addOns ? withAddOns(listPrice, addOns) : listPrice;
     let downPayment: number | undefined;
     let downPct: number | undefined;
     let term: number | undefined;
@@ -563,6 +567,7 @@ export const createApplication = (me: User, input: any) =>
       viaAgentLink: locked ? viaAgent : undefined,
       preorderRef: preorder?.refNo,
       downPct,
+      ...(addOns ? { addOns, listPrice } : {}),
     });
     if (preorder) await store.put<PreOrder>('preorders', { ...preorder, applicationRef: app.referenceNo, history: [...preorder.history, { at: now(), by: me.name, text: `Application ${app.referenceNo} sent (${method})` }] });
     if (locked) {
@@ -596,7 +601,10 @@ export const createApplication = (me: User, input: any) =>
 
 // The agent's commission on a sale, set by the admin; without one it is the standard rate of the price.
 const commissionAmount = (app: VehicleApplication, v: unknown) =>
-  v === undefined || v === null || v === '' ? Math.round(app.vehiclePrice * COMMISSION_RATE) : money(v, 'Agent commission', { allowZero: true });
+  v === undefined || v === null || v === '' ? Math.round((app.listPrice ?? app.vehiclePrice) * COMMISSION_RATE) : money(v, 'Agent commission', { allowZero: true });
+// The agent's commission on the add-ons of a ready unit: whatever the admin enters (0 when not entered).
+const addOnsCommission = (app: VehicleApplication, v: unknown) =>
+  !app.addOns ? 0 : v === undefined || v === null || v === '' ? app.addOnsCommission ?? 0 : money(v, 'Add-ons commission', { allowZero: true });
 // A pre-order's commission is always 10% of the net the admin enters (or entered at approval).
 const preorderCommission = (app: VehicleApplication, net: unknown) => {
   const netAmount = net === undefined || net === null || net === '' ? app.netAmount ?? bad('Enter the net amount; the agent gets 10% of it.') : money(net, 'Net amount', { allowZero: true });
@@ -679,7 +687,11 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
     // The commission exists only from the release: the agent who has the client gets it in full, payable at once.
     const existing = await store.one<Commission>('commissions', { applicationRef: app.referenceNo }); // older sales had one from approval
     const pre = app.preorderRef ? preorderCommission(app, input?.net) : undefined;
-    const amount = pre ? pre.commissionAmount : input?.commission === undefined ? (app.commissionAmount ?? existing?.amount ?? commissionAmount(app, undefined)) : commissionAmount(app, input.commission);
+    const extra = addOnsCommission(app, input?.addOnsCommission);
+    const vehiclePart = app.commissionAmount !== undefined ? app.commissionAmount - (app.addOnsCommission ?? 0) : undefined;
+    const amount = pre
+      ? pre.commissionAmount
+      : (input?.commission === undefined ? (vehiclePart ?? existing?.amount ?? commissionAmount(app, undefined)) : commissionAmount(app, input.commission)) + extra;
     const agent = app.sellerName !== TEAM_NAME ? app.sellerName : (await ownerOf(app.applicantId)) ?? existing?.agentName ?? app.sellerName;
     const c: Commission = existing ?? {
       id: newId('com'),
@@ -704,7 +716,7 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
       completedAt: now(),
       approvedAt: c.approvedAt ?? now(),
     });
-    const saved = await store.put<VehicleApplication>('applications', { ...app, ...pre, status: 'completed', releasedAt: now(), orcrConfirmed: true, orcrUrl: fileUrl(orcr._id), orcrFileName: orcr.name, commissionAmount: amount });
+    const saved = await store.put<VehicleApplication>('applications', { ...app, ...pre, ...(app.addOns ? { addOnsCommission: extra } : {}), status: 'completed', releasedAt: now(), orcrConfirmed: true, orcrUrl: fileUrl(orcr._id), orcrFileName: orcr.name, commissionAmount: amount });
     await releaseLock(saved);
     await endAgentLink(app.applicantId, agent, app.referenceNo, app.vehicleId);
     await notify('agent', 'Vehicle released: full commission', `The ${app.vehicleTitle} was released to ${app.applicantName}. Your full commission of ₱${amount.toLocaleString()} is approved and awaiting the cash transfer.`, 'commissions', agent);
@@ -712,7 +724,7 @@ export const releaseVehicle = (me: User, id: string, input: any) =>
     return saved;
   });
 
-export const setApplicationStatus = (me: User, id: string, status: ApplicationStatus, note?: unknown, commission?: unknown, net?: unknown) =>
+export const setApplicationStatus = (me: User, id: string, status: ApplicationStatus, note?: unknown, commission?: unknown, net?: unknown, addOnsCommissionInput?: unknown) =>
   tx(async () => {
     const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
     if (me.role === 'buyer' && (app.applicantId !== me.id || status !== 'withdrawn')) forbidden();
@@ -732,7 +744,8 @@ export const setApplicationStatus = (me: User, id: string, status: ApplicationSt
     let extra: Partial<VehicleApplication> = {};
     if (status === 'approved') {
       // After the information sheet: the commission is receivable from now (cash and financing).
-      extra = { ...(app.preorderRef ? preorderCommission(app, net) : { commissionAmount: commissionAmount(app, commission) }), approvedAt: now(), ciComments: reason || undefined, ...(app.purchaseMethod === 'financing' ? { financingApprovedAt: now() } : {}) };
+      const addOnsPart = addOnsCommission(app, addOnsCommissionInput);
+      extra = { ...(app.preorderRef ? preorderCommission(app, net) : { commissionAmount: commissionAmount(app, commission) + addOnsPart, ...(app.addOns ? { addOnsCommission: addOnsPart } : {}) }), approvedAt: now(), ciComments: reason || undefined, ...(app.purchaseMethod === 'financing' ? { financingApprovedAt: now() } : {}) };
       await notify('client', 'Application approved', `${app.referenceNo} for the ${app.vehicleTitle} was approved. We will tell you when the vehicle is ready for release.`, 'applications', app.applicantId);
     } else if (status === 'declined' || status === 'withdrawn') {
       if (HOLDING.includes(app.status)) await setVehicle('available');
@@ -993,6 +1006,8 @@ export const quoteApplication = (id: string) =>
           downPayment: method === 'financing' ? downOf(total, app.downPct) : 0,
           annualRate: 0,
         }
+      : app.addOns
+      ? { breakdown: breakdownLines({ unitPrice: app.listPrice ?? app.vehiclePrice, ...app.addOns }) }
       : {};
     const q = await store.put<Quotation>('quotations', {
       id: newId('qt'),
@@ -1062,6 +1077,8 @@ export const saveQuotation = (me: User, id: string, input: any, send: boolean) =
       if (method === 'financing' && !PREORDER_DOWN_PCTS.includes(pct) && pct !== q.downPct) bad(`Choose a down payment of ${PREORDER_DOWN_PCTS.join('%, ')}%.`);
       Object.assign(updated, { unitPrice: q.unitPrice, downPct: method === 'financing' ? pct : undefined, downPayment: method === 'financing' ? downOf(q.unitPrice, pct) : 0, annualRate: 0, monthlyAddOn: PREORDER_MONTHLY_ADD_ON, breakdown: q.breakdown });
     }
+    // With add-ons, the price follows the application (changed through its add-ons), like a pre-order.
+    if (q.breakdown && !q.preorderRef) Object.assign(updated, { unitPrice: q.unitPrice, breakdown: q.breakdown });
     if (method === 'financing' && updated.downPayment >= updated.unitPrice) bad('The down payment must be less than the unit price.');
     // Quotations written when longer terms existed move to the longest term now offered (36) when next saved.
     if (!QUOTE_TERMS.includes(updated.termMonths)) {
@@ -1301,6 +1318,83 @@ export const reopenPreorder = (me: User, id: string) =>
     const at = now();
     await store.put<PreOrder>('preorders', { ...p, history: [...p.history, { at, by: me.name, text: `Reopened for changes (quotation ${q!.quoteNo ?? ''} taken back)` }] });
     await notify('client', 'Quotation being revised', `Your quotation for pre-order ${p.refNo} is being revised. We will send the new one to sign.`, 'preorders', p.clientId);
+  });
+
+// ---------- add-ons on a ready unit ----------
+const withAddOns = (listPrice: number, a: AddOns) => preorderBreakdown({ unitPrice: listPrice, ...a }).total;
+
+// What the client picked when applying. Nothing picked: no add-ons at all.
+const cleanAddOns = async (input: any, by: string): Promise<AddOns | undefined> => {
+  if (!input) return undefined;
+  const settings = await preorderSettings();
+  const accessories = pickAccessories(input.accessoryIds, settings);
+  const suggestions = text(input.suggestions, 'Others / suggestions', 1000, false) || undefined;
+  const offRoad = !!input.offRoad;
+  if (!accessories.length && !suggestions && !offRoad) return undefined;
+  return { accessories, offRoad, offRoadPrice: settings.offRoadPrice, suggestions, additionalAmount: 0, history: [{ at: now(), by, text: 'Add-ons requested with the application' }] };
+};
+
+// The application's quotation once it is out with the client (sent, signed, confirmed): its add-ons are then locked.
+const sentQuoteOf = async (app: VehicleApplication) => {
+  const q = await store.one<Quotation>('quotations', { ...quoteFilter(app), status: { $ne: 'accepted' } });
+  return q && LOCKING.includes(q.status) ? q : undefined;
+};
+
+// The client's agent or the admin changes a ready unit's add-ons (the admin also prices the suggestions as Additional
+// Customization). The price, the down payment and the quotation being prepared follow.
+export const editAddOns = (me: User, id: string, input: any) =>
+  tx(async () => {
+    const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
+    if (app.preorderRef) bad('Change a pre-order’s add-ons on the pre-order.');
+    if (me.role === 'seller' && app.sellerName !== me.name) forbidden('This application is not your client’s.');
+    if (![...OPEN, 'reserved'].includes(app.status)) bad('Add-ons can be changed until the vehicle is reserved and its quotation is sent.');
+    if (await sentQuoteOf(app)) bad('The quotation was already sent, so the add-ons are locked. The admin can reopen it for changes.');
+    const c = input || {};
+    const settings = await preorderSettings();
+    const before: AddOns = app.addOns ?? { accessories: [], offRoad: false, offRoadPrice: settings.offRoadPrice, additionalAmount: 0, history: [] };
+    const next: AddOns = {
+      ...before,
+      accessories: c.accessoryIds === undefined ? before.accessories : pickAccessories(c.accessoryIds, settings, before.accessories),
+      offRoad: c.offRoad === undefined ? before.offRoad : !!c.offRoad,
+      suggestions: c.suggestions === undefined ? before.suggestions : text(c.suggestions, 'Others / suggestions', 1000, false) || undefined,
+    };
+    if (me.role === 'admin') {
+      if (c.additionalAmount !== undefined) next.additionalAmount = money(c.additionalAmount, 'Additional Customization', { allowZero: true });
+      if (c.additionalDescription !== undefined) next.additionalDescription = text(c.additionalDescription, 'Additional Customization description', 200, false) || undefined;
+    } else if (c.additionalAmount !== undefined || c.additionalDescription !== undefined) forbidden('Only the admin sets Additional Customization.');
+    const show: Record<string, (x: AddOns) => string> = {
+      Accessories: (x) => x.accessories.map((a) => a.name).join(', ') || '(none)',
+      'Off-Road Set Up': (x) => (x.offRoad ? 'Yes' : 'No'),
+      'Others / suggestions': (x) => x.suggestions || '(none)',
+      'Additional Customization': (x) => `₱${x.additionalAmount.toLocaleString()}${x.additionalDescription ? ` (${x.additionalDescription})` : ''}`,
+    };
+    const changes = Object.entries(show).filter(([, f]) => f(before) !== f(next)).map(([k, f]) => `${k}: ${f(before)} → ${f(next)}`);
+    if (!changes.length) return app;
+    const at = now();
+    next.history = [...before.history, ...changes.map((t) => ({ at, by: me.name, text: t }))];
+    const listPrice = app.listPrice ?? app.vehiclePrice;
+    const total = withAddOns(listPrice, next);
+    // Financing keeps the down payment the client chose, raised if the new total needs more than the lowest percent.
+    const downPayment = app.purchaseMethod === 'financing' ? Math.max(app.downPayment ?? 0, downOf(total, PREORDER_DOWN_PCTS[0])) : app.downPayment;
+    const saved = await store.put<VehicleApplication>('applications', { ...app, addOns: next, listPrice, vehiclePrice: total, downPayment });
+    const q = await store.one<Quotation>('quotations', { ...quoteFilter(app), status: 'requested' });
+    if (q) await store.put<Quotation>('quotations', { ...q, unitPrice: total, breakdown: breakdownLines({ unitPrice: listPrice, ...next }), downPayment: q.method === 'financing' ? Math.max(q.downPayment, downOf(total, PREORDER_DOWN_PCTS[0])) : 0 });
+    await notify('client', 'Add-ons updated', `${me.role === 'admin' ? 'Broom Broom' : me.name} updated the add-ons on ${app.referenceNo}: ${changes.join('; ')}.`, 'applications', app.applicantId);
+    if (me.role === 'seller') await notify('admin', 'Add-ons updated', `${me.name} updated the add-ons on ${app.referenceNo} (${app.applicantName}): ${changes.join('; ')}.`, 'applications');
+    return saved;
+  });
+
+// Admin: take back a sent quotation so the add-ons can change; it is then edited and sent again for signing.
+export const reopenAddOns = (me: User, id: string) =>
+  tx(async () => {
+    const app = need(await store.get<VehicleApplication>('applications', idOf(id)), 'Application');
+    if (!app.addOns) bad('This application has no add-ons.');
+    if (app.status !== 'reserved') bad('Only an application still waiting for its information sheet can be reopened.');
+    const q = await sentQuoteOf(app);
+    if (!q) bad('The add-ons are not locked.');
+    await store.put<Quotation>('quotations', { ...q!, status: 'requested', conforme: undefined, clientReply: undefined, returnedAt: undefined, confirmedAt: undefined });
+    await store.put<VehicleApplication>('applications', { ...app, addOns: { ...app.addOns!, history: [...app.addOns!.history, { at: now(), by: me.name, text: `Reopened for changes (quotation ${q!.quoteNo ?? ''} taken back)` }] } });
+    await notify('client', 'Quotation being revised', `Your quotation for ${app.referenceNo} is being revised. We will send the new one to sign.`, 'quotations', app.applicantId);
   });
 
 // ---------- commissions: payable (from the release) -> paid (with proof) ----------

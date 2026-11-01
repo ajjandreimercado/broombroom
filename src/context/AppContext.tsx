@@ -164,6 +164,7 @@ export type ApplicationInput = {
   financingTermMonths?: number;
   downPayment?: number;
   downPct?: number; // pre-order financing
+  addOns?: AddOnsInput; // a ready unit's accessories, suggestions and off-road set up
   notes: string;
   documents: Record<string, string>; // requirement key -> uploaded file id
   quotationId?: string;
@@ -182,6 +183,8 @@ export type PreOrderInput = {
   offRoad: boolean;
 };
 export type PreOrderEdit = Partial<Omit<PreOrderInput, 'unitId'>> & { additionalAmount?: number; additionalDescription?: string };
+export type AddOnsInput = { accessoryIds: string[]; offRoad: boolean; suggestions: string };
+export type AddOnsEdit = Partial<AddOnsInput> & { additionalAmount?: number; additionalDescription?: string };
 export type PreOrderUnitInput = { title: string; price: number; images: string[]; description: string; hidden: boolean };
 
 export type ReceiptInput = Pick<ManualReceipt, 'receivedFrom' | 'lines' | 'remarks'> & { date: string }; // date yyyy-mm-dd
@@ -297,10 +300,12 @@ interface AppContextType {
 
   // Applications
   createApplication: (input: ApplicationInput) => Promise<VehicleApplication | undefined>;
-  updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string, commission?: number, net?: number) => Promise<boolean>;
+  updateApplicationStatus: (id: string, status: ApplicationStatus, note?: string, commission?: number, net?: number, addOnsCommission?: number) => Promise<boolean>;
   reserveApplication: (id: string, payment: { amount: number; description: string; remarks?: string }, screenshot?: Blob & { name?: string }) => Promise<PaymentReceipt | undefined>;
   submitInfoSheet: (id: string, sheet: Omit<InfoSheet, 'sketchUrl'>, sketch?: Blob & { name?: string }) => Promise<boolean>;
-  releaseVehicle: (id: string, commission: number, orcr: Blob & { name?: string }, net?: number) => Promise<boolean>;
+  releaseVehicle: (id: string, commission: number, orcr: Blob & { name?: string }, net?: number, addOnsCommission?: number) => Promise<boolean>;
+  editAddOns: (appId: string, changes: AddOnsEdit) => Promise<boolean>;
+  reopenAddOns: (appId: string) => Promise<boolean>;
   withdrawApplication: (id: string) => Promise<boolean>;
   reviewDocument: (appId: string, docIndex: number, approve: boolean, reason?: string) => Promise<boolean>;
   attachDocumentForClient: (appId: string, docIndex: number, file: File) => Promise<boolean>;
@@ -774,8 +779,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     return app;
   };
-  const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note, commission, net) =>
-    done(await run(() => api(`/applications/${id}/status`, { body: { status, note, commission, net } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
+  const updateApplicationStatus: AppContextType['updateApplicationStatus'] = async (id, status, note, commission, net, addOnsCommission) =>
+    done(await run(() => api(`/applications/${id}/status`, { body: { status, note, commission, net, addOnsCommission } }), ['Application updated', `Now ${status.replace('_', ' ')}.`]));
+  const editAddOns: AppContextType['editAddOns'] = async (appId, changes) =>
+    done(await run(() => api(`/applications/${appId}/add-ons`, { method: 'PATCH', body: changes }), ['Add-ons updated', 'The change is in the add-ons history.']));
+  const reopenAddOns = async (appId: string) =>
+    done(await run(() => api(`/applications/${appId}/add-ons/reopen`, { body: {} }), ['Reopened for changes', 'Change the add-ons, then send the quotation again.']));
   const reserveApplication: AppContextType['reserveApplication'] = (id, payment, screenshot) =>
     run(async () => {
       const up = screenshot ? await uploadFile(screenshot, screenshot.name || 'payment.jpg', 'private') : undefined;
@@ -788,10 +797,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return api(`/applications/${id}/info-sheet`, { body: { ...sheet, sketchFileId: up?.id } });
       }, ['Information sheet sent', 'Your application is now processing.'], 'Could not send the information sheet')
     );
-  const releaseVehicle: AppContextType['releaseVehicle'] = async (id, commission, orcr, net) =>
+  const releaseVehicle: AppContextType['releaseVehicle'] = async (id, commission, orcr, net, addOnsCommission) =>
     done(await run(async () => {
       const up = await uploadFile(orcr, orcr.name || 'or-cr', 'private');
-      return api(`/applications/${id}/release`, { body: { orcrConfirmed: true, commission, net, orcrFileId: up.id } });
+      return api(`/applications/${id}/release`, { body: { orcrConfirmed: true, commission, net, addOnsCommission, orcrFileId: up.id } });
     }, ['Vehicle released', 'The sale is complete; the agent’s full commission is now payable.']));
   const withdrawApplication = async (id: string) =>
     done(await run(() => api(`/applications/${id}/status`, { body: { status: 'withdrawn' } }), ['Application withdrawn', 'Your application has been canceled.']));
@@ -1085,6 +1094,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         reserveApplication,
         submitInfoSheet,
         releaseVehicle,
+        editAddOns,
+        reopenAddOns,
         withdrawApplication,
         reviewDocument,
         attachDocumentForClient,

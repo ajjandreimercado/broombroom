@@ -113,6 +113,23 @@ export interface VehicleApplication {
   preorderRef?: string; // made from this pre-order (its unit is a pre-order unit)
   downPct?: number; // pre-order financing: the down payment as one of PREORDER_DOWN_PCTS
   netAmount?: number; // pre-order: the net the admin entered; the commission is 10% of it
+  // A ready unit with add-ons: vehiclePrice is listPrice plus the add-ons; the admin sets the agent's add-ons commission.
+  addOns?: AddOns;
+  listPrice?: number;
+  addOnsCommission?: number;
+  quoteSent?: boolean; // agents only: its quotation is out with the client
+}
+
+// Accessories, suggestions and the Off-Road Set Up a client adds to a ready unit when applying. Their agent and the
+// admin can change them (only the admin prices the suggestions) until the quotation is sent.
+export interface AddOns {
+  accessories: { name: string; price: number }[];
+  offRoad: boolean;
+  offRoadPrice: number;
+  suggestions?: string;
+  additionalAmount: number;
+  additionalDescription?: string;
+  history: { at: string; by: string; text: string }[];
 }
 
 // A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).

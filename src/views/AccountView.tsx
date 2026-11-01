@@ -6,6 +6,7 @@ import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts'
 import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
 import { MyQuotations } from '../components/MyQuotations.tsx';
 import { PreOrderPanel } from '../components/PreOrderPanel.tsx';
+import { AddOnsPanel } from '../components/AddOnsPanel.tsx';
 import { quoteFor } from '../components/quote.ts';
 import { useApp } from '../context/AppContext.tsx';
 import { AccountTab } from '../context/AppContext.tsx';
@@ -534,7 +535,7 @@ export const AccountView: React.FC = () => {
                             >
                               View Details
                             </button>
-                            {app.status !== 'withdrawn' && app.status !== 'declined' && (
+                            {!['withdrawn', 'declined', 'completed'].includes(app.status) && (
                               <button
                                 onClick={() => withdrawApplication(app.id)}
                                 className="px-3.5 py-2 border border-[#C9D1D6] hover:bg-white hover:text-[#B42318] hover:border-[#B42318] text-[#4E585E] text-xs font-semibold rounded-[2px] transition-colors cursor-pointer"
@@ -954,6 +955,8 @@ export const AccountView: React.FC = () => {
                 </p>
               </div>
             </div>
+
+            <AddOnsPanel app={viewingApplication} mode="client" />
 
             <div className="space-y-2.5 text-xs">
               <div className="flex justify-between py-1.5 border-b border-[#DDE3E6]">

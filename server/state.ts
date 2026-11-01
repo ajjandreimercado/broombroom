@@ -64,7 +64,10 @@ export const buildState = async (me?: User) => {
     // The agent's own clients' pre-orders (claimed, including finished ones).
     const mine = (await store.all<ApplyRequest>('apply_requests', { claimedBy: me.name })).map((r) => r.id);
     const [preorders, settings] = await Promise.all([withAgents({ requestId: { $in: mine } }), preorderSettings()]);
-    return { ...base, notifications, agents, conversations, leads, applyRequests, applications: applications.map(({ infoSheet, ciComments, ...a }) => a), commissions, listingRequests, preorders, preorderSettings: settings };
+    // Agents get no quotations, only whether one is out with the client (their add-ons edits are then locked).
+    const sent = await store.all<Quotation>('quotations', { applicationRef: { $in: applications.map((a) => a.referenceNo) }, status: { $in: ['sent', 'returned', 'confirmed', 'accepted'] } });
+    const forAgent = applications.map(({ infoSheet, ciComments, ...a }) => ({ ...a, quoteSent: sent.some((q) => q.applicationRef === a.referenceNo) }));
+    return { ...base, notifications, agents, conversations, leads, applyRequests, applications: forAgent, commissions, listingRequests, preorders, preorderSettings: settings };
   }
 
   // Admin: everything, plus the account list (never password hashes).

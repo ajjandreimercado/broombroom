@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { COMMISSION_RATE } from '../data/constants.ts';
 import { PREORDER_COMMISSION_RATE } from './preorder.ts';
+import { AddOnsPanel } from './AddOnsPanel.tsx';
 import { useApp } from '../context/AppContext.tsx';
 import { StatusMark } from './StatusMark.tsx';
 import { PaymentReceipt, VehicleApplication } from '../types.ts';
@@ -245,18 +246,28 @@ const CommissionField: React.FC<{ app: VehicleApplication; value: string; onChan
     </label>
   ) : (
   <label className="block max-w-xs">
-    <span className="gb-label block mb-1.5">Agent commission (₱){agent ? ` · ${agent}` : ''}</span>
+    <span className="gb-label block mb-1.5">Agent commission{app.addOns ? ' on the vehicle' : ''} (₱){agent ? ` · ${agent}` : ''}</span>
     <input value={value} inputMode="numeric" maxLength={9} onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))} className="w-full px-3 py-2 text-[14px] tabular-nums bg-white border border-[#8C989F] text-[#141517]" />
-    <span className="mt-1 block text-[12px] text-[#4E585E]">Standard {COMMISSION_RATE * 100}% is {peso(Math.round(app.vehiclePrice * COMMISSION_RATE))}. Payable in full to the client’s agent on release.</span>
+    <span className="mt-1 block text-[12px] text-[#4E585E]">Standard {COMMISSION_RATE * 100}% of the vehicle is {peso(Math.round((app.listPrice ?? app.vehiclePrice) * COMMISSION_RATE))}. Payable in full to the client’s agent on release.</span>
   </label>
   );
+
+// A ready unit with add-ons: the agent's commission on the add-ons, whatever amount the admin decides.
+const AddOnsCommissionField: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
+  <label className="block max-w-xs">
+    <span className="gb-label block mb-1.5">Agent commission on the add-ons (₱)</span>
+    <input value={value} inputMode="numeric" maxLength={9} onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))} className="w-full px-3 py-2 text-[14px] tabular-nums bg-white border border-[#8C989F] text-[#141517]" />
+    <span className="mt-1 block text-[12px] text-[#4E585E]">You decide this amount; it is added to the vehicle commission.</span>
+  </label>
+);
 
 // Admin: approve after reading the information sheet, with optional credit investigation (C.I.) comments.
 const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const { updateApplicationStatus } = useApp();
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState('');
-  const [commission, setCommission] = useState(app.preorderRef ? String(app.netAmount ?? '') : String(app.commissionAmount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
+  const [commission, setCommission] = useState(app.preorderRef ? String(app.netAmount ?? '') : String(app.commissionAmount !== undefined ? app.commissionAmount - (app.addOnsCommission ?? 0) : Math.round((app.listPrice ?? app.vehiclePrice) * COMMISSION_RATE)));
+  const [addOnsCom, setAddOnsCom] = useState(String(app.addOnsCommission ?? ''));
   if (!open)
     return (
       <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => setOpen(true)}>
@@ -270,10 +281,11 @@ const ApproveAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
       onSubmit={async (e) => {
         e.preventDefault();
         const n = Number(commission || 0);
-        if (await updateApplicationStatus(app.id, 'approved', comments.trim() || undefined, app.preorderRef ? undefined : n, app.preorderRef ? n : undefined)) setOpen(false);
+        if (await updateApplicationStatus(app.id, 'approved', comments.trim() || undefined, app.preorderRef ? undefined : n, app.preorderRef ? n : undefined, app.addOns ? Number(addOnsCom || 0) : undefined)) setOpen(false);
       }}
     >
       <CommissionField app={app} value={commission} onChange={setCommission} />
+      {app.addOns && <AddOnsCommissionField value={addOnsCom} onChange={setAddOnsCom} />}
       <label className="block">
         <span className="gb-label block mb-1.5">C.I. comments (optional)</span>
         <textarea rows={2} value={comments} onChange={(e) => setComments(e.target.value)} className="w-full px-3 py-2 text-[14px] bg-white border border-[#8C989F] text-[#141517]" />
@@ -294,7 +306,8 @@ const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
   const [file, setFile] = useState<File | undefined>();
   const [problem, setProblem] = useState('');
   const current = commissions.find((c) => c.applicationRef === app.referenceNo);
-  const [commission, setCommission] = useState(app.preorderRef ? String(app.netAmount ?? '') : String(app.commissionAmount ?? current?.amount ?? Math.round(app.vehiclePrice * COMMISSION_RATE)));
+  const [commission, setCommission] = useState(app.preorderRef ? String(app.netAmount ?? '') : String(app.commissionAmount !== undefined ? app.commissionAmount - (app.addOnsCommission ?? 0) : current?.amount ?? Math.round((app.listPrice ?? app.vehiclePrice) * COMMISSION_RATE)));
+  const [addOnsCom, setAddOnsCom] = useState(String(app.addOnsCommission ?? ''));
   if (!open)
     return (
       <button className={`${btn.ink} flex items-center gap-1.5`} onClick={() => { setOrcr(false); setOpen(true); }}>
@@ -308,10 +321,11 @@ const ReleaseAction: React.FC<{ app: VehicleApplication }> = ({ app }) => {
       onSubmit={async (e) => {
         e.preventDefault();
         const n = Number(commission || 0);
-        if (orcr && file && (await releaseVehicle(app.id, app.preorderRef ? 0 : n, file, app.preorderRef ? n : undefined))) setOpen(false);
+        if (orcr && file && (await releaseVehicle(app.id, app.preorderRef ? 0 : n, file, app.preorderRef ? n : undefined, app.addOns ? Number(addOnsCom || 0) : undefined))) setOpen(false);
       }}
     >
       <CommissionField app={app} value={commission} onChange={setCommission} agent={current?.agentName} />
+      {app.addOns && <AddOnsCommissionField value={addOnsCom} onChange={setAddOnsCom} />}
       <div>
         <span className="gb-label block mb-1.5">OR / CR of the vehicle (photo or PDF) *</span>
         {file ? (
@@ -428,6 +442,7 @@ export const ApplicationsManager: React.FC<{ initial?: Filter }> = ({ initial = 
                 </div>
 
                 {app.notes && <p className="text-[13px] text-[#2A2E31] max-w-[70ch]">Client note: “{app.notes}”</p>}
+                <AddOnsPanel app={app} mode="admin" />
                 {app.sellerNotes && <p className="text-[13px] text-[#2A2E31] max-w-[70ch]">Admin note: “{app.sellerNotes}”</p>}
                 {app.ciComments && <p className="text-[13px] text-[#2A2E31] max-w-[70ch]">C.I. comments: “{app.ciComments}”</p>}
 

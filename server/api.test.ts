@@ -1382,3 +1382,75 @@ test('pre-order: client orders, their agent edits, admin prices, quotation locks
   assert.equal((await ad.state()).vehicles.find((v: any) => v.id === unit.id).status, 'available', 'nor sold');
   assert.equal((await ad.raw('DELETE', `/api/preorder-units/${unit.id}`)).status, 400, 'kept while pre-orders use it');
 });
+
+test('ready unit add-ons: client picks them when applying, agent and admin change them, quotation locks them, admin sets the add-ons commission', async () => {
+  const { DOCS } = await import('../src/components/requirements.ts');
+  const ad = await admin();
+  await ad.post('/api/preorder-settings', { accessories: [{ name: 'Carrier', price: 15000 }, { name: 'Reverse Camera', price: 8000 }], offRoadPrice: 60000 });
+  const [carrier, cam] = (await ad.state()).preorderSettings.accessories;
+  const c = await newClient();
+  const v = await freeVehicle(); // 950,000
+  const keys = DOCS.financing.flatMap((g) => g.items.map((i) => i.key));
+  const base = { vehicleId: v.id, purchaseMethod: 'financing', financingTermMonths: 36, address, viaAgent: await linkFor(c, v.id) };
+  const addOns = { accessoryIds: [carrier.id], offRoad: true, suggestions: 'Roof rack' };
+  // the 20% minimum counts the add-ons: 20% of 1,025,000 is 205,000
+  assert.equal((await c.post('/api/applications', { ...base, documents: await docs(c, keys), downPayment: 195000, addOns })).status, 400);
+  const made = await c.post('/api/applications', { ...base, documents: await docs(c, keys), downPayment: 205000, addOns });
+  assert.equal(made.status, 200, JSON.stringify(made.json));
+  const app = made.data;
+  assert.equal(app.listPrice, 950000);
+  assert.equal(app.vehiclePrice, 1025000);
+  assert.deepEqual(app.addOns.accessories, [{ name: 'Carrier', price: 15000 }]);
+  assert.equal(app.addOns.suggestions, 'Roof rack');
+
+  // the client's agent (Carlo) and the admin can change them; nobody else, and only the admin prices suggestions
+  const ca = await carlo();
+  assert.equal((await c.patch(`/api/applications/${app.id}/add-ons`, { offRoad: false })).status, 403, 'not the client');
+  assert.equal((await (await bea()).patch(`/api/applications/${app.id}/add-ons`, { offRoad: false })).status, 403, 'not another agent');
+  assert.equal((await ca.patch(`/api/applications/${app.id}/add-ons`, { additionalAmount: 5 })).status, 403);
+  const byAgent = await ca.patch(`/api/applications/${app.id}/add-ons`, { accessoryIds: [carrier.id, cam.id] });
+  assert.equal(byAgent.status, 200, JSON.stringify(byAgent.json));
+  assert.equal(byAgent.data.vehiclePrice, 1033000);
+  assert.ok(byAgent.data.addOns.history.some((h: any) => h.by === 'Carlo Santos' && /Reverse Camera/.test(h.text)));
+  assert.equal((await ad.patch(`/api/applications/${app.id}/add-ons`, { additionalAmount: 10000, additionalDescription: 'Roof rack' })).data.vehiclePrice, 1043000);
+
+  // reserve: a ready unit is still reserved and sold like any listing
+  await approveDocs(ad, app.id);
+  assert.equal((await reserve(ad, app.id)).status, 200);
+  assert.equal((await ad.state()).vehicles.find((x: any) => x.id === v.id).status, 'reserved');
+  const q = (await ad.post(`/api/applications/${app.id}/quotation`)).data;
+  assert.equal(q.unitPrice, 1043000);
+  assert.deepEqual(q.breakdown.map((l: any) => l.amount), [950000, 23000, 60000, 10000]);
+  assert.equal(q.breakdown[0].label, 'Unit Amount');
+  assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: { unitPrice: 1 }, send: true })).status, 200);
+  assert.equal((await ad.state()).quotations.find((x: any) => x.id === q.id).unitPrice, 1043000, 'the price comes from the add-ons');
+  assert.equal((await ca.patch(`/api/applications/${app.id}/add-ons`, { offRoad: false })).status, 400, 'locked once sent');
+  assert.equal((await ca.post(`/api/applications/${app.id}/add-ons/reopen`)).status, 403, 'only the admin reopens');
+  assert.equal((await ad.post(`/api/applications/${app.id}/add-ons/reopen`)).status, 200);
+  await ad.patch(`/api/applications/${app.id}/add-ons`, { offRoad: false });
+  const requoted = (await ad.state()).quotations.find((x: any) => x.id === q.id);
+  assert.equal(requoted.status, 'requested');
+  assert.equal(requoted.unitPrice, 983000);
+  assert.equal(requoted.breakdown[2].amount, 0);
+  assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: {}, send: true })).status, 200);
+  assert.equal((await c.post(`/api/quotations/${q.id}/return`, { conforme: 'Juan Cruz' })).status, 200);
+  assert.equal((await ad.post(`/api/quotations/${q.id}/confirm`)).status, 200);
+  assert.equal((await c.post(`/api/applications/${app.id}/info-sheet`, SHEET_OK)).status, 200);
+
+  // commission: the vehicle's commission plus the add-ons commission the admin enters
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'approved', commission: 20000, addOnsCommission: 3000 })).status, 200);
+  const approved = (await ad.state()).applications.find((x: any) => x.id === app.id);
+  assert.equal(approved.commissionAmount, 23000);
+  assert.equal(approved.addOnsCommission, 3000);
+  assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad), commission: 20000, addOnsCommission: 4000 })).status, 200);
+  const com = (await ad.state()).commissions.find((x: any) => x.applicationRef === app.referenceNo);
+  assert.equal(com.amount, 24000, 'changed at release: 20,000 + 4,000');
+  assert.equal((await ad.state()).vehicles.find((x: any) => x.id === v.id).status, 'sold');
+  assert.equal((await ad.patch(`/api/applications/${app.id}/add-ons`, { offRoad: true })).status, 400, 'closed after release');
+
+  // without add-ons nothing changes: no breakdown, standard commission on the price
+  const c2 = await newClient();
+  const plain = (await apply(c2, (await freeVehicle()).id)).data;
+  assert.equal(plain.addOns, undefined);
+  assert.equal(plain.vehiclePrice, 950000);
+});

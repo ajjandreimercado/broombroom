@@ -6,6 +6,8 @@ import { Stamp } from '../components/Stamp.tsx';
 import { VehicleApplication } from '../types.ts';
 import { isExpired, QUOTE_TERMS } from '../components/quote.ts';
 import { PREORDER_DOWN_PCTS, PREORDER_MONTHLY_ADD_ON, addOnMonthly, preorderBreakdown } from '../components/preorder.ts';
+import { AddOnsFields } from '../components/AddOnsPanel.tsx';
+import { PriceBreakdown } from '../components/PreOrderPanel.tsx';
 import {
   ArrowLeft,
   ArrowRight,
@@ -40,6 +42,7 @@ export const ApplicationWizardView: React.FC = () => {
     requestToApply,
     preorderUnits,
     preorders,
+    preorderSettings,
   } = useApp();
 
   // never another car: a removed listing shows "not found". A pre-order unit is applied for through the agent's link too.
@@ -47,7 +50,20 @@ export const ApplicationWizardView: React.FC = () => {
   const preorder = vehicle?.preorder ? preorders.find((p) => p.unitId === vehicle.id && !p.applicationRef) : undefined;
   // Applying from a sent quotation: its method, down payment, term and price carry over.
   const quote = quotations.find((q) => q.id === selectedQuotationId && q.vehicleId === vehicle?.id && q.status === 'sent' && !isExpired(q));
-  const price = preorder ? preorderBreakdown(preorder).total : quote?.unitPrice ?? vehicle?.price ?? 0;
+  // A ready unit's add-ons (the admin's accessories and off-road set up) are added to its price.
+  const [accessoryIds, setAccessoryIds] = useState<string[]>([]);
+  const [offRoad, setOffRoad] = useState(false);
+  const [suggestions, setSuggestions] = useState('');
+  const listPrice = quote?.unitPrice ?? vehicle?.price ?? 0;
+  const addOnsDraft = {
+    unitPrice: listPrice,
+    accessories: preorderSettings.accessories.filter((a) => accessoryIds.includes(a.id)),
+    offRoad,
+    offRoadPrice: preorderSettings.offRoadPrice,
+    additionalAmount: 0,
+  };
+  const hasAddOns = !preorder && (accessoryIds.length > 0 || offRoad || !!suggestions.trim());
+  const price = preorder ? preorderBreakdown(preorder).total : preorderBreakdown(addOnsDraft).total;
   const [downPct, setDownPct] = useState(PREORDER_DOWN_PCTS[0]);
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -71,7 +87,9 @@ export const ApplicationWizardView: React.FC = () => {
   const [purchaseMethod, setPurchaseMethod] = useState<'cash' | 'financing'>(quote?.method ?? 'financing');
   // Terms stop at 36 months; an older quotation with a longer term falls back to 36.
   const [financingTerm, setFinancingTerm] = useState(QUOTE_TERMS.includes(quote?.termMonths ?? 36) ? (quote?.termMonths ?? 36) : 36);
-  const [downPayment, setDownPayment] = useState(quote?.method === 'financing' ? quote.downPayment : Math.round(price * 0.25));
+  const [downPaymentPicked, setDownPayment] = useState(quote?.method === 'financing' ? quote.downPayment : Math.round(price * 0.25));
+  // Add-ons raise the price; the down payment never drops below the lowest percent of it.
+  const downPayment = Math.max(downPaymentPicked, Math.round((price * PREORDER_DOWN_PCTS[0]) / 100));
   const [notes, setNotes] = useState('');
 
   // Required documents, keyed by requirement. Each file uploads (privately) as soon as it is chosen.
@@ -185,6 +203,7 @@ export const ApplicationWizardView: React.FC = () => {
       financingTermMonths: purchaseMethod === 'financing' ? financingTerm : undefined,
       downPayment: purchaseMethod === 'financing' && !preorder ? downPayment : undefined,
       downPct: purchaseMethod === 'financing' && preorder ? downPct : undefined,
+      addOns: hasAddOns ? { accessoryIds, offRoad, suggestions: suggestions.trim() } : undefined,
       notes: notes.trim(),
       documents: Object.fromEntries(requiredDocs.filter((d) => docs[d.key]?.fileId).map((d) => [d.key, docs[d.key].fileId!])),
       quotationId: quote?.id,
@@ -541,6 +560,18 @@ export const ApplicationWizardView: React.FC = () => {
                     </div>
                     )}
                   </div>
+                )}
+
+                {/* Add-ons on a ready unit */}
+                {!preorder && (
+                  <section aria-labelledby="addons-heading" className="space-y-3">
+                    <div className="pb-3 border-b-2 border-[#141517]">
+                      <h3 id="addons-heading" className="font-display text-[18px] leading-tight text-[#141517]">Add-ons (optional)</h3>
+                      <p className="text-[12.5px] text-[#4E585E] mt-1">Accessories installed on this unit. Your agent can change them for you later, until your quotation is sent.</p>
+                    </div>
+                    <AddOnsFields accessoryIds={accessoryIds} onAccessories={setAccessoryIds} suggestions={suggestions} onSuggestions={setSuggestions} offRoad={offRoad} onOffRoad={setOffRoad} />
+                    {hasAddOns && <PriceBreakdown p={addOnsDraft} pendingAdditional />}
+                  </section>
                 )}
 
                 {/* Required documents for the chosen method */}

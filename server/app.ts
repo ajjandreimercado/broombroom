@@ -302,7 +302,9 @@ export const createApp = () => {
     return i;
   };
   api.post('/applications', requireRole('buyer'), act((req) => svc.createApplication(me(req), body(req))));
-  api.post('/applications/:id/status', requireRole('buyer', 'admin'), act((req) => svc.setApplicationStatus(me(req), req.params.id, body(req).status, body(req).note, me(req).role === 'admin' ? body(req).commission : undefined, me(req).role === 'admin' ? body(req).net : undefined)));
+  api.post('/applications/:id/status', requireRole('buyer', 'admin'), act((req) => svc.setApplicationStatus(me(req), req.params.id, body(req).status, body(req).note, me(req).role === 'admin' ? body(req).commission : undefined, me(req).role === 'admin' ? body(req).net : undefined, me(req).role === 'admin' ? body(req).addOnsCommission : undefined)));
+  api.patch('/applications/:id/add-ons', requireRole('seller', 'admin'), act((req) => svc.editAddOns(me(req), req.params.id, body(req))));
+  api.post('/applications/:id/add-ons/reopen', requireRole('admin'), act((req) => svc.reopenAddOns(me(req), req.params.id)));
   api.post(
     '/applications/:id/documents/:i/review',
     requireRole('admin'),

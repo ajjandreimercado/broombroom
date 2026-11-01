@@ -8,6 +8,7 @@ import { Commissions } from '../components/Commissions.tsx';
 import { AgentListings } from '../components/agent/AgentListings.tsx';
 import { AgentLeads } from '../components/agent/AgentLeads.tsx';
 import { PreOrderPanel } from '../components/PreOrderPanel.tsx';
+import { AddOnsPanel } from '../components/AddOnsPanel.tsx';
 import {
   LayoutDashboard,
   BarChart3,
@@ -51,6 +52,8 @@ export const SellerDashboardView: React.FC = () => {
   const commissions = allCommissions.filter((c) => c.agentName === me);
   const receivable = commissions.filter((c) => c.status === 'payable'); // owed to the agent, waiting for the transfer
   const receivableTotal = receivable.reduce((sum, c) => sum + c.amount, 0);
+  // The agent's clients' open ready-unit applications: add-ons can be added or changed until the quotation is sent.
+  const readyApps = applications.filter((a) => a.sellerName === me && !a.preorderRef && (a.addOns || ['submitted', 'under_review', 'contacted', 'reserved'].includes(a.status)));
   const inProgress = applications.filter((a) => a.sellerName === me && ['submitted', 'under_review', 'contacted', 'reserved', 'processing', 'approved'].includes(a.status)).length;
   // Closed sales = completed transactions on the agent's commissions, by when they were completed.
   const closedByPeriod = useMemo(() => {
@@ -96,7 +99,7 @@ export const SellerDashboardView: React.FC = () => {
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'sales_report', label: 'Sales Report', icon: BarChart3 },
     { id: 'leads', label: 'Leads', icon: Users, count: openLeads },
-    { id: 'preorders', label: 'Pre-orders', icon: ClipboardList, count: preorders.filter((p) => !p.locked).length || undefined },
+    { id: 'preorders', label: 'Pre-orders & add-ons', icon: ClipboardList, count: preorders.filter((p) => !p.locked).length + readyApps.filter((a) => a.addOns && !a.quoteSent).length || undefined },
     // Chats with messages the agent has not read yet; opening a chat marks it read.
     { id: 'messages', label: 'Client Chats', icon: MessageSquare, count: conversations.filter((c) => c.unreadSeller > 0).length },
     { id: 'commissions', label: 'Commissions', icon: Wallet, count: receivable.length },
@@ -263,6 +266,24 @@ export const SellerDashboardView: React.FC = () => {
                   <p className="mt-2 text-[13px] text-[#4E585E] max-w-[60ch]">Your clients’ pre-orders. Update what they want customized until the quotation is sent; the admin sets Additional Customization and the prices.</p>
                 </div>
                 {preorders.length === 0 ? <p className="text-[14px] text-[#4E585E] py-6">No pre-orders yet. Claim a client’s pre-order in Leads.</p> : preorders.map((p) => <PreOrderPanel key={p.id} p={p} mode="agent" />)}
+                <div className="pt-6 pb-3 border-b-2 border-[#141517]">
+                  <h2 className="font-display text-[22px] leading-none text-[#141517]">Add-ons on ready units</h2>
+                  <p className="mt-2 text-[13px] text-[#4E585E] max-w-[60ch]">Your clients’ applications for listed vehicles. Add or change the accessories they want until the quotation is sent.</p>
+                </div>
+                {readyApps.length === 0 ? (
+                  <p className="text-[14px] text-[#4E585E] py-6">No open applications for listed vehicles.</p>
+                ) : (
+                  readyApps.map((a) => (
+                    <article key={a.id} className="bg-white border border-[#C9D1D6] p-4 space-y-3">
+                      <div>
+                        <p className="gb-label">{a.referenceNo} · {a.applicantName}</p>
+                        <p className="font-semibold text-[15px] text-[#141517] mt-1">{a.vehicleTitle}</p>
+                        <p className="text-[13px] text-[#2A2E31] tabular-nums">₱{a.vehiclePrice.toLocaleString()} · {a.status.replace('_', ' ')}</p>
+                      </div>
+                      <AddOnsPanel app={a} mode="agent" />
+                    </article>
+                  ))
+                )}
               </div>
             )}
 
