@@ -1,4 +1,5 @@
-import { DEFAULT_RATE, MAX_DOWN_PCT, QUOTE_TERMS, monthlyPayment } from '../components/quote.ts';
+import { MAX_DOWN_PCT, QUOTE_TERMS, listingMonthly } from '../components/quote.ts';
+import { PREORDER_DOWN_PCTS, PREORDER_MONTHLY_ADD_ON } from '../components/preorder.ts';
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import type { Vehicle } from '../types.ts';
@@ -61,7 +62,7 @@ export const VehicleDetailView: React.FC = () => {
   const [viewerOpen, setViewerOpen] = useState(false); // full, uncropped photo
 
   // Loan calculator state
-  const [downPaymentPercent, setDownPaymentPercent] = useState(25);
+  const [downPaymentPercent, setDownPaymentPercent] = useState(MAX_DOWN_PCT); // lands on the cards' "from" figure
   const [loanTermMonths, setLoanTermMonths] = useState(36);
 
   if (!vehicle) {
@@ -90,8 +91,7 @@ export const VehicleDetailView: React.FC = () => {
 
   // Financial calculations
   const downPaymentAmount = Math.round((vehicle.price * downPaymentPercent) / 100);
-  const principalLoan = vehicle.price - downPaymentAmount;
-  const estimatedMonthly = Math.round(monthlyPayment(principalLoan, DEFAULT_RATE, loanTermMonths));
+  const estimatedMonthly = listingMonthly(vehicle.price, downPaymentPercent, loanTermMonths);
 
   const handleSave = () => {
     if (!isAuthenticated) {
@@ -419,21 +419,27 @@ export const VehicleDetailView: React.FC = () => {
                       <span className="text-[13px] font-normal text-[#4E585E]" style={{ fontStretch: '100%' }}>/mo</span>
                     </span>
                   </div>
-                  <label className="block">
-                    <span className="flex justify-between text-[13px] text-[#4E585E]">
+                  <div>
+                    <span className="flex justify-between text-[13px] text-[#4E585E] mb-2">
                       <span>Down payment ({downPaymentPercent}%)</span>
                       <span className="tabular-nums font-medium text-[#141517]">₱{downPaymentAmount.toLocaleString()}</span>
                     </span>
-                    <input
-                      type="range"
-                      min="15"
-                      max={MAX_DOWN_PCT}
-                      step="5"
-                      value={downPaymentPercent}
-                      onChange={(e) => setDownPaymentPercent(Number(e.target.value))}
-                      className="w-full mt-2 cursor-pointer"
-                    />
-                  </label>
+                    <div className="grid grid-cols-4 border border-[#8C989F] divide-x divide-[#8C989F]" role="radiogroup" aria-label="Down payment">
+                      {PREORDER_DOWN_PCTS.map((pct) => (
+                        <button
+                          key={pct}
+                          role="radio"
+                          aria-checked={downPaymentPercent === pct}
+                          onClick={() => setDownPaymentPercent(pct)}
+                          className={`py-2.5 text-[13px] tabular-nums text-center cursor-pointer ${
+                            downPaymentPercent === pct ? 'bg-[#141517] text-white font-semibold' : 'text-[#141517] hover:bg-[#EEF1F2]'
+                          }`}
+                        >
+                          {pct}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div>
                     <span className="gb-label block mb-2">Loan term</span>
                     <div className="grid grid-cols-3 border border-[#8C989F] divide-x divide-[#8C989F]">
@@ -451,7 +457,7 @@ export const VehicleDetailView: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                  <p className="text-[12px] text-[#4E585E]">Estimate only. The agent confirms final terms.</p>
+                  <p className="text-[12px] text-[#4E585E]">{PREORDER_MONTHLY_ADD_ON}% a month (add-on). Estimate only. The agent confirms final terms.</p>
                 </div>
               )}
 

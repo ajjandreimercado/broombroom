@@ -1,9 +1,9 @@
 import type { Quotation, VehicleApplication } from '../types.ts';
-import { addOnMonthly } from './preorder.ts';
+import { PREORDER_DOWN_PCTS, PREORDER_MONTHLY_ADD_ON, addOnMonthly } from './preorder.ts';
 
 // Loan terms offered, in months: 36 is the longest, on every listing (new or already listed), application and quotation.
 export const QUOTE_TERMS = [12, 24, 36];
-export const DEFAULT_RATE = 8.5; // same rate as the listing page's financing estimate
+export const DEFAULT_RATE = 8.5; // yearly rate a regular listing's quotation starts at
 export const DEFAULT_VALID_DAYS = 15;
 
 // Monthly payment on an amortizing loan (the listing page's estimate uses the same formula).
@@ -15,10 +15,12 @@ export const monthlyPayment = (principal: number, annualRatePct: number, months:
   return (principal * r * f) / (f - 1);
 };
 
-// The lowest monthly figure a listing can show: the biggest down payment (30%) over the longest term (36 months).
-// Cards and Compare show this as "from"; the listing page's calculator lands on it at 30% down and 36 months.
-export const MAX_DOWN_PCT = 30;
-export const fromMonthly = (price: number) => Math.round(monthlyPayment((price * (100 - MAX_DOWN_PCT)) / 100, DEFAULT_RATE, Math.max(...QUOTE_TERMS)));
+// The lowest monthly figure a listing can show: the biggest down payment (50%) over the longest term (36 months), at
+// 2.5% a month add-on. Cards and Compare show this as "from"; the listing page's calculator lands on it.
+export const MAX_DOWN_PCT = Math.max(...PREORDER_DOWN_PCTS);
+export const listingMonthly = (price: number, downPct: number, months: number) =>
+  Math.round(addOnMonthly(price - Math.round((price * downPct) / 100), PREORDER_MONTHLY_ADD_ON, months));
+export const fromMonthly = (price: number) => listingMonthly(price, MAX_DOWN_PCT, Math.max(...QUOTE_TERMS));
 
 // Everything a quotation shows, derived from what the admin entered.
 export const quoteFigures = (q: Pick<Quotation, 'method' | 'unitPrice' | 'downPayment' | 'termMonths' | 'annualRate' | 'insurance' | 'registration' | 'chattelMortgage' | 'monthlyAddOn'>) => {

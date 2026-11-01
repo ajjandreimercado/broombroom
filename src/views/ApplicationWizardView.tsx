@@ -512,7 +512,7 @@ export const ApplicationWizardView: React.FC = () => {
                     {preorder ? (
                       <div>
                         <span className="block font-bold text-[#2A2E31] mb-2">Down payment (pre-order)</span>
-                        <div className="grid grid-cols-5 gap-2" role="radiogroup" aria-label="Down payment">
+                        <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Down payment">
                           {PREORDER_DOWN_PCTS.map((pct) => (
                             <button key={pct} type="button" role="radio" aria-checked={downPct === pct} onClick={() => setDownPct(pct)} className={`py-2 rounded-[2px] text-xs font-bold cursor-pointer ${downPct === pct ? 'bg-[#141517] text-white' : 'bg-white border border-[#C9D1D6] text-[#2A2E31] hover:border-[#141517]'}`}>
                               {pct}%
@@ -531,7 +531,7 @@ export const ApplicationWizardView: React.FC = () => {
                       </div>
                       <input
                         type="range"
-                        min={Math.round(Math.min(price * 0.15, downPayment))}
+                        min={Math.round(Math.min((price * PREORDER_DOWN_PCTS[0]) / 100, downPayment))}
                         max={Math.round(Math.max(price * 0.5, downPayment))}
                         step={10000}
                         value={downPayment}

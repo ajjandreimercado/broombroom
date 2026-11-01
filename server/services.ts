@@ -492,7 +492,10 @@ export const createApplication = (me: User, input: any) =>
         downPct = Number(input.downPct);
         if (!PREORDER_DOWN_PCTS.includes(downPct)) bad(`Choose a down payment of ${PREORDER_DOWN_PCTS.join('%, ')}%.`);
         downPayment = downOf(price, downPct);
-      } else downPayment = money(input.downPayment, 'Down payment', { min: 1 });
+      } else {
+        downPayment = money(input.downPayment, 'Down payment', { min: 1 });
+        if (downPayment < downOf(price, PREORDER_DOWN_PCTS[0])) bad(`The down payment must be at least ${PREORDER_DOWN_PCTS[0]}% of the price.`);
+      }
       if (downPayment >= price) bad('The down payment must be less than the price.');
       term = Number(input.financingTermMonths);
       if (!QUOTE_TERMS.includes(term)) bad('Choose a loan term.');
@@ -1055,7 +1058,8 @@ export const saveQuotation = (me: User, id: string, input: any, send: boolean) =
     if (q.preorderRef) {
       // The price follows the pre-order (changed there), and financing uses the pre-order down payments and add-on rate.
       const pct = Number(c.downPct ?? q.downPct);
-      if (method === 'financing' && !PREORDER_DOWN_PCTS.includes(pct)) bad(`Choose a down payment of ${PREORDER_DOWN_PCTS.join('%, ')}%.`);
+      // A pre-order quoted at a percent no longer offered (15%) keeps it until someone picks another.
+      if (method === 'financing' && !PREORDER_DOWN_PCTS.includes(pct) && pct !== q.downPct) bad(`Choose a down payment of ${PREORDER_DOWN_PCTS.join('%, ')}%.`);
       Object.assign(updated, { unitPrice: q.unitPrice, downPct: method === 'financing' ? pct : undefined, downPayment: method === 'financing' ? downOf(q.unitPrice, pct) : 0, annualRate: 0, monthlyAddOn: PREORDER_MONTHLY_ADD_ON, breakdown: q.breakdown });
     }
     if (method === 'financing' && updated.downPayment >= updated.unitPrice) bad('The down payment must be less than the unit price.');

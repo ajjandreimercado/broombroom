@@ -11,8 +11,9 @@ export const OTHERS = 'Others';
 
 export const OFF_ROAD_INCLUSIONS = ['Carrier', 'Ladder', 'Bumper (front and back)', 'Fender flare', 'Mags', 'Terrain tires'];
 
-// Financing on a pre-order: one of these down payments, then 2.5% a month (add-on) on the amount financed.
-export const PREORDER_DOWN_PCTS = [15, 20, 30, 40, 50];
+// Financing: one of these down payments, then 2.5% a month (add-on) on the amount financed.
+// Pre-orders use exactly these; the listing page's estimate uses them too, and regular applications start at the lowest.
+export const PREORDER_DOWN_PCTS = [20, 30, 40, 50];
 export const PREORDER_MONTHLY_ADD_ON = 2.5;
 // The agent's commission on a pre-order: 10% of the net the admin enters.
 export const PREORDER_COMMISSION_RATE = 0.1;

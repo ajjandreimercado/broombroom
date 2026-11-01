@@ -9,7 +9,7 @@ import { connectDb, closeDb, store, raw } from './db.ts';
 import { seedIfEmpty } from './seed.ts';
 import { createApp } from './app.ts';
 import * as svc from './services.ts';
-import { DEFAULT_RATE, QUOTE_TERMS, fromMonthly, monthlyPayment } from '../src/components/quote.ts';
+import { QUOTE_TERMS, fromMonthly, listingMonthly } from '../src/components/quote.ts';
 import { outbox } from './mailer.ts';
 
 process.env.NODE_ENV = 'test'; // emails stay in the outbox (no BREVO_API_KEY in tests)
@@ -252,9 +252,10 @@ test('listings: the variant is saved with the vehicle, and loan terms stop at 36
   const listed = (await client('buyer').state()).vehicles.find((v: any) => v.id === made.data.id);
   assert.equal(listed.variant, 'Drop Side Pick-up', 'clients see the variant in the specifications');
   assert.deepEqual(QUOTE_TERMS, [12, 24, 36], 'no term longer than 36 months is offered anywhere');
-  // the "from ₱/mo" on cards and Compare is the same calculation at its lowest: 30% down, 36 months, 8.5% (₱350,000 → ₱7,734)
-  assert.equal(fromMonthly(350000), 7734);
-  assert.equal(Math.round(monthlyPayment(350000 * 0.85, DEFAULT_RATE, 36)), 9391, 'the listing page at 15% down and 36 months');
+  // the "from ₱/mo" on cards and Compare is the listing page's estimate at its lowest: 50% down, 36 months, 2.5% a month
+  // add-on (₱175,000 financed × 1.9 ÷ 36 = ₱9,236)
+  assert.equal(fromMonthly(350000), 9236);
+  assert.equal(listingMonthly(350000, 20, 36), 14778, 'the listing page at 20% down (the lowest) and 36 months');
 });
 
 test('public visitors only see active listings', async () => {
@@ -608,11 +609,15 @@ test('listings: variant and color are stored, shown to buyers, and editable on e
 
   const c = await newClient();
   const v = await freeVehicle();
-  const badTerm = await c.post('/api/applications', {
-    vehicleId: v.id, purchaseMethod: 'financing', downPayment: 100000, financingTermMonths: 48,
+  const apply = async (downPayment: number, financingTermMonths: number) => c.post('/api/applications', {
+    vehicleId: v.id, purchaseMethod: 'financing', downPayment, financingTermMonths,
     documents: await docs(c, ['id-applicant', 'payslip']), address, viaAgent: await linkFor(c, v.id),
   });
+  const badTerm = await apply(200000, 48);
   assert.equal(badTerm.status, 400, '48 months is no longer a loan term');
+  const lowDown = await apply(180000, 36); // ₱950,000 × 20% = ₱190,000
+  assert.equal(lowDown.status, 400, 'a down payment under 20% is refused');
+  assert.match(lowDown.json.error ?? JSON.stringify(lowDown.json), /20%/);
 });
 
 test('accounts: admin creates an agent who can then sign in; disabling signs them out', async () => {
