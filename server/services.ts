@@ -1374,11 +1374,13 @@ export const editAddOns = (me: User, id: string, input: any) =>
     next.history = [...before.history, ...changes.map((t) => ({ at, by: me.name, text: t }))];
     const listPrice = app.listPrice ?? app.vehiclePrice;
     const total = withAddOns(listPrice, next);
-    // Financing keeps the down payment the client chose, raised if the new total needs more than the lowest percent.
-    const downPayment = app.purchaseMethod === 'financing' ? Math.max(app.downPayment ?? 0, downOf(total, PREORDER_DOWN_PCTS[0])) : app.downPayment;
+    // Financing keeps the share of the price the client put down (never under the lowest percent), so the down payment
+    // follows the total both ways when add-ons are added or removed.
+    const keepShare = (down: number, oldTotal: number) => Math.min(total - 1, Math.max(Math.round((total * down) / oldTotal), downOf(total, PREORDER_DOWN_PCTS[0])));
+    const downPayment = app.purchaseMethod === 'financing' ? keepShare(app.downPayment ?? 0, app.vehiclePrice) : app.downPayment;
     const saved = await store.put<VehicleApplication>('applications', { ...app, addOns: next, listPrice, vehiclePrice: total, downPayment });
     const q = await store.one<Quotation>('quotations', { ...quoteFilter(app), status: 'requested' });
-    if (q) await store.put<Quotation>('quotations', { ...q, unitPrice: total, breakdown: breakdownLines({ unitPrice: listPrice, ...next }), downPayment: q.method === 'financing' ? Math.max(q.downPayment, downOf(total, PREORDER_DOWN_PCTS[0])) : 0 });
+    if (q) await store.put<Quotation>('quotations', { ...q, unitPrice: total, breakdown: breakdownLines({ unitPrice: listPrice, ...next }), downPayment: q.method === 'financing' ? keepShare(q.downPayment, q.unitPrice) : 0 });
     await notify('client', 'Add-ons updated', `${me.role === 'admin' ? 'Broom Broom' : me.name} updated the add-ons on ${app.referenceNo}: ${changes.join('; ')}.`, 'applications', app.applicantId);
     if (me.role === 'seller') await notify('admin', 'Add-ons updated', `${me.name} updated the add-ons on ${app.referenceNo} (${app.applicantName}): ${changes.join('; ')}.`, 'applications');
     return saved;

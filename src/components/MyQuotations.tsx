@@ -45,7 +45,16 @@ const SignBack: React.FC<{ q: Quotation }> = ({ q }) => {
 
 // Client: the quotation the admin team sent after the reservation, with the PDF. They sign it and send it back.
 export const MyQuotations: React.FC = () => {
-  const { quotations, currentUser, navigateTo, showToast } = useApp();
+  const { quotations, currentUser, navigateTo, showToast, applications } = useApp();
+  // After the confirmation, the next step depends on how far the application has gone since.
+  const afterConfirm = (ref?: string) => {
+    const status = applications.find((a) => a.referenceNo === ref)?.status;
+    if (status === 'completed') return ' The vehicle has been released to you.';
+    if (status === 'approved') return ' Your application is approved; we will tell you when the vehicle is ready for release.';
+    if (status === 'processing') return ' Your information sheet is in and being reviewed.';
+    if (status === 'declined' || status === 'withdrawn') return ` The application was ${status}.`;
+    return ' Next: fill in your information sheet in My Applications.';
+  };
   const mine = quotations.filter((q) => q.clientId === currentUser?.id);
 
   return (
@@ -93,7 +102,7 @@ export const MyQuotations: React.FC = () => {
                           : q.status === 'returned'
                           ? `You signed it as ${q.conforme} and sent it back. The admin team is reviewing it.`
                           : q.status === 'confirmed'
-                          ? `Confirmed as final${q.confirmedAt ? ` on ${new Date(q.confirmedAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}. Next: fill in your information sheet in My Applications.`
+                          ? `Confirmed as final${q.confirmedAt ? ` on ${new Date(q.confirmedAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}.${afterConfirm(q.applicationRef)}`
                           : q.status === 'accepted'
                           ? `You applied with this quotation${q.applicationRef ? ` (${q.applicationRef})` : ''}.`
                           : expired
@@ -115,7 +124,7 @@ export const MyQuotations: React.FC = () => {
                 </div>
                 {q.status !== 'requested' && (
                   <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-[12.5px] tabular-nums">
-                    <div><dt className="text-[#4E585E]">Unit price</dt><dd className="font-semibold text-[#141517]">{money(q.unitPrice)}</dd></div>
+                    <div><dt className="text-[#4E585E]">{q.breakdown ? 'Total Amount' : 'Unit price'}</dt><dd className="font-semibold text-[#141517]">{money(q.unitPrice)}</dd></div>
                     {q.method === 'financing' ? (
                       <>
                         <div><dt className="text-[#4E585E]">Down payment</dt><dd className="font-semibold text-[#141517]">{money(q.downPayment)}</dd></div>

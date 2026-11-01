@@ -1411,6 +1411,7 @@ test('ready unit add-ons: client picks them when applying, agent and admin chang
   const byAgent = await ca.patch(`/api/applications/${app.id}/add-ons`, { accessoryIds: [carrier.id, cam.id] });
   assert.equal(byAgent.status, 200, JSON.stringify(byAgent.json));
   assert.equal(byAgent.data.vehiclePrice, 1033000);
+  assert.equal(byAgent.data.downPayment, 206600, 'the down payment keeps the 20% the client chose');
   assert.ok(byAgent.data.addOns.history.some((h: any) => h.by === 'Carlo Santos' && /Reverse Camera/.test(h.text)));
   assert.equal((await ad.patch(`/api/applications/${app.id}/add-ons`, { additionalAmount: 10000, additionalDescription: 'Roof rack' })).data.vehiclePrice, 1043000);
 
@@ -1432,6 +1433,8 @@ test('ready unit add-ons: client picks them when applying, agent and admin chang
   assert.equal(requoted.status, 'requested');
   assert.equal(requoted.unitPrice, 983000);
   assert.equal(requoted.breakdown[2].amount, 0);
+  assert.equal(requoted.downPayment, 196600, 'removing an add-on lowers the down payment too (still 20%)');
+  assert.equal((await ad.state()).applications.find((x: any) => x.id === app.id).downPayment, 196600);
   assert.equal((await ad.patch(`/api/quotations/${q.id}`, { changes: {}, send: true })).status, 200);
   assert.equal((await c.post(`/api/quotations/${q.id}/return`, { conforme: 'Juan Cruz' })).status, 200);
   assert.equal((await ad.post(`/api/quotations/${q.id}/confirm`)).status, 200);
