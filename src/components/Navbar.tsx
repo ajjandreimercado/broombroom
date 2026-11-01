@@ -15,6 +15,7 @@ import {
   ChevronDown,
   FileText,
   Calculator,
+  MessageSquare,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -28,6 +29,7 @@ export const Navbar: React.FC = () => {
     updateFilter,
     notifications,
     markNotificationRead,
+    conversations,
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -56,6 +58,8 @@ export const Navbar: React.FC = () => {
     else navigateTo('account', { accountTab: 'notifications' });
   };
   const savedCount = currentUser?.savedVehicleIds.length || 0;
+  // Chats with something the client has not read: an agent's reply, or the introduction an agent sends on claiming them.
+  const unreadChats = conversations.filter((c) => c.unreadBuyer > 0).length;
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -88,6 +92,31 @@ export const Navbar: React.FC = () => {
         { label: 'Business Permits', view: 'permits' as const },
       ]
     : [];
+  // On wide screens the information pages sit on the right, next to the icons; the phone menu lists them all.
+  const RIGHT_VIEWS = ['how_it_works', 'permits'];
+  const navLink = (link: (typeof navLinks)[number]) => {
+    const isActive = currentView === link.view;
+    return (
+      <button
+        key={link.label}
+        onClick={() => navigateTo(link.view)}
+        className={`relative flex items-center text-[13.5px] transition-colors duration-150 cursor-pointer whitespace-nowrap ${
+          isActive ? textActive : `${textBase} hover:text-white`
+        }`}
+        aria-current={isActive ? 'page' : undefined}
+      >
+        {link.label}
+        {isActive && (
+          <motion.span
+            layoutId="nav-underline"
+            transition={indicatorTransition}
+            className="absolute -bottom-px left-0 right-0 h-[3px] bg-[#1B7F35]"
+            aria-hidden="true"
+          />
+        )}
+      </button>
+    );
+  };
   const homeView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : 'intro';
 
   /* ── SURFACE TOKENS ── */
@@ -120,33 +149,17 @@ export const Navbar: React.FC = () => {
 
           {/* ── NAV LINKS (Desktop) ── */}
           <nav className="hidden lg:flex items-stretch self-stretch gap-6 ml-4" aria-label="Main navigation">
-            {navLinks.map((link) => {
-              const isActive = currentView === link.view;
-              return (
-                <button
-                  key={link.label}
-                  onClick={() => navigateTo(link.view)}
-                  className={`relative flex items-center text-[13.5px] transition-colors duration-150 cursor-pointer whitespace-nowrap ${
-                    isActive ? textActive : `${textBase} hover:text-white`
-                  }`}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  {link.label}
-                  {isActive && (
-                    <motion.span
-                      layoutId="nav-underline"
-                      transition={indicatorTransition}
-                      className="absolute -bottom-px left-0 right-0 h-[3px] bg-[#1B7F35]"
-                      aria-hidden="true"
-                    />
-                  )}
-                </button>
-              );
-            })}
+            {navLinks.filter((l) => !RIGHT_VIEWS.includes(l.view)).map(navLink)}
           </nav>
 
           {/* ── SPACER ── */}
           <div className="flex-1" />
+
+          {navLinks.some((l) => RIGHT_VIEWS.includes(l.view)) && (
+            <nav className="hidden lg:flex items-stretch self-stretch gap-6 mr-2" aria-label="Information">
+              {navLinks.filter((l) => RIGHT_VIEWS.includes(l.view)).map(navLink)}
+            </nav>
+          )}
 
           {!isBuyerSite && (
             <a
@@ -176,6 +189,23 @@ export const Navbar: React.FC = () => {
               {savedCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] text-[9px] font-bold bg-[#1D5FD1] text-white flex items-center justify-center rounded-full px-0.5 tabular-nums">
                   {savedCount}
+                </span>
+              )}
+            </button>
+            )}
+
+            {/* Messages: unread chats, including an agent's first message after claiming the client */}
+            {isBuyerSite && isAuthenticated && (
+            <button
+              onClick={() => navigateTo('account', { accountTab: 'messages' })}
+              className="relative p-2 transition-colors duration-150 cursor-pointer text-white hover:bg-white/10"
+              title="Messages"
+              aria-label={unreadChats ? `Messages, ${unreadChats} unread` : 'Messages'}
+            >
+              <MessageSquare className="w-4 h-4" />
+              {unreadChats > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] text-[9px] font-bold bg-[#1D5FD1] text-white flex items-center justify-center rounded-full px-0.5 tabular-nums">
+                  {unreadChats}
                 </span>
               )}
             </button>
