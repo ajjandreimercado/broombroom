@@ -1,7 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
-import { portalUrl } from '../portals.ts';
 import { VehicleCategory } from '../types.ts';
 import { CONTACT_EMAIL } from '../data/constants.ts';
 
@@ -35,7 +34,6 @@ export const Footer: React.FC = () => {
         { label: 'Deals', onClick: () => navigateTo('deals') },
         { label: 'How it works', onClick: () => navigateTo('how_it_works') },
         { label: 'Business permits', onClick: () => navigateTo('permits') },
-        { label: 'Agent sign-in', onClick: () => window.location.assign(portalUrl('seller')) },
       ],
     },
     {
