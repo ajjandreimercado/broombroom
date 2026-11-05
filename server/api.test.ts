@@ -1015,17 +1015,18 @@ test('conversations: claiming a client starts a chat with the agent; clients can
   assert.equal((await c.post('/api/conversations', { text: '' })).status, 400, 'needs a message');
   const g = await c.post('/api/conversations', { text: 'Do you accept trade-ins?' });
   assert.equal(g.status, 200, JSON.stringify(g.json));
-  assert.equal(g.data.vehicleId, '');
-  assert.equal(g.data.vehicleTitle, 'General inquiry');
+  assert.equal(g.data.id, convs[0].id, 'the one chat with their agent');
   assert.equal(g.data.sellerName, 'Carlo Santos', 'goes to their agent');
   const g2 = await c.post('/api/conversations', { text: 'Also, what are your hours?' });
-  assert.equal(g2.data.id, g.data.id, 'same general chat');
-  assert.equal(g2.data.messages.length, 2);
+  assert.equal(g2.data.id, g.data.id, 'same chat');
+  assert.equal(g2.data.messages.length, g.data.messages.length + 1);
   // about a listing, with their own first message
   const other = await freeVehicle();
   const l = await c.post('/api/conversations', { vehicleId: other.id, text: 'Is the price negotiable?' });
-  assert.equal(l.data.messages[0].text, 'Is the price negotiable?');
-  assert.equal((await ca.state()).conversations.filter((x: any) => x.buyerId === c.id).length, 3);
+  assert.equal(l.data.messages.at(-1).text, 'Is the price negotiable?');
+  assert.equal(l.data.id, g.data.id, 'a listing question goes in the same chat');
+  assert.equal(l.data.vehicleId, other.id, 'which is now about that unit');
+  assert.equal((await ca.state()).conversations.filter((x: any) => x.buyerId === c.id).length, 1);
   // a client with no agent cannot write at all
   const lone = await newClient();
   assert.equal((await lone.post('/api/conversations', { text: 'Hello?' })).status, 400);
@@ -1070,6 +1071,55 @@ test('agents start the chat: claiming returns it, and Message client opens or st
   const conv = (await d.state()).conversations.find((x: any) => x.id === started.data.conversationId);
   assert.equal(conv.sellerName, 'Carlo Santos');
   assert.match(conv.messages[0].text, /your Broom Broom agent/);
+});
+
+test('one chat for each client and agent: every unit is a link inside it, one introduction, and it ends only when no unit is left', async () => {
+  const ca = await carlo();
+  const ad = await admin();
+  const c = await newClient();
+  const [v1, v2] = [await freeVehicle(), await freeVehicle()];
+  await c.post('/api/apply-requests', { vehicleId: v1.id });
+  const claimed = await ca.post(`/api/leads/${c.id}/claim`);
+  const chatId = claimed.data.conversationId;
+  // a second unit: the same chat gets a new apply link, no second introduction
+  await c.post('/api/apply-requests', { vehicleId: v2.id });
+  const req = (await ca.state()).applyRequests.find((r: any) => r.clientId === c.id && r.vehicleId === v2.id && !r.claimedBy);
+  assert.equal((await ca.post(`/api/apply-requests/${req.id}/claim`)).data.conversationId, chatId, 'same chat');
+  const chats = (await c.state()).conversations.filter((x: any) => !x.closedAt);
+  assert.equal(chats.length, 1, 'one chat');
+  assert.deepEqual(chats[0].messages.filter((m: any) => m.applyVehicleId).map((m: any) => m.applyVehicleId), [v1.id, v2.id]);
+  assert.equal(chats[0].messages.filter((m: any) => /your Broom Broom agent/.test(m.text)).length, 1, 'introduced once');
+  assert.equal(chats[0].vehicleId, v2.id, 'the chat is about the latest unit');
+  assert.ok((await ca.state()).conversations.filter((x: any) => x.buyerId === c.id).length === 1, 'one row for the agent');
+  // both units applied for; releasing the first keeps the chat, releasing the last ends it
+  const [a1, a2] = [(await apply(c, v1.id)).data, (await apply(c, v2.id)).data];
+  await toApproved(ad, c, a1.id);
+  assert.equal((await ad.post(`/api/applications/${a1.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  assert.ok((await c.state()).conversations.every((x: any) => !x.closedAt), 'open while the second unit is active');
+  assert.equal((await c.post(`/api/conversations/${chatId}/messages`, { text: 'Still here' })).status, 200);
+  await toApproved(ad, c, a2.id);
+  assert.equal((await ad.post(`/api/applications/${a2.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  assert.ok((await c.state()).conversations.every((x: any) => x.closedAt), 'ended with the last unit');
+});
+
+test('older data: separate chats of one client with one agent are merged into the oldest, in time order', async () => {
+  const c = await newClient();
+  const mk = (id: string, at: string, vid: string, unread: number): any => ({
+    id, vehicleId: vid, vehicleTitle: vid, vehiclePrice: 1, vehicleImage: '', buyerId: c.id, buyerName: 'Client', sellerId: 'carlo-santos', sellerName: 'Carlo Santos',
+    lastMessage: `m-${id}`, updatedAt: at, unreadBuyer: unread, unreadSeller: 0,
+    messages: [{ id: `msg-${id}`, senderId: 'x', senderName: 'Carlo Santos', text: `m-${id}`, timestamp: at, isSeller: true }],
+  });
+  await store.put('conversations', mk('conv-old-a', '2026-01-01T00:00:00.000Z', 'a', 1));
+  await store.put('conversations', mk('conv-old-b', '2026-02-01T00:00:00.000Z', 'b', 2));
+  await svc.mergeChats();
+  const left = await store.all<any>('conversations', { buyerId: c.id });
+  assert.equal(left.length, 1);
+  assert.equal(left[0].id, 'conv-old-a');
+  assert.deepEqual(left[0].messages.map((m: any) => m.id), ['msg-conv-old-a', 'msg-conv-old-b']);
+  assert.equal(left[0].unreadBuyer, 3);
+  assert.equal(left[0].lastMessage, 'm-conv-old-b');
+  await svc.mergeChats(); // running it again changes nothing
+  assert.equal((await store.all<any>('conversations', { buyerId: c.id })).length, 1);
 });
 
 // ---------------- security (OWASP) ----------------
@@ -1164,9 +1214,9 @@ test('release frees the client: no agent or lock, the chat with that agent ends,
   assert.equal(chats.find((x: any) => x.id === conv.id).sellerName, 'Carlo Santos', 'the old chat stays as it was');
 });
 
-test('release always frees the client (even with an older application still open); stale locks from earlier releases are cleared on the next request', async () => {
+test('release frees the client once no other unit is active with the agent; stale locks from earlier releases are cleared on the next request', async () => {
   const ad = await admin();
-  // an older application left open does not keep the lock after a release
+  // an older application left open keeps the client and the chat with the agent after a release
   const c = await newClient();
   const old = (await apply(c, (await freeVehicle()).id)).data; // Carlo claims; this one stays "submitted"
   const v = await freeVehicle();
@@ -1174,8 +1224,15 @@ test('release always frees the client (even with an older application still open
   await toApproved(ad, c, app.id);
   assert.equal((await ad.post(`/api/applications/${app.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
   let lead = (await ad.state()).leads.find((l: any) => l.clientId === c.id);
-  assert.equal(lead.agentName, undefined, 'free, although ' + old.referenceNo + ' is still open');
+  assert.equal(lead.agentName, 'Carlo Santos', 'still theirs: ' + old.referenceNo + ' is still open');
+  assert.ok((await c.state()).conversations.every((x: any) => !x.closedAt), 'the chat stays open');
+  // the last unit goes: now they are free and the chat ends
+  await toApproved(ad, c, old.id);
+  assert.equal((await ad.post(`/api/applications/${old.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
+  lead = (await ad.state()).leads.find((l: any) => l.clientId === c.id);
+  assert.equal(lead.agentName, undefined, 'free: nothing else is active');
   assert.equal(lead.lockedTo, undefined);
+  assert.ok((await c.state()).conversations.every((x: any) => x.closedAt), 'the chat ended');
 
   // a client released before this rule existed: still locked to their old agent in the data
   const d = await newClient();
@@ -1212,10 +1269,10 @@ test('a client with an agent asks to apply for another car: that request is open
   const results = await Promise.all([b.post(`/api/apply-requests/${reqB.id}/claim`), ca.post(`/api/apply-requests/${reqB.id}/claim`)]);
   assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
   const winner = results[0].status === 200 ? 'Bea Villanueva' : 'Carlo Santos';
-  const chat = (await c.state()).conversations.find((x: any) => x.vehicleId === v2.id && !x.closedAt);
+  const chat = (await c.state()).conversations.find((x: any) => x.sellerName === winner && !x.closedAt && x.messages.some((m: any) => m.applyVehicleId === v2.id));
   assert.equal(chat.sellerName, winner);
   assert.equal(chat.messages.at(-1).applyVehicleId, v2.id, 'with the apply link');
-  assert.ok((await c.state()).conversations.some((x: any) => x.vehicleId === v1.id && x.sellerName === 'Carlo Santos' && !x.closedAt), 'the v1 chat stays with Carlo');
+  assert.ok((await c.state()).conversations.some((x: any) => x.sellerName === 'Carlo Santos' && !x.closedAt && x.messages.some((m: any) => m.applyVehicleId === v1.id)), 'the v1 link stays in the chat with Carlo');
   // applying through the winner's link: that agent handles this application
   const slug = winner === 'Bea Villanueva' ? 'bea-villanueva' : 'carlo-santos';
   const app2 = (await c.post('/api/applications', { vehicleId: v2.id, purchaseMethod: 'cash', documents: await docs(c, ['id-signature']), address, viaAgent: slug })).data;

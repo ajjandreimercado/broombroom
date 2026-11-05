@@ -1,3 +1,4 @@
+import { chatUnits } from '../components/chatUnits.ts';
 import React, { useEffect, useState } from 'react';
 import { goodPassword, PASSWORD_RULE } from '../components/password.ts';
 import { PasswordInput } from '../components/PasswordInput.tsx';
@@ -619,7 +620,7 @@ export const AccountView: React.FC = () => {
                             </span>
                           </div>
                           <p className="text-[11px] text-[#1D5FD1] font-semibold truncate mt-0.5">
-                            {conv.vehicleTitle}
+                            {chatUnits(conv)}
                           </p>
                           <p className="text-xs text-[#4E585E] truncate mt-1">{conv.closedAt ? 'Chat ended · ' : ''}{conv.lastMessage}</p>
                         </div>
@@ -694,7 +695,7 @@ export const AccountView: React.FC = () => {
                               {selectedConversation.sellerName}
                             </p>
                             <p className="text-[11px] text-[#4E585E] truncate max-w-xs">
-                              {selectedConversation.vehicleTitle}
+                              {chatUnits(selectedConversation)}
                             </p>
                           </div>
                         </div>

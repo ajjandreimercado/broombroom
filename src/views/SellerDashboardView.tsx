@@ -1,3 +1,4 @@
+import { chatUnits } from '../components/chatUnits.ts';
 import React, { useEffect, useMemo, useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
@@ -311,7 +312,7 @@ export const SellerDashboardView: React.FC = () => {
                         )}
                         </p>
                         <p className="text-[11px] text-[#4E585E] font-normal truncate mt-0.5">
-                          {conv.vehicleTitle}
+                          {chatUnits(conv)}
                         </p>
                       </div>
                     ))}
@@ -325,7 +326,7 @@ export const SellerDashboardView: React.FC = () => {
                         <button type="button" onClick={() => setChatOpen(false)} aria-label="Back to conversations" className="md:hidden -ml-1 p-2 cursor-pointer">
                           <ArrowLeft className="w-5 h-5" aria-hidden="true" />
                         </button>
-                        <span className="min-w-0 truncate">Chatting with {selectedConv.buyerName} ({selectedConv.vehicleTitle})</span>
+                        <span className="min-w-0 truncate">Chatting with {selectedConv.buyerName} ({chatUnits(selectedConv)})</span>
                       </div>
                       <div className="flex-1 min-h-0 p-3 sm:p-5 overflow-y-auto space-y-3.5">
                         {selectedConv.messages.map((m) => (

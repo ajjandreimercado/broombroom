@@ -656,6 +656,11 @@ const endAgentLink = async (clientId: string, agent: string, ref: string, vehicl
   const at = now();
   for (const r of await store.all<ApplyRequest>('apply_requests', { clientId, doneAt: { $exists: false }, ...(vehicleId ? { vehicleId } : { claimedBy: agent }) }))
     await store.put<ApplyRequest>('apply_requests', { ...r, doneAt: at });
+  // The chat (and the client's link to this agent) stays while another unit is still active with them.
+  const moreUnits =
+    (await store.one('applications', { applicantId: clientId, sellerName: agent, status: { $in: [...OPEN, ...HOLDING] }, referenceNo: { $ne: ref } })) ||
+    (await store.one('apply_requests', { clientId, claimedBy: agent, doneAt: { $exists: false } }));
+  if (moreUnits) return;
   for (const c of await store.all<Conversation>('conversations', { buyerId: clientId, sellerName: agent, closedAt: { $exists: false } }))
     await store.put<Conversation>('conversations', { ...c, closedAt: at, unreadSeller: 0 });
   const lead = await store.get<ClientLead>('leads', clientId);
@@ -1431,12 +1436,13 @@ export const startConversation = (me: User, vehicleId: unknown, ref: unknown, me
     if (!(await ownerOf(me.id))) bad(NEEDS_AGENT);
     const v = vehicleId ? need(await store.get<Vehicle>('vehicles', idOf(vehicleId)), 'Listing') : undefined;
     const first = text(message, 'Message', 2000, false);
-    const existing = await store.one<Conversation>('conversations', { buyerId: me.id, vehicleId: v?.id ?? '', closedAt: { $exists: false } });
+    if (!v && !first) bad('Write your message.');
+    const existing = (await store.all<Conversation>('conversations', { buyerId: me.id, closedAt: { $exists: false } }, { updatedAt: -1 }))[0];
     if (existing) {
+      if (v && v.id !== existing.vehicleId) await store.put<Conversation>('conversations', aboutUnit(existing, v));
       if (first) await sendMessage(me, existing.id, { text: first });
       return (await store.get<Conversation>('conversations', existing.id))!;
     }
-    if (!v && !first) bad('Write your message.');
     const owner = await touchLead(me, v?.title ?? GENERAL_TOPIC, true, ref);
     const at = now();
     const t = first || `Hi${owner ? ` ${owner}` : ''}, I am interested in the ${v!.title}. Is it still available for a viewing?`;
@@ -1458,6 +1464,43 @@ export const startConversation = (me: User, vehicleId: unknown, ref: unknown, me
     });
   });
 
+// A client talks to each agent in one chat. The chat's vehicle is the unit being discussed now; every unit the agent
+// sent a link for stays in the thread as an apply-link message.
+const aboutUnit = (c: Conversation, v?: Vehicle): Conversation =>
+  v ? { ...c, vehicleId: v.id, vehicleTitle: v.title, vehiclePrice: v.price, vehicleImage: v.images[0] ?? '' } : c;
+const introducedBy = (c: Conversation, agent: string) => c.messages.some((m) => m.isSeller && !m.byAdmin && m.senderName === agent);
+
+// One chat for each client and agent: older data had one for each unit. Folds them into the oldest chat (same id), in
+// time order, and points the requests that named a removed chat at it. Safe to run on every start.
+export const mergeChats = async () => {
+  const groups = new Map<string, Conversation[]>();
+  for (const c of await store.all<Conversation>('conversations', { closedAt: { $exists: false } }, { updatedAt: 1 })) {
+    const k = `${c.buyerId}|${c.sellerName}`;
+    groups.set(k, [...(groups.get(k) ?? []), c]);
+  }
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const keep = [...g].sort((a, b) => (a.messages[0]?.timestamp ?? '').localeCompare(b.messages[0]?.timestamp ?? ''))[0];
+    const latest = g[g.length - 1];
+    const messages = g.flatMap((c) => c.messages).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    await store.put<Conversation>('conversations', {
+      ...latest,
+      id: keep.id,
+      messages,
+      unreadBuyer: g.reduce((n, c) => n + c.unreadBuyer, 0),
+      unreadSeller: g.reduce((n, c) => n + c.unreadSeller, 0),
+      takenOverAt: g.find((c) => c.takenOverAt)?.takenOverAt,
+      lastMessage: messages[messages.length - 1]?.text ?? latest.lastMessage,
+    });
+    for (const c of g) {
+      if (c.id === keep.id) continue;
+      for (const r of await store.all<ApplyRequest>('apply_requests', { conversationId: c.id }))
+        await store.put<ApplyRequest>('apply_requests', { ...r, conversationId: keep.id });
+      await store.remove('conversations', c.id);
+    }
+  }
+};
+
 // When an agent takes a client, the agent's introduction starts (or continues) their chat: in the client's latest
 // chat, or a new one about the vehicle they applied for or asked a quotation on (else a general chat).
 // The introduction does not count as a reply for the 24-hour rule: the client's own questions still need an answer.
@@ -1465,9 +1508,7 @@ const introduceAgent = async (clientId: string, agent: string): Promise<string |
   const client = await users.byId(clientId);
   if (!client) return undefined;
   const wanted = (await store.get<ClientLead>('leads', clientId))?.applyVehicleId;
-  let conv = wanted
-    ? await store.one<Conversation>('conversations', { buyerId: clientId, vehicleId: wanted, closedAt: { $exists: false } })
-    : (await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false } }, { updatedAt: -1 }))[0];
+  let conv = (await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false } }, { updatedAt: -1 }))[0];
   if (!conv) {
     const app = (await store.all<VehicleApplication>('applications', { applicantId: clientId }, { submittedAt: -1 }))[0];
     const quote = (await store.all<Quotation>('quotations', { clientId }, { requestedAt: -1 }))[0];
@@ -1477,6 +1518,12 @@ const introduceAgent = async (clientId: string, agent: string): Promise<string |
       id: newId('conv'), vehicleId: v?.id ?? '', vehicleTitle: v?.title ?? GENERAL_TOPIC, vehiclePrice: v?.price ?? 0, vehicleImage: v?.images[0] ?? '',
       buyerId: clientId, buyerName: client.name, sellerId: agentSlug(agent), sellerName: agent, lastMessage: '', updatedAt: now(), unreadBuyer: 0, unreadSeller: 0, messages: [],
     };
+  }
+  if (wanted) conv = aboutUnit(conv, await store.get<Vehicle>('vehicles', wanted));
+  // Already their agent in this chat (another unit): no second introduction.
+  if (introducedBy(conv, agent)) {
+    await store.put<Conversation>('conversations', { ...conv, sellerId: agentSlug(agent), sellerName: agent });
+    return conv.id;
   }
   const at = now();
   const t = `Hi ${client.name.split(' ')[0]}! I'm ${agent}, your Broom Broom agent${conv.vehicleId ? ` for the ${conv.vehicleTitle}` : ''}. I can help you with viewings, quotations and your application. How can I help?`;
@@ -1500,7 +1547,7 @@ export const agentConversation = (me: User, clientId: string) =>
   tx(async () => {
     const lead = need(await store.get<ClientLead>('leads', idOf(clientId)), 'Client');
     if (lead.agentName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
-    const existing = (await store.all<Conversation>('conversations', { buyerId: lead.clientId, sellerName: me.name }, { updatedAt: -1 }))[0];
+    const existing = (await store.all<Conversation>('conversations', { buyerId: lead.clientId, sellerName: me.name, closedAt: { $exists: false } }, { updatedAt: -1 }))[0];
     return { conversationId: existing?.id ?? (await introduceAgent(lead.clientId, me.name)) };
   });
 
@@ -1515,11 +1562,12 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     if (isAgent && conv.sellerName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
     if (me.role === 'admin' && !conv.takenOverAt) forbidden('Admins can read conversations but not reply in them. Take over the chat first.');
     let link: Pick<ChatMessage, 'applyVehicleId' | 'applyVehicleTitle' | 'applyAgent'> = {};
+    let unit: Vehicle | undefined;
     if (input?.applyVehicleId) {
       if (!isAgent) forbidden('Only the agent can send an apply link.');
-      const v = need(await store.get<Vehicle>('vehicles', idOf(input.applyVehicleId)), 'Listing');
-      if (v.status !== 'available') bad('That vehicle is not available to apply for.');
-      link = { applyVehicleId: v.id, applyVehicleTitle: v.title, applyAgent: agentSlug(me.name) };
+      unit = need(await store.get<Vehicle>('vehicles', idOf(input.applyVehicleId)), 'Listing');
+      if (unit.status !== 'available') bad('That vehicle is not available to apply for.');
+      link = { applyVehicleId: unit.id, applyVehicleTitle: unit.title, applyAgent: agentSlug(me.name) };
     }
     const t = link.applyVehicleId
       ? text(input.text, 'Message', 2000, false) || `Here is the link to apply for the ${link.applyVehicleTitle}. Fill it in and I will take care of the rest.`
@@ -1529,7 +1577,7 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     const reply = isAgent || isAdmin;
     const msg: ChatMessage = { id: newId('msg'), senderId: me.id, senderName: isAdmin ? 'Broom Broom' : me.name, text: t, timestamp: at, isSeller: reply, ...link, ...(isAdmin ? { byAdmin: true } : {}) };
     await store.put('conversations', {
-      ...conv,
+      ...aboutUnit(conv, unit),
       lastMessage: t,
       updatedAt: at,
       unreadBuyer: reply ? conv.unreadBuyer + 1 : 0,
@@ -1592,17 +1640,21 @@ export const claimRequest = (me: User, id: string) =>
       });
     else if (lead) await store.put<ClientLead>('leads', { ...lead, history: [...lead.history, { at, text: `${me.name} claimed the request for the ${r.vehicleTitle}` }] });
     // The chat about this vehicle, now with this agent.
-    let conv = await store.one<Conversation>('conversations', { buyerId: r.clientId, vehicleId: r.vehicleId, closedAt: { $exists: false }, sellerName: { $in: [TEAM_NAME, me.name] } });
-    if (!conv)
+    let conv = (await store.all<Conversation>('conversations', { buyerId: r.clientId, closedAt: { $exists: false }, sellerName: { $in: [TEAM_NAME, me.name] } }, { updatedAt: -1 }))[0];
+    if (conv) conv = aboutUnit(conv, v);
+    else
       conv = {
         id: newId('conv'), vehicleId: r.vehicleId, vehicleTitle: r.vehicleTitle, vehiclePrice: v?.price ?? 0, vehicleImage: v?.images[0] ?? '',
         buyerId: r.clientId, buyerName: client.name, sellerId: agentSlug(me.name), sellerName: me.name, lastMessage: '', updatedAt: at, unreadBuyer: 0, unreadSeller: 0, messages: [],
       };
     const t = `Hi ${client.name.split(' ')[0]}! I'm ${me.name}, your Broom Broom agent for the ${r.vehicleTitle}. I can help you with viewings, quotations and your application. How can I help?`;
-    await store.put<Conversation>('conversations', {
-      ...conv, sellerId: agentSlug(me.name), sellerName: me.name, lastMessage: t, updatedAt: at, unreadBuyer: conv.unreadBuyer + 1,
-      messages: [...conv.messages, { id: newId('msg'), senderId: me.id, senderName: me.name, text: t, timestamp: at, isSeller: true }],
-    });
+    // The same agent already in this chat (another unit): no second introduction, just the new apply link below.
+    await store.put<Conversation>('conversations', introducedBy(conv, me.name)
+      ? { ...conv, sellerId: agentSlug(me.name), sellerName: me.name }
+      : {
+          ...conv, sellerId: agentSlug(me.name), sellerName: me.name, lastMessage: t, updatedAt: at, unreadBuyer: conv.unreadBuyer + 1,
+          messages: [...conv.messages, { id: newId('msg'), senderId: me.id, senderName: me.name, text: t, timestamp: at, isSeller: true }],
+        });
     if (v?.status === 'available') await sendMessage(me, conv.id, { applyVehicleId: v.id });
     await store.put<ApplyRequest>('apply_requests', { ...r, claimedBy: me.name, claimedAt: at, conversationId: conv.id });
     await notify('client', 'Your agent', `${me.name} is your Broom Broom agent for the ${r.vehicleTitle} and sent you the application link.`, 'messages', r.clientId);

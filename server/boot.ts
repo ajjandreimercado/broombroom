@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { connectDb } from './db.ts';
 import { seedIfEmpty } from './seed.ts';
+import { mergeChats } from './services.ts';
 
 // Connects to MongoDB and loads the first data. MONGODB_URI (Atlas) wins; without it, development gets a local
 // MongoDB kept in server/data/mongo. Production refuses to start without MONGODB_URI, so data is never lost by accident.
@@ -17,4 +18,5 @@ export const boot = async ({ production = false } = {}) => {
   }
   await connectDb(uri);
   await seedIfEmpty();
+  await mergeChats();
 };
