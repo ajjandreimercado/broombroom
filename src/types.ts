@@ -134,7 +134,7 @@ export interface AddOns {
 
 // A partial payment the admin confirmed; each one releases a numbered acknowledgement receipt (AR).
 export interface PaymentReceipt {
-  arNo: string; // 2026-0001, counted across every application
+  arNo: string; // 2026-01-31-0001 (issue date + a running number for the year; older ones are 2026-0001)
   date: string;
   description: string;
   amount: number;
@@ -166,6 +166,8 @@ export interface ManualReceipt {
   attachmentName?: string;
   createdAt: string;
   editedAt?: string;
+  clientId?: string; // set on paluwagan month receipts: the client can see and save it
+  agentName?: string; // the authorized sales agent who handles the client (printed on the AR)
 }
 
 // A company money account the accounting pages use: cash or a bank account expenses are paid from (amount =
@@ -225,6 +227,7 @@ export interface Conversation {
   // The admin took over after the client waited 2 days for a reply; the admin can then answer in this chat.
   takenOverAt?: string;
   closedAt?: string; // ended when the client's vehicle was released: read-only, hidden from the agent
+  paluwagan?: boolean; // a client's chat with the Broom Broom team about paluwagan: the admin answers, no agent
 }
 
 export interface UserProfile {
@@ -475,6 +478,73 @@ export interface PreOrderAccessory {
   name: string;
   price: number;
 }
+// Paluwagan: a unit shown as just a photo and a name, with 36 slots. Clients join through the Google Form; the admin
+// confirms each member and marks each of their 36 monthly payments.
+export const PALUWAGAN_SLOTS = 36;
+// After verification the agent whose link the client used has this long to claim them before anyone can.
+export const PALUWAGAN_RESERVE_MS = 24 * 3600e3;
+// Nobody claimed a verified member this long after anyone could: the admin is told.
+export const PALUWAGAN_UNCLAIMED_MS = 2 * 3600e3;
+export const claimOpensAt = (m: { verifiedAt?: string; referredBy?: string }) =>
+  m.verifiedAt ? new Date(m.verifiedAt).getTime() + (m.referredBy ? PALUWAGAN_RESERVE_MS : 0) : Infinity;
+export interface PaluwaganUnit {
+  id: string;
+  title: string;
+  images: string[];
+  description?: string;
+  hidden?: boolean;
+  startDate?: string; // YYYY-MM-DD: month 1 is due then; no date, no due dates or reminders
+  dueDay?: number; // 1-28: the day each month is due (default: the start date's day)
+  monthlyAmount?: number; // what each month costs: a month marked paid gets it and its AR automatically
+  createdAt: string;
+  taken: number[]; // slot numbers held by members (added by the server, no names)
+}
+export interface PaluwaganMonth {
+  paid: boolean;
+  paidAt?: string;
+  amount?: number; // what the client gave that month (optional, set by the admin)
+  note?: string;
+  arNo?: string; // the acknowledgement receipt written for it
+}
+export interface PaluwaganMember {
+  id: string;
+  unitId: string;
+  unitTitle: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  clientPhone: string;
+  // waitlist: the paluwagan was full; pending: opened the Google Form; joined: came back saying it was sent (has a
+  // slot); released: the unit is theirs (all 36 paid, or by the admin in slot order; keeps its slot); removed
+  status: 'waitlist' | 'pending' | 'joined' | 'released' | 'removed';
+  slot?: number; // 1..36
+  months: PaluwaganMonth[]; // always 36
+  createdAt: string;
+  joinedAt?: string;
+  releasedAt?: string;
+  releasedManually?: boolean; // the admin handed the unit over before all 36 months were in
+  remindedMonths?: number[]; // months a due-date reminder was sent for
+  referredBy?: string; // the agent whose paluwagan link the client used
+  careAgent?: string; // the agent who claimed the client (customer care); the admin can change it
+  verifiedAt?: string; // the admin checked the form and month 1 was paid: agents can then claim the client
+  claimAlertAt?: string; // the admin was told nobody claimed the client
+  // The commission the referring agent asks (any amount); approved, it becomes a payable commission.
+  commission?: { amount: number; status: 'requested' | 'approved' | 'declined'; setAt: string; commissionId?: string };
+  history: { at: string; text: string }[];
+}
+
+// Customer care: every reminder, call or note an agent logs for a client (part of the client's history).
+export interface CareLog {
+  id: string;
+  clientId: string;
+  clientName: string;
+  agentName: string;
+  kind: 'reminder' | 'call' | 'note';
+  text: string;
+  memberId?: string;
+  createdAt: string;
+}
+
 export interface PreOrderSettings {
   accessories: PreOrderAccessory[]; // the admin adds, edits and deletes them
   offRoadPrice: number; // the Off-Road Set Up package (its inclusions are fixed)

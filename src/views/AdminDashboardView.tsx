@@ -16,8 +16,10 @@ import { VoucherPage } from '../components/accounting/VoucherPage.tsx';
 import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { ReceiptsPage } from '../components/accounting/ReceiptsPage.tsx';
 import { LeadsManager } from '../components/admin/LeadsManager.tsx';
+import { ClientLookup } from '../components/admin/ClientLookup.tsx';
 import { AccountsManager } from '../components/admin/AccountsManager.tsx';
 import { PreOrdersList, PreOrderSetup } from '../components/admin/PreOrders.tsx';
+import { PaluwaganMembers, PaluwaganSetup } from '../components/admin/Paluwagan.tsx';
 import {
   ShieldAlert,
   LayoutDashboard,
@@ -38,15 +40,17 @@ import {
   ReceiptText,
   Users,
   UserCog,
+  Search,
   ClipboardList,
   SlidersHorizontal,
+  HandCoins,
 } from 'lucide-react';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 
 type NavItem = { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number };
 
 export const AdminDashboardView: React.FC = () => {
-  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations, leads, referrals, preorders } = useApp();
+  const { adminTab, navigateTo, vehicles, reports, applications, commissions, listingRequests, conversations, quotations, leads, referrals, preorders, paluwagan } = useApp();
   const open = ['submitted', 'under_review', 'contacted'];
 
   // Grouped so the admin reads the sidebar as: what needs me, what I manage, who I oversee.
@@ -64,6 +68,7 @@ export const AdminDashboardView: React.FC = () => {
         },
         { id: 'commissions', label: 'Commissions', icon: Wallet, count: commissions.filter((c) => c.status !== 'paid').length },
         { id: 'preorders', label: 'Pre-orders', icon: ClipboardList, count: preorders.filter((p) => !p.locked && !p.additionalAmount && !!p.applicationRef).length || undefined },
+        { id: 'paluwagan', label: 'Paluwagan', icon: HandCoins, count: paluwagan.filter((m) => m.commission?.status === 'requested' || ((m.status === 'joined' || m.status === 'released') && !m.verifiedAt)).length || undefined },
       ],
     },
     {
@@ -82,6 +87,7 @@ export const AdminDashboardView: React.FC = () => {
         { id: 'vehicles', label: 'Listings', icon: Car, count: vehicles.length },
         { id: 'add_vehicle', label: 'Add listing', icon: PlusCircle },
         { id: 'preorder_setup', label: 'Pre-order setup', icon: SlidersHorizontal },
+        { id: 'paluwagan_setup', label: 'Paluwagan listings', icon: HandCoins },
         { id: 'reports', label: 'Reports', icon: Flag, count: reports.filter((r) => r.status === 'pending').length },
       ],
     },
@@ -89,6 +95,7 @@ export const AdminDashboardView: React.FC = () => {
       title: 'Agents',
       items: [
         { id: 'approvals', label: 'Agent requests', icon: ClipboardCheck, count: listingRequests.filter((r) => r.status === 'pending').length },
+        { id: 'clients', label: 'Client lookup', icon: Search },
         { id: 'leads', label: 'Clients & leads', icon: Users, count: leads.filter((l) => !l.agentName).length },
         { id: 'agent_reports', label: 'Agent reports', icon: BarChart3 },
         { id: 'referrals', label: 'Referrals', icon: UserPlus, count: referrals.filter((r) => r.status === 'receivable' || r.status === 'processing').length },
@@ -169,9 +176,12 @@ export const AdminDashboardView: React.FC = () => {
             {adminTab === 'acc_reports' && <SalesReport />}
             {adminTab === 'acc_receipts' && <ReceiptsPage />}
             {adminTab === 'leads' && <LeadsManager />}
+            {adminTab === 'clients' && <ClientLookup />}
             {adminTab === 'accounts' && <AccountsManager />}
             {adminTab === 'preorders' && <PreOrdersList />}
             {adminTab === 'preorder_setup' && <PreOrderSetup />}
+            {adminTab === 'paluwagan' && <PaluwaganMembers />}
+            {adminTab === 'paluwagan_setup' && <PaluwaganSetup />}
             </ErrorBoundary>
           </main>
         </div>

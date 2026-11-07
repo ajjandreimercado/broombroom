@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useApp, FilterState } from '../context/AppContext.tsx';
 import { VehicleCard } from '../components/VehicleCard.tsx';
+import { PaluwaganSection } from '../components/Paluwagan.tsx';
 import { AnimatePresence, motion } from 'motion/react';
 import { indicatorTransition, backdropMotion, sheetMotion } from '../motion.ts';
-import { VehicleCategory } from '../types.ts';
 import {
   Search,
   SlidersHorizontal,
@@ -23,7 +23,7 @@ export const MarketplaceView: React.FC = () => {
 
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
-  const categories: { label: string; value: VehicleCategory }[] = [
+  const categories: { label: string; value: FilterState['category'] }[] = [
     { label: 'All', value: 'all' },
     { label: 'Cars', value: 'cars' },
     { label: 'Motorcycles', value: 'motorcycles' },
@@ -31,7 +31,9 @@ export const MarketplaceView: React.FC = () => {
     { label: 'E-Bikes', value: 'ebikes' },
     { label: 'Scooters', value: 'scooters' },
     { label: 'ATVs', value: 'atvs' },
+    { label: 'Paluwagan', value: 'paluwagan' },
   ];
+  const paluwagan = filters.category === 'paluwagan';
 
   const activeFiltersCount = [
     filters.category !== 'all',
@@ -173,13 +175,13 @@ export const MarketplaceView: React.FC = () => {
             <h1 className="font-display text-[clamp(2.2rem,5vw,4rem)] leading-[0.95] text-[#141517]">
               {currentView === 'deals' ? 'Deals' : 'Marketplace'}
             </h1>
-            <p className="text-[14px] text-[#4E585E] md:pb-1">
+            <p className={`text-[14px] text-[#4E585E] md:pb-1 ${paluwagan ? 'invisible' : ''}`}>
               <span className="font-display text-[22px] text-[#141517] tabular-nums mr-1.5">{filteredVehicles.length}</span>
               {filteredVehicles.length === 1 ? 'vehicle matches' : 'vehicles match'}
             </p>
           </div>
 
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-[1fr_auto] border-t-2 border-[#141517]">
+          <div className={`mt-8 grid-cols-1 md:grid-cols-[1fr_auto] border-t-2 border-[#141517] ${paluwagan ? 'hidden' : 'grid'}`}>
             <label className="relative flex items-center gap-3 py-3 md:pr-6">
               <Search className="w-4 h-4 text-[#4E585E] shrink-0" aria-hidden="true" />
               <span className="sr-only">Search vehicles</span>
@@ -254,6 +256,7 @@ export const MarketplaceView: React.FC = () => {
 
       {/* Main content */}
       <div className="gb-container py-10">
+        {paluwagan ? <PaluwaganSection /> : (
         <div className="flex gap-10">
 
           {/* Desktop filter column */}
@@ -302,6 +305,7 @@ export const MarketplaceView: React.FC = () => {
             )}
           </main>
         </div>
+        )}
       </div>
 
       {/* ── MOBILE FILTER DRAWER ── */}

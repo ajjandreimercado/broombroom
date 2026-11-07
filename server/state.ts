@@ -1,8 +1,8 @@
 /// <reference types="node" />
-import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount, Referral, ApplyRequest, PreOrder } from '../src/types.ts';
+import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount, Referral, ApplyRequest, PreOrder, PaluwaganMember, CareLog } from '../src/types.ts';
 import { store } from './db.ts';
 import { users, publicUser, type User } from './auth.ts';
-import { notificationScope, ownerOf, preorderSettings } from './services.ts';
+import { notificationScope, ownerOf, preorderSettings, paluwaganUnits } from './services.ts';
 
 const NEWEST = (field: string) => ({ [field]: -1 as const });
 
@@ -21,23 +21,25 @@ export const buildState = async (me?: User) => {
   const role = me?.role;
   const vehicles = await store.all<Vehicle>('vehicles', role === 'admin' || role === 'seller' ? {} : { status: { $in: ['available', 'reserved'] } }, NEWEST('createdAt'));
   // The Google client ID is public (it is in every Google button); the site shows the button only when it is set.
-  const base = { me: me ? publicUser(me) : null, vehicles, googleClientId: process.env.GOOGLE_CLIENT_ID || null };
+  const base = { me: me ? publicUser(me) : null, vehicles, paluwaganUnits: await paluwaganUnits(role === 'admin'), googleClientId: process.env.GOOGLE_CLIENT_ID || null };
   // A temporary password shows nothing until the person sets their own.
-  if (me?.mustChangePassword) return { ...base, vehicles: [] };
+  if (me?.mustChangePassword) return { ...base, vehicles: [], paluwaganUnits: [] };
   if (!me) return base;
 
   const notifications = (await store.all<AppNotification>('notifications', notificationScope(me), NEWEST('createdAt'))).slice(0, 200);
 
   if (role === 'buyer') {
-    const [applications, conversations, quotations, myAgent, preorders, settings] = await Promise.all([
+    const [applications, conversations, quotations, myAgent, preorders, settings, paluwagan, receipts] = await Promise.all([
       store.all<VehicleApplication>('applications', { applicantId: me.id }, NEWEST('submittedAt')),
       store.all<Conversation>('conversations', { buyerId: me.id }, NEWEST('updatedAt')),
       store.all<Quotation>('quotations', { clientId: me.id }, NEWEST('requestedAt')),
       ownerOf(me.id),
       withAgents({ clientId: me.id }),
       preorderSettings(),
+      store.all<PaluwaganMember>('paluwagan_members', { clientId: me.id }, NEWEST('createdAt')),
+      store.all<ManualReceipt>('receipts', { clientId: me.id }, NEWEST('date')),
     ]);
-    return { ...base, notifications, applications, conversations, quotations, myAgent: myAgent ?? null, preorders, preorderSettings: settings };
+    return { ...base, notifications, applications, conversations, quotations, myAgent: myAgent ?? null, preorders, preorderSettings: settings, paluwagan, receipts };
   }
 
   const agents = (await users.agents()).map((a) => a.name);
@@ -54,7 +56,7 @@ export const buildState = async (me?: User) => {
     const leads = await Promise.all(
       rawLeads.map(async (l) => {
         if (l.agentName) return l;
-        const last = (await store.all<Conversation>('conversations', { buyerId: l.clientId }))
+        const last = (await store.all<Conversation>('conversations', { buyerId: l.clientId, paluwagan: { $exists: false } }))
           .flatMap((c) => c.messages.filter((m) => !m.isSeller))
           .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
         return { ...l, preview: last?.text };
@@ -67,7 +69,12 @@ export const buildState = async (me?: User) => {
     // Agents get no quotations, only whether one is out with the client (their add-ons edits are then locked).
     const sent = await store.all<Quotation>('quotations', { applicationRef: { $in: applications.map((a) => a.referenceNo) }, status: { $in: ['sent', 'returned', 'confirmed', 'accepted'] } });
     const forAgent = applications.map(({ infoSheet, ciComments, ...a }) => ({ ...a, quoteSent: sent.some((q) => q.applicationRef === a.referenceNo) }));
-    return { ...base, notifications, agents, conversations, leads, applyRequests, applications: forAgent, commissions, listingRequests, preorders, preorderSettings: settings };
+    // Members they referred (commission), care for (customer care: with the phone and history, never the email), or
+    // can claim (verified, no care agent yet: name, unit and slot only).
+    const paluwagan = (await store.all<PaluwaganMember>('paluwagan_members', { $or: [{ referredBy: me.name }, { careAgent: me.name }, { verifiedAt: { $exists: true }, careAgent: { $exists: false } }], status: { $nin: ['pending', 'waitlist'] } }, NEWEST('createdAt')))
+      .map(({ clientEmail, clientPhone, history, ...m }) => (m.careAgent === me.name ? { ...m, clientPhone, history } : m));
+    const careLogs = await store.all<CareLog>('care_logs', { agentName: me.name }, NEWEST('createdAt'));
+    return { ...base, notifications, agents, conversations, leads, applyRequests, applications: forAgent, commissions, listingRequests, preorders, preorderSettings: settings, paluwagan, careLogs };
   }
 
   // Admin: everything, plus the account list (never password hashes).
@@ -88,7 +95,7 @@ export const buildState = async (me?: User) => {
     store.all<Referral>('referrals', {}, NEWEST('createdAt')),
     store.all<ApplyRequest>('apply_requests', {}, NEWEST('createdAt')),
   ]);
-  const [preorders, settings] = await Promise.all([withAgents({}), preorderSettings()]);
+  const [preorders, settings, paluwagan, careLogs] = await Promise.all([withAgents({}), preorderSettings(), store.all<PaluwaganMember>('paluwagan_members', {}, { slot: 1 }), store.all<CareLog>('care_logs', {}, NEWEST('createdAt'))]);
   return {
     ...base,
     notifications,
@@ -110,5 +117,7 @@ export const buildState = async (me?: User) => {
     applyRequests,
     preorders,
     preorderSettings: settings,
+    paluwagan,
+    careLogs,
   };
 };

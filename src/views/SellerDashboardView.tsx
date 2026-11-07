@@ -7,7 +7,8 @@ import { SellerTab } from '../context/AppContext.tsx';
 import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { Commissions } from '../components/Commissions.tsx';
 import { AgentListings } from '../components/agent/AgentListings.tsx';
-import { AgentLeads } from '../components/agent/AgentLeads.tsx';
+import { AgentLeads, claimablePaluwagan } from '../components/agent/AgentLeads.tsx';
+import { CareDesk, careAttention } from '../components/agent/CareDesk.tsx';
 import { PreOrderPanel } from '../components/PreOrderPanel.tsx';
 import { AddOnsPanel } from '../components/AddOnsPanel.tsx';
 import {
@@ -22,6 +23,7 @@ import {
   Send,
   Users,
   ClipboardList,
+  HeartHandshake,
 } from 'lucide-react';
 import { ErrorBoundary } from '../components/ErrorBoundary.tsx';
 
@@ -43,6 +45,8 @@ export const SellerDashboardView: React.FC = () => {
     markConversationRead,
     preorders,
     preorderUnits,
+    paluwagan,
+    paluwaganUnits,
   } = useApp();
 
   // Every agent can sell every listing; chats and commissions are only for the agent's own clients.
@@ -98,8 +102,9 @@ export const SellerDashboardView: React.FC = () => {
 
   const sellerTabs: { id: SellerTab; label: string; icon: any; count?: number }[] = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+    { id: 'clients', label: 'My clients', icon: HeartHandshake, count: careAttention(paluwagan, paluwaganUnits, me) || undefined },
     { id: 'sales_report', label: 'Sales Report', icon: BarChart3 },
-    { id: 'leads', label: 'Leads', icon: Users, count: openLeads },
+    { id: 'leads', label: 'Leads', icon: Users, count: openLeads + claimablePaluwagan(paluwagan).length },
     { id: 'preorders', label: 'Pre-orders & add-ons', icon: ClipboardList, count: preorders.filter((p) => !p.locked).length + readyApps.filter((a) => a.addOns && !a.quoteSent).length || undefined },
     // Chats with messages the agent has not read yet; opening a chat marks it read.
     { id: 'messages', label: 'Client Chats', icon: MessageSquare, count: conversations.filter((c) => c.unreadSeller > 0).length },
@@ -121,7 +126,7 @@ export const SellerDashboardView: React.FC = () => {
                 {currentUser?.name || 'Agent'}
               </h1>
               <p className="text-[13px] text-[#4E585E] mt-2">
-                Sales agent · Help clients choose and buy, then track your commissions.
+                Sales agent · Your clients' customer care: help them choose and buy, keep them updated on what is due, and track your commissions.
               </p>
             </div>
           </div>
@@ -260,6 +265,7 @@ export const SellerDashboardView: React.FC = () => {
             {/* 3. VEHICLES MANAGEMENT */}
             {sellerTab === 'vehicles' && <AgentListings vehicles={sellerVehicles} />}
             {sellerTab === 'leads' && <AgentLeads />}
+            {sellerTab === 'clients' && <CareDesk />}
             {sellerTab === 'preorders' && (
               <div className="space-y-4">
                 <div className="pb-3 border-b-2 border-[#141517]">

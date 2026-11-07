@@ -333,6 +333,25 @@ export const createApp = () => {
   api.post('/preorder-units', requireRole('admin'), act((req) => svc.savePreorderUnit(null, body(req))));
   api.patch('/preorder-units/:id', requireRole('admin'), act((req) => svc.savePreorderUnit(req.params.id, body(req))));
   api.delete('/preorder-units/:id', requireRole('admin'), act((req) => svc.deletePreorderUnit(req.params.id)));
+
+  // ---------- paluwagan ----------
+  api.post('/paluwagan-units', requireRole('admin'), act((req) => svc.savePaluwaganUnit(null, body(req))));
+  api.patch('/paluwagan-units/:id', requireRole('admin'), act((req) => svc.savePaluwaganUnit(req.params.id, body(req))));
+  api.delete('/paluwagan-units/:id', requireRole('admin'), act((req) => svc.deletePaluwaganUnit(req.params.id)));
+  api.post('/paluwagan-units/:id/join', requireRole('buyer'), act((req) => svc.joinPaluwagan(me(req), req.params.id, body(req).ref, body(req).waitlist)));
+  api.post('/paluwagan-units/:id/chat', requireRole('buyer'), act((req) => svc.paluwaganChat(me(req), req.params.id, body(req).text)));
+  api.post('/paluwagan-members/:id/confirm', requireRole('buyer'), act((req) => svc.confirmPaluwagan(me(req), req.params.id)));
+  api.patch('/paluwagan-members/:id/months/:month', requireRole('admin'), act((req) => svc.setPaluwaganMonth(me(req), req.params.id, req.params.month, body(req))));
+  api.post('/paluwagan-members/:id/release', requireRole('admin'), act((req) => svc.releasePaluwagan(req.params.id, body(req).undo)));
+  api.post('/paluwagan-members/:id/commission', requireRole('seller'), act((req) => svc.setPaluwaganCommission(me(req), req.params.id, body(req).amount)));
+  api.post('/paluwagan-members/:id/commission/decide', requireRole('admin'), act((req) => svc.decidePaluwaganCommission(req.params.id, body(req).approve)));
+  api.post('/paluwagan-members/:id/remove', requireRole('admin'), act((req) => svc.removePaluwaganMember(req.params.id)));
+  api.patch('/paluwagan-members/:id/care-agent', requireRole('admin'), act((req) => svc.setCareAgent(req.params.id, body(req).agent)));
+  api.post('/paluwagan-members/:id/verify', requireRole('admin'), act((req) => svc.verifyPaluwagan(me(req), req.params.id)));
+  api.post('/paluwagan-members/:id/claim', requireRole('seller'), act((req) => svc.claimPaluwagan(me(req), req.params.id)));
+  // ---------- customer care (agents) ----------
+  api.post('/care/:memberId/remind', requireRole('seller'), act((req) => svc.careRemind(me(req), req.params.memberId, body(req).text)));
+  api.post('/care/:memberId/log', requireRole('seller'), act((req) => svc.careLog(me(req), req.params.memberId, body(req).kind, body(req).text)));
   api.post('/applications/:id/info-sheet', requireRole('buyer'), act((req) => svc.submitInfoSheet(me(req), req.params.id, body(req))));
   api.post('/applications/:id/release', requireRole('admin'), act((req) => svc.releaseVehicle(me(req), req.params.id, body(req))));
   api.patch('/applications/:id/payments/:arNo', requireRole('admin'), act((req) => svc.updatePayment(me(req), req.params.id, req.params.arNo, body(req))));
@@ -460,6 +479,10 @@ export const startJobs = () => {
   const run = () =>
     svc
       .runLeadRules()
+      .then((changed) => changed && broadcastChange())
+      .then(() => svc.paluwaganReminders())
+      .then((changed) => changed && broadcastChange())
+      .then(() => svc.paluwaganClaimAlerts())
       .then((changed) => changed && broadcastChange())
       .then(() => svc.removeAbandonedUploads())
       .catch((e) => console.error('background jobs failed', e));

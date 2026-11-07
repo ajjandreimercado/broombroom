@@ -6,6 +6,7 @@ import { StatusMark } from '../components/StatusMark.tsx';
 import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts';
 import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
 import { MyQuotations } from '../components/MyQuotations.tsx';
+import { MyPaluwagan } from '../components/PaluwaganSoa.tsx';
 import { PreOrderPanel } from '../components/PreOrderPanel.tsx';
 import { AddOnsPanel } from '../components/AddOnsPanel.tsx';
 import { quoteFor } from '../components/quote.ts';
@@ -13,6 +14,7 @@ import { useApp } from '../context/AppContext.tsx';
 import { AccountTab } from '../context/AppContext.tsx';
 import { VehicleCard } from '../components/VehicleCard.tsx';
 import {
+  HandCoins,
   User,
   Bookmark,
   MessageSquare,
@@ -41,6 +43,7 @@ import {
 export const AccountView: React.FC = () => {
   const {
     currentUser,
+    paluwagan,
     accountTab,
     navigateTo,
     logout,
@@ -48,6 +51,7 @@ export const AccountView: React.FC = () => {
     applications,
     withdrawApplication,
     conversations,
+    updateFilter,
     activeConversationId,
     setActiveConversationId,
     writeToAgent,
@@ -178,6 +182,7 @@ export const AccountView: React.FC = () => {
     { id: 'applications', label: 'My Applications', icon: FileText, badge: userApplications.length },
     { id: 'quotations', label: 'My Quotations', icon: Calculator, badge: quotations.filter((q) => q.clientId === currentUser?.id).length || undefined },
     { id: 'preorders', label: 'My Pre-orders', icon: FileText, badge: preorders.length || undefined },
+    ...(paluwagan.some((m) => m.status === 'joined' || m.status === 'released') ? [{ id: 'paluwagan' as const, label: 'My Paluwagan', icon: HandCoins }] : []),
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: conversations.filter((c) => c.unreadBuyer > 0).length },
     { id: 'recently_viewed', label: 'Recently Viewed', icon: Clock },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: notifications.filter((n) => !n.read).length },
@@ -459,6 +464,13 @@ export const AccountView: React.FC = () => {
             {/* 3. MY APPLICATIONS TAB */}
             {accountTab === 'quotations' && <MyQuotations />}
 
+            {accountTab === 'paluwagan' && (
+              <div className="space-y-4">
+                <h2 className="font-display text-[22px] text-[#141517] pb-3 border-b-2 border-[#141517]">My Paluwagan</h2>
+                <MyPaluwagan />
+              </div>
+            )}
+
             {accountTab === 'preorders' && (
               <div className="space-y-4">
                 <h2 className="font-display text-[22px] text-[#141517] pb-3 border-b-2 border-[#141517]">My Pre-orders</h2>
@@ -702,9 +714,13 @@ export const AccountView: React.FC = () => {
 
                         {selectedConversation.vehicleId && (
                           <button
-                            onClick={() =>
-                              navigateTo('vehicle_detail', { vehicleId: selectedConversation.vehicleId })
-                            }
+                            onClick={() => {
+                              // A paluwagan chat's unit is not a marketplace listing: open the Paluwagan section.
+                              if (selectedConversation.paluwagan) {
+                                updateFilter('category', 'paluwagan');
+                                navigateTo('marketplace');
+                              } else navigateTo('vehicle_detail', { vehicleId: selectedConversation.vehicleId });
+                            }}
                             className="shrink-0 text-xs font-semibold text-[#4E585E] hover:text-[#1D5FD1] flex items-center gap-1 cursor-pointer transition-colors"
                           >
                             <span>Listing</span>

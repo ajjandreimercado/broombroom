@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext.tsx';
 import { COMMISSION_RATE } from '../data/constants.ts';
-import { Commission } from '../types.ts';
+import { Commission, VehicleApplication } from '../types.ts';
 import { openCommissionReceipt } from './receipt.ts';
 import { photoDataUrl } from '../media.ts';
 import { dataUrlToBlob } from '../api.ts';
@@ -15,6 +15,17 @@ const ALL_STAGES: { value: Stage; label: string; explain: string }[] = [
   { value: 'payable', label: 'Payable', explain: 'The vehicle was released. Waiting for the cash transfer.' },
   { value: 'paid', label: 'Paid', explain: 'Cash transferred with proof of payment. The PDF receipt is ready.' },
 ];
+
+// What a commission was earned for: a vehicle sale (add-ons included), a pre-order, or a paluwagan referral.
+type Kind = 'sale' | 'preorder' | 'paluwagan';
+const KINDS: { value: Kind; label: string; explain: string }[] = [
+  { value: 'sale', label: 'Vehicle sales', explain: 'Ready units sold through you, with any add-ons commission included.' },
+  { value: 'preorder', label: 'Pre-orders', explain: 'Units built to order: a share of the net amount.' },
+  { value: 'paluwagan', label: 'Paluwagan', explain: 'Members who joined a paluwagan through your link: the amount you set, approved by the admin.' },
+];
+const kindOf = (c: Commission, apps: VehicleApplication[]): Kind =>
+  c.vehicleTitle.startsWith('Paluwagan:') ? 'paluwagan' : apps.find((a) => a.referenceNo === c.applicationRef)?.preorderRef ? 'preorder' : 'sale';
+const kindLabel = (k: Kind) => KINDS.find((x) => x.value === k)!.label;
 
 // The steps a commission moves through, drawn as a ruled track.
 const StageTrack: React.FC<{ status: Stage; stages: typeof ALL_STAGES }> = ({ status, stages: STAGES }) => {
@@ -38,12 +49,15 @@ const StageTrack: React.FC<{ status: Stage; stages: typeof ALL_STAGES }> = ({ st
 
 // Agent commissions. Agents read theirs; the admin approves, pays (with proof) and issues the receipt.
 export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean }> = ({ mode, compact = false }) => {
-  const { commissions, payCommission, navigateTo, currentUser, showToast } = useApp();
+  const { commissions, applications, payCommission, navigateTo, currentUser, showToast } = useApp();
   // Same status ('payable'), named from who's looking: the company pays it out, the agent is owed it (receivable).
   const STAGES = mode === 'agent'
     ? ALL_STAGES.map((s) => (s.value === 'payable' ? { ...s, label: 'Receivable', explain: 'The vehicle was released. This is owed to you; waiting for the cash transfer.' } : s))
     : ALL_STAGES; // unreleased (older, receivable) ones are not shown
-  const mine = commissions.filter((c) => STAGES.some((s) => s.value === c.status) && (mode === 'admin' || c.agentName === currentUser?.name));
+  const everyKind = commissions.filter((c) => STAGES.some((s) => s.value === c.status) && (mode === 'admin' || c.agentName === currentUser?.name));
+  const [kind, setKind] = useState<Kind | 'all'>('all');
+  const kinds = new Map(everyKind.map((c) => [c.id, kindOf(c, applications)]));
+  const mine = kind === 'all' || compact ? everyKind : everyKind.filter((c) => kinds.get(c.id) === kind);
   const [stage, setStage] = useState<Stage | 'all'>(mode === 'admin' ? 'payable' : 'all');
   const [error, setError] = useState('');
 
@@ -67,7 +81,7 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
   };
 
   const receipt = (c: Commission) => {
-    if (!openCommissionReceipt(c)) showToast('Allow pop-ups', 'Your browser blocked the receipt window. Allow pop-ups for this site and try again.', 'error');
+    if (!openCommissionReceipt(c, kindLabel(kinds.get(c.id) ?? 'sale'))) showToast('Allow pop-ups', 'Your browser blocked the receipt window. Allow pop-ups for this site and try again.', 'error');
   };
 
   return (
@@ -85,6 +99,21 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
           </button>
         )}
       </SectionHeader>
+
+      {!compact && (
+        <div className="space-y-2">
+          <FilterTabs
+            id={`kind-${mode}`}
+            value={kind}
+            onChange={setKind}
+            options={[
+              { value: 'all', label: 'All kinds', count: everyKind.length },
+              ...KINDS.map((k) => ({ value: k.value, label: k.label, count: everyKind.filter((c) => kinds.get(c.id) === k.value).length })),
+            ]}
+          />
+          {kind !== 'all' && <p className="text-[13px] text-[#4E585E]">{KINDS.find((k) => k.value === kind)?.explain}</p>}
+        </div>
+      )}
 
       {/* Stage totals: what is owed at each step */}
       <dl className={`grid ${STAGES.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} border-b border-[#C9D1D6]`}>
@@ -125,16 +154,24 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
         />
       ) : (
         <ul key={stage} className="animate-view-fade">
-          {rows.map((c) => (
+          {rows.map((c) => {
+            const k = kinds.get(c.id) ?? 'sale';
+            const addOns = k === 'sale' ? applications.find((a) => a.referenceNo === c.applicationRef)?.addOnsCommission : undefined;
+            return (
             <li key={c.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-x-6 gap-y-3 py-4 border-b border-[#C9D1D6]">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                  <p className="font-semibold text-[15px] text-[#141517]">{c.vehicleTitle}</p>
+                  <p className="font-semibold text-[15px] text-[#141517]">
+                    <span className={`mr-2 align-middle px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wider ${k === 'paluwagan' ? 'bg-[#EAF5EC] text-[#1B7F35]' : k === 'preorder' ? 'bg-[#EEF3FC] text-[#1D5FD1]' : 'bg-[#EEF1F2] text-[#2A2E31]'}`}>{kindLabel(k)}</span>
+                    {c.vehicleTitle}
+                  </p>
                   <p className="font-display text-[20px] leading-none tabular-nums text-[#141517]">{peso(c.amount)}</p>
                 </div>
                 <p className="mt-1 text-[12.5px] text-[#4E585E] tabular-nums">
                   {c.applicationRef} · Client {c.clientName}
-                  {mode === 'admin' && <> · Agent <strong className="text-[#141517] font-semibold">{c.agentName}</strong></>} · Sale {peso(c.salePrice)}
+                  {mode === 'admin' && <> · Agent <strong className="text-[#141517] font-semibold">{c.agentName}</strong></>}
+                  {c.salePrice > 0 && <> · Sale {peso(c.salePrice)}</>}
+                  {!!addOns && <> · includes {peso(addOns)} add-ons</>}
                 </p>
                 <div className="mt-2.5">
                   <StageTrack status={c.status} stages={STAGES} />
@@ -171,12 +208,13 @@ export const Commissions: React.FC<{ mode: 'agent' | 'admin'; compact?: boolean 
                 )}
                 {mode === 'agent' && c.status !== 'paid' && (
                   <span className="text-[12.5px] text-[#4E585E]">
-                    Vehicle released · cash transfer pending
+                    {k === 'paluwagan' ? 'Approved' : 'Vehicle released'} · cash transfer pending
                   </span>
                 )}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </section>

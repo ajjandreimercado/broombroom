@@ -1,14 +1,3 @@
-import type { VehicleApplication } from '../types.ts';
-
-// Next acknowledgement receipt number: one running count per year across every application.
-export const nextArNo = (apps: VehicleApplication[], year = new Date().getFullYear()) => {
-  const used = apps
-    .flatMap((a) => a.payments ?? [])
-    .filter((p) => p.arNo.startsWith(`${year}-`))
-    .map((p) => Number(p.arNo.slice(5)));
-  return `${year}-${String(Math.max(0, ...used) + 1).padStart(4, '0')}`;
-};
-
 const ONES = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
 const TENS = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
 const SCALES = ['', 'THOUSAND', 'MILLION', 'BILLION'];

@@ -27,7 +27,8 @@ type DraftLine = { description: string; qty: string; price: string };
 
 // Create or edit a hand-written AR, laid out like the paper receipt: lines of description, qty, price and amount.
 const ReceiptForm: React.FC<{ initial?: ManualReceipt; onDone: () => void }> = ({ initial, onDone }) => {
-  const { saveReceipt, showToast } = useApp();
+  const { saveReceipt, showToast, agents } = useApp();
+  const [agentName, setAgentName] = useState(initial?.agentName ?? '');
   const [date, setDate] = useState(initial ? dayOf(initial.date) : today());
   const [receivedFrom, setReceivedFrom] = useState(initial?.receivedFrom ?? '');
   const [lines, setLines] = useState<DraftLine[]>(initial?.lines.map((l) => ({ description: l.description, qty: String(l.qty), price: String(l.price) })) ?? [{ description: '', qty: '1', price: '' }]);
@@ -47,7 +48,7 @@ const ReceiptForm: React.FC<{ initial?: ManualReceipt; onDone: () => void }> = (
         if (!valid || saving) return;
         setSaving(true);
         const win = initial ? null : reserveWindow(); // opened during the click so the browser allows it
-        const saved = await saveReceipt(initial?.id ?? null, { date, receivedFrom: receivedFrom.trim(), lines: parsed, remarks: remarks.trim() || undefined }, file);
+        const saved = await saveReceipt(initial?.id ?? null, { date, receivedFrom: receivedFrom.trim(), lines: parsed, remarks: remarks.trim() || undefined, agentName: agentName || undefined }, file);
         setSaving(false);
         if (!saved) return win?.close();
         onDone();
@@ -85,6 +86,14 @@ const ReceiptForm: React.FC<{ initial?: ManualReceipt; onDone: () => void }> = (
           </button>
         )}
       </fieldset>
+
+      <label className="block">
+        <span className="gb-label block mb-1.5">Authorized sales agent (printed on the AR)</span>
+        <select value={agentName} onChange={(e) => setAgentName(e.target.value)} className={`${field} cursor-pointer`}>
+          <option value="">None</option>
+          {agents.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </label>
 
       <label className="block">
         <span className="gb-label block mb-1.5">Remarks</span>
@@ -147,7 +156,7 @@ export const ReceiptsPage: React.FC = () => {
     const q = query.trim().toLowerCase();
     return [...fromApps, ...manual]
       .filter((x) => !q || `${x.arNo} ${x.from} ${x.what}`.toLowerCase().includes(q))
-      .sort((a, b) => b.arNo.localeCompare(a.arNo));
+      .sort((a, b) => b.date.localeCompare(a.date) || b.arNo.slice(-4).localeCompare(a.arNo.slice(-4)));
   }, [applications, receipts, query]);
 
   const view = (d: ArDoc) => !openAR(d) && showToast('Allow pop-ups', 'Your browser blocked the receipt window. Allow pop-ups for this site and try again.', 'error');

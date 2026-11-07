@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
 import { Drawer, EmptyState, FilterTabs, SectionHeader, btn } from '../admin/ui.tsx';
-import { mdy, money } from './ledger.ts';
+import { mdy, money, saleCategory, addOnsAmount, SALE_CATEGORIES, type SaleCategory } from './ledger.ts';
+import { PALUWAGAN_SLOTS } from '../../types.ts';
 import { Plus, Trash2 } from 'lucide-react';
 
 type Preset = 'today' | 'week' | 'month' | 'year' | 'custom';
@@ -67,7 +68,8 @@ const rangeFor = (p: Exclude<Preset, 'custom'>): [string, string] => {
 // an agent sees their own sales (the server only sends them their own records).
 export const SalesReport: React.FC<{ mode?: 'admin' | 'agent' }> = ({ mode = 'admin' }) => {
   const isAdmin = mode === 'admin';
-  const { commissions, applications, salesEntries, deleteSalesEntry } = useApp();
+  const { commissions, applications, salesEntries, deleteSalesEntry, paluwagan } = useApp();
+  const [category, setCategory] = useState<SaleCategory | 'all'>('all');
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [preset, setPreset] = useState<Preset>('month');
@@ -85,19 +87,37 @@ export const SalesReport: React.FC<{ mode?: 'admin' | 'agent' }> = ({ mode = 'ad
   };
 
   // A sale is a completed transaction; its commission record carries the price, client, agent and completion date.
-  const sales = useMemo(
+  // Each is put in a category by its application (financing, cash or pre-order); add-ons are counted on their own.
+  const allSales = useMemo(
     () =>
       [
         ...commissions
           .filter((c) => c.transactionCompleted)
-          .map((c) => ({ id: c.applicationRef, manual: false, date: c.completedAt ?? c.createdAt, ref: c.applicationRef, vehicle: c.vehicleTitle, client: c.clientName, agent: c.agentName, amount: c.salePrice })),
+          .map((c) => {
+            const app = applications.find((a) => a.referenceNo === c.applicationRef);
+            return { id: c.applicationRef, manual: false, date: c.completedAt ?? c.createdAt, ref: c.applicationRef, vehicle: c.vehicleTitle, client: c.clientName, agent: c.agentName, amount: c.salePrice, category: saleCategory(app), addOns: addOnsAmount(app) };
+          }),
         // entered by hand: the day is kept as yyyy-mm-dd, read at local noon so it stays on that day
-        ...salesEntries.map((e) => ({ id: e.id, manual: true, date: new Date(`${e.date}T12:00:00`).toISOString(), ref: 'Entered by hand', vehicle: e.vehicle, client: e.client, agent: e.agent ?? '-', amount: e.amount })),
+        ...salesEntries.map((e) => ({ id: e.id, manual: true, date: new Date(`${e.date}T12:00:00`).toISOString(), ref: 'Entered by hand', vehicle: e.vehicle, client: e.client, agent: e.agent ?? '-', amount: e.amount, category: 'cash' as SaleCategory, addOns: 0 })),
+        // paluwagan: each month paid with its amount
+        ...paluwagan.flatMap((m) =>
+          m.months
+            .map((x, i) => ({ x, n: i + 1 }))
+            .filter(({ x }) => x.paid && x.amount && x.paidAt)
+            .map(({ x, n }) => ({ id: `${m.id}-${n}`, manual: false, date: x.paidAt!, ref: x.arNo ? `AR ${x.arNo}` : `Month ${n}`, vehicle: `Paluwagan: ${m.unitTitle} (slot ${m.slot}, month ${n}/${PALUWAGAN_SLOTS})`, client: m.clientName, agent: m.careAgent ?? '-', amount: x.amount!, category: 'paluwagan' as SaleCategory, addOns: 0 }))
+        ),
       ]
         .filter((s) => inRange(s.date))
         .sort((a, b) => a.date.localeCompare(b.date)),
-    [commissions, salesEntries, from, to]
+    [commissions, applications, salesEntries, paluwagan, from, to]
   );
+  const catTotal = (k: SaleCategory) => (k === 'addons' ? allSales.reduce((t, s) => t + s.addOns, 0) : allSales.filter((s) => s.category === k).reduce((t, s) => t + s.amount, 0));
+  const catCount = (k: SaleCategory) => (k === 'addons' ? allSales.filter((s) => s.addOns > 0).length : allSales.filter((s) => s.category === k).length);
+  // Vehicle sales (all but paluwagan) feed the totals and the by-day list, as before; a category narrows the table.
+  const sales =
+    category === 'all' ? allSales.filter((s) => s.category !== 'paluwagan')
+    : category === 'addons' ? allSales.filter((s) => s.addOns > 0).map((s) => ({ ...s, amount: s.addOns }))
+    : allSales.filter((s) => s.category === category);
   const payments = useMemo(
     () =>
       applications
@@ -158,10 +178,30 @@ export const SalesReport: React.FC<{ mode?: 'admin' | 'agent' }> = ({ mode = 'ad
       </div>
 
       <div>
+        <h3 className="gb-label !text-[#141517] pb-2">Sales per category</h3>
+        <ul className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+          {SALE_CATEGORIES.map((c) => (
+            <li key={c.value}>
+              <button
+                onClick={() => setCategory(category === c.value ? 'all' : c.value)}
+                aria-pressed={category === c.value}
+                className={`w-full h-full min-w-0 text-left p-3 border cursor-pointer transition-colors ${category === c.value ? 'bg-[#141517] text-white border-[#141517]' : 'bg-white border-[#C9D1D6] hover:border-[#141517]'}`}
+              >
+                <span className={`block text-[12px] font-semibold uppercase tracking-wider ${category === c.value ? 'text-[#C9D1D6]' : 'text-[#4E585E]'}`}>{c.label}</span>
+                <span className="block mt-1 font-display text-[19px] leading-tight tabular-nums break-words">₱{Math.round(catTotal(c.value)).toLocaleString('en-PH')}</span>
+                <span className={`block text-[12px] ${category === c.value ? 'text-[#C9D1D6]' : 'text-[#6B767D]'}`}>{catCount(c.value)} {c.value === 'paluwagan' ? (catCount(c.value) === 1 ? 'payment' : 'payments') : catCount(c.value) === 1 ? 'sale' : 'sales'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[12px] text-[#6B767D]">{category === 'all' ? 'Tap a category to list only its sales. Add-on sales are part of the vehicle sales they came with; paluwagan is the monthly payments collected.' : 'Showing one category. Tap it again to see all sales.'}</p>
+      </div>
+
+      <div>
         <p className="text-[13px] text-[#4E585E]" aria-live="polite">{label}</p>
         <dl className="mt-3 grid grid-cols-1 sm:grid-cols-3 border-y border-[#C9D1D6]">
           {[
-            { k: 'Total sales', v: money(totalSales), n: `${sales.length} vehicle${sales.length === 1 ? '' : 's'} sold` },
+            { k: category === 'all' ? 'Total sales' : SALE_CATEGORIES.find((c) => c.value === category)!.label, v: money(totalSales), n: category === 'paluwagan' ? `${sales.length} monthly payment${sales.length === 1 ? '' : 's'}` : `${sales.length} vehicle${sales.length === 1 ? '' : 's'} sold` },
             { k: 'Payments received', v: money(totalPayments), n: `${payments.length} acknowledgement receipt${payments.length === 1 ? '' : 's'}` },
             { k: 'Average sale', v: sales.length ? money(totalSales / sales.length) : '-', n: 'Per completed sale' },
           ].map((m, i) => (
@@ -195,7 +235,7 @@ export const SalesReport: React.FC<{ mode?: 'admin' | 'agent' }> = ({ mode = 'ad
           {sales.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[13px] min-w-[640px]">
-                <caption className="text-left gb-label !text-[#141517] pb-2">Completed sales</caption>
+                <caption className="text-left gb-label !text-[#141517] pb-2">{category === 'all' ? 'Completed sales' : SALE_CATEGORIES.find((c) => c.value === category)!.label}</caption>
                 <thead>
                   <tr className="border-y border-[#141517]">
                     {['Date', 'Reference', 'Vehicle', 'Client', 'Agent'].map((h) => <th key={h} className="gb-label py-2.5 pr-4 font-semibold">{h}</th>)}

@@ -3,6 +3,7 @@ import { pesoWords } from './ar.ts';
 import { quoteFigures, termText } from './quote.ts';
 import pdfLib from 'html2pdf.js/dist/html2pdf.bundle.min.js?url';
 import { AFFIRMATION } from './infoSheet.ts';
+import { TEAM_NAME } from '../data/constants.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`;
@@ -68,17 +69,21 @@ export const reserveWindow = () => {
   return win;
 };
 
-export const openCommissionReceipt = (c: Commission) => {
+export const openCommissionReceipt = (c: Commission, kind?: string) => {
   const logo = logoUrl();
+  // A paluwagan referral has no sale price or rate: the agent set the amount and the admin approved it.
+  const sale = c.salePrice > 0;
   const rows: [string, string][] = [
     ['Receipt no.', c.receiptNo || '-'],
     ['Date paid', date(c.paidAt)],
     ['Paid to (agent)', c.agentName],
-    ['Sale reference', c.applicationRef],
-    ['Vehicle sold', c.vehicleTitle],
+    ...(kind ? [['Commission type', kind] as [string, string]] : []),
+    [sale ? 'Sale reference' : 'Reference', c.applicationRef],
+    [sale ? 'Vehicle sold' : 'For', c.vehicleTitle],
     ['Client', c.clientName],
-    ['Sale price', peso(c.salePrice)],
-    ['Commission rate', `${(c.rate * 100).toFixed(1).replace(/\.0$/, '')}%`],
+    ...(sale
+      ? ([['Sale price', peso(c.salePrice)], ['Commission rate', `${(c.rate * 100).toFixed(1).replace(/\.0$/, '')}%`]] as [string, string][])
+      : []),
     ['Approved for payout', date(c.approvedAt)],
     ['Proof of payment', c.proofFileName || '-'],
   ];
@@ -133,13 +138,13 @@ export const openImage = (src: string, title: string) =>
 const money2 = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // What an acknowledgement receipt shows, from a confirmed partial payment or one the admin wrote by hand.
-export type ArDoc = { arNo: string; date: string; lines: ReceiptLine[]; client: string; receivedBy: string; remarks?: string; ref?: string };
+export type ArDoc = { arNo: string; date: string; lines: ReceiptLine[]; client: string; receivedBy: string; remarks?: string; agent?: string };
 export const lineTotal = (lines: ReceiptLine[]) => lines.reduce((s, l) => s + l.qty * l.price, 0);
 export const paymentAr = (app: VehicleApplication, p: PaymentReceipt): ArDoc => ({
   arNo: p.arNo, date: p.date, lines: [{ description: p.description, qty: 1, price: p.amount }], client: app.applicantName, receivedBy: p.receivedBy,
-  remarks: p.remarks, ref: `Application ${app.referenceNo} · ${app.vehicleTitle}`,
+  remarks: p.remarks, agent: app.sellerName && app.sellerName !== TEAM_NAME ? app.sellerName : undefined,
 });
-export const manualAr = (r: ManualReceipt): ArDoc => ({ arNo: r.arNo, date: r.date, lines: r.lines, client: r.receivedFrom, receivedBy: r.receivedBy, remarks: r.remarks });
+export const manualAr = (r: ManualReceipt): ArDoc => ({ arNo: r.arNo, date: r.date, lines: r.lines, client: r.receivedFrom, receivedBy: r.receivedBy, remarks: r.remarks, agent: r.agentName });
 
 // Acknowledgement receipt laid out like the paper AR template (US Letter).
 const arHtml = (d: ArDoc) => {
@@ -155,6 +160,9 @@ const arHtml = (d: ArDoc) => {
   .sheet { max-width: 7in; margin: 32px auto; padding: 0 16px; }
   .logo { text-align: center; }
   .logo img { height: 56px; }
+  .brand { margin: 2px 0 0; text-align: center; font-family: 'Arial Narrow', 'Roboto Condensed', Arial, sans-serif; font-stretch: condensed; font-size: 15pt; line-height: 1; letter-spacing: .01em; }
+  .brand .g { color: #3E9B2F; }
+  .brand .b { color: #2B7BBF; }
   h1 { text-align: center; font-size: 16pt; font-weight: 700; margin: 18px 0 20px; letter-spacing: .02em; }
   .meta { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 10px; }
   table { width: 100%; border-collapse: collapse; }
@@ -165,7 +173,8 @@ const arHtml = (d: ArDoc) => {
   .sum td { border-top: 0; text-align: center; }
   .sum td:first-child { text-align: left; }
   .bold { font-weight: 700; }
-  .ref { margin-top: 10px; font-size: 10pt; color: #333; }
+  .agent { margin: 10px 0 0; font-size: 11pt; }
+  .thanks { margin: 36px 0 0; text-align: center; font-size: 11pt; font-style: italic; }
   .remarks { margin: 12px 0 0; font-size: 11pt; }
   .signs { display: flex; justify-content: space-between; gap: 48px; margin-top: 72px; text-align: center; }
   .signs div { flex: 1; }
@@ -175,7 +184,7 @@ const arHtml = (d: ArDoc) => {
   @media print { .sheet { margin: 0; padding: 0; } }
 </style></head>
 <body><div class="sheet">
-  <div class="logo"><img src="${esc(logoUrl())}" alt="Broom Broom"></div>
+  <div class="logo"><img src="${esc(logoUrl())}" alt="Broom Broom"><p class="brand"><span class="g">BROOM BROOM</span> <span class="b">BOOKING SERVICES</span></p></div>
   <h1>ACKNOWLEDGEMENT RECEIPT</h1>
   <div class="meta"><span>DATE: ${esc(date(d.date))}</span><span>AR No.: ${esc(d.arNo)}</span></div>
   <table class="items">
@@ -193,11 +202,12 @@ const arHtml = (d: ArDoc) => {
     </tr>
   </table>
   ${d.remarks ? `<p class="remarks"><b>REMARKS:</b> ${esc(d.remarks)}</p>` : ''}
-  ${d.ref ? `<p class="ref">${esc(d.ref)}</p>` : ''}
+  ${d.agent ? `<p class="agent"><b>AUTHORIZED SALES AGENT:</b> ${esc(d.agent)}</p>` : ''}
   <div class="signs">
     <div><p class="name">${esc(d.client)}</p><p class="line">CLIENT</p></div>
-    <div><p class="name">${esc(d.receivedBy)}</p><p class="line">RECEIVED BY</p></div>
+    <div><p class="name">${esc(d.receivedBy)}</p><p class="line">AUTHORIZED REPRESENTATIVE</p></div>
   </div>
+  <p class="thanks">Thank you for your trust and support! Wishing you a safe and happy ride!</p>
 </div>
 ${tools(`AR-${d.arNo}.pdf`)}
 </body></html>`;

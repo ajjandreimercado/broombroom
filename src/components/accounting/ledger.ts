@@ -1,4 +1,20 @@
-import { Commission, Expense, LedgerAccount, SalesEntry } from '../../types.ts';
+import { Commission, Expense, LedgerAccount, SalesEntry, VehicleApplication } from '../../types.ts';
+
+// Sales categories: how a completed vehicle sale was bought, the add-ons sold on top of ready units, and paluwagan
+// payments collected. A sale entered by hand has no application, so it counts as cash.
+export type SaleCategory = 'financing' | 'cash' | 'preorder' | 'addons' | 'paluwagan';
+export const SALE_CATEGORIES: { value: SaleCategory; label: string }[] = [
+  { value: 'financing', label: 'Financing' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'preorder', label: 'Pre-orders' },
+  { value: 'addons', label: 'Add-on sales' },
+  { value: 'paluwagan', label: 'Paluwagan' },
+];
+export const saleCategory = (app?: Pick<VehicleApplication, 'preorderRef' | 'purchaseMethod'>): SaleCategory =>
+  app?.preorderRef ? 'preorder' : app?.purchaseMethod === 'financing' ? 'financing' : 'cash';
+// The add-ons part of a ready unit's price (0 when it has none).
+export const addOnsAmount = (app?: Pick<VehicleApplication, 'addOns' | 'listPrice' | 'vehiclePrice' | 'preorderRef'>) =>
+  app?.addOns && !app.preorderRef && app.listPrice !== undefined ? Math.max(0, app.vehiclePrice - app.listPrice) : 0;
 
 export const monthOf = (isoOrDate: string) => isoOrDate.slice(0, 7);
 export const monthLabel = (ym: string) =>

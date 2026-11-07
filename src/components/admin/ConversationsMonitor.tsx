@@ -6,6 +6,7 @@ import { Eye } from 'lucide-react';
 
 // Admin: every agent-to-client conversation. Reading is silent (nothing is marked read, nobody is told). When a client
 // has waited 2 days for a reply, the admin can take the chat over and answer; the agent is told about a takeover.
+// Paluwagan chats are between the client and Broom Broom only: the admin answers them directly.
 export const ConversationsMonitor: React.FC = () => {
   const { conversations, agents, sendMessage, takeOverConversation, endTakeover } = useApp();
   const [reply, setReply] = useState('');
@@ -16,7 +17,7 @@ export const ConversationsMonitor: React.FC = () => {
   }, []);
   const [agent, setAgent] = useState('all');
   const list = conversations
-    .filter((c) => agent === 'all' || c.sellerName === agent)
+    .filter((c) => agent === 'all' || (agent === 'paluwagan' ? c.paluwagan : !c.paluwagan && c.sellerName === agent))
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const [openId, setOpenId] = useState<string | null>(null);
   const open = list.find((c) => c.id === openId) || list[0];
@@ -31,6 +32,7 @@ export const ConversationsMonitor: React.FC = () => {
           className="px-3 py-2 text-[13px] bg-white border border-[#8C989F] text-[#141517] cursor-pointer"
         >
           <option value="all">All agents</option>
+          <option value="paluwagan">Paluwagan (you answer)</option>
           {agents.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </SectionHeader>
@@ -54,7 +56,9 @@ export const ConversationsMonitor: React.FC = () => {
                     <span className={`block text-[11.5px] tabular-nums mt-0.5 ${active ? 'text-[#C9D1D6]' : 'text-[#6B767D]'}`}>
                       {c.messages.length} messages · {shortDate(c.updatedAt)}
                     </span>
-                    {c.takenOverAt ? (
+                    {c.paluwagan ? (
+                      <span className={`block text-[11.5px] font-semibold mt-0.5 ${active ? 'text-white' : 'text-[#1B7F35]'}`}>{c.messages.at(-1)?.isSeller === false ? 'Paluwagan · waiting for your reply' : 'Paluwagan'}</span>
+                    ) : c.takenOverAt ? (
                       <span className={`block text-[11.5px] font-semibold mt-0.5 ${active ? 'text-white' : 'text-[#1D5FD1]'}`}>You are answering</span>
                     ) : canTakeOver(c, now) ? (
                       <span className={`block text-[11.5px] font-semibold mt-0.5 ${active ? 'text-white' : 'text-[#B42318]'}`}>No reply for 2+ days</span>
@@ -68,15 +72,15 @@ export const ConversationsMonitor: React.FC = () => {
             <div key={open.id} className="flex flex-col animate-view-fade">
               <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-[#C9D1D6] bg-[#F7F8F8]">
                 <p className="text-[13px] text-[#141517]">
-                  <strong>{open.buyerName}</strong> (client) and <strong>{open.sellerName}</strong> (agent) about {open.vehicleTitle}
+                  {open.paluwagan ? <><strong>{open.buyerName}</strong> (client) about {open.vehicleTitle}. You answer this chat.</> : <><strong>{open.buyerName}</strong> (client) and <strong>{open.sellerName}</strong> (agent) about {open.vehicleTitle}</>}
                 </p>
-                {open.takenOverAt ? (
+                {open.paluwagan ? null : open.takenOverAt ? (
                   <button className={btn.outline} onClick={() => endTakeover(open.id)}>Hand back to {open.sellerName}</button>
                 ) : (
                   <span className="flex items-center gap-1.5 text-[12px] text-[#4E585E]"><Eye className="w-3.5 h-3.5" aria-hidden="true" /> Only you can see this</span>
                 )}
               </div>
-              {canTakeOver(open, now) && (
+              {!open.paluwagan && canTakeOver(open, now) && (
                 <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-[#C9D1D6] bg-[#FDF3F2]">
                   <p className="text-[13px] text-[#B42318]">
                     {open.buyerName} has waited {duration(now - unansweredSince(open)!)} for a reply.
@@ -93,7 +97,7 @@ export const ConversationsMonitor: React.FC = () => {
                   </li>
                 ))}
               </ol>
-              {open.takenOverAt && (
+              {(open.takenOverAt || open.paluwagan) && (
                 <form
                   className="flex gap-2.5 p-3.5 border-t border-[#C9D1D6] bg-[#F7F8F8]"
                   onSubmit={async (e) => {

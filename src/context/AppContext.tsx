@@ -26,6 +26,9 @@ import {
   ApplyRequest,
   PreOrder,
   PreOrderSettings,
+  PaluwaganUnit,
+  PaluwaganMember,
+  CareLog,
 } from '../types.ts';
 import { api, uploadFile, ApiError } from '../api.ts';
 import type { InfoSheet } from '../components/infoSheet.ts';
@@ -51,6 +54,7 @@ export type CurrentView =
   | 'privacy';
 
 export type AccountTab =
+  | 'paluwagan'
   | 'profile'
   | 'saved'
   | 'compare'
@@ -64,6 +68,7 @@ export type AccountTab =
 
 export type SellerTab =
   | 'dashboard'
+  | 'clients'
   | 'sales_report'
   | 'vehicles'
   | 'messages'
@@ -92,11 +97,14 @@ export type AdminTab =
   | 'leads'
   | 'accounts'
   | 'preorders'
-  | 'preorder_setup';
+  | 'preorder_setup'
+  | 'paluwagan'
+  | 'paluwagan_setup'
+  | 'clients';
 
 export interface FilterState {
   searchQuery: string;
-  category: VehicleCategory;
+  category: VehicleCategory | 'paluwagan'; // paluwagan: the Paluwagan section instead of listings
   brand: string;
   condition: string;
   transmission: string;
@@ -149,6 +157,9 @@ interface ServerState {
   applyRequests?: ApplyRequest[];
   preorders?: PreOrder[];
   preorderSettings?: PreOrderSettings;
+  paluwaganUnits?: PaluwaganUnit[];
+  paluwagan?: PaluwaganMember[];
+  careLogs?: CareLog[];
   agents?: string[];
   users?: AccountSummary[];
   myAgent?: string | null;
@@ -185,9 +196,10 @@ export type PreOrderInput = {
 export type PreOrderEdit = Partial<Omit<PreOrderInput, 'unitId'>> & { additionalAmount?: number; additionalDescription?: string };
 export type AddOnsInput = { accessoryIds: string[]; offRoad: boolean; suggestions: string };
 export type AddOnsEdit = Partial<AddOnsInput> & { additionalAmount?: number; additionalDescription?: string };
+export type PaluwaganUnitInput = { title: string; images: string[]; description: string; hidden: boolean; startDate?: string; dueDay?: number; monthlyAmount?: number };
 export type PreOrderUnitInput = { title: string; price: number; images: string[]; description: string; hidden: boolean };
 
-export type ReceiptInput = Pick<ManualReceipt, 'receivedFrom' | 'lines' | 'remarks'> & { date: string }; // date yyyy-mm-dd
+export type ReceiptInput = Pick<ManualReceipt, 'receivedFrom' | 'lines' | 'remarks' | 'agentName'> & { date: string }; // date yyyy-mm-dd
 export type PaymentEdit = { amount: number; description: string; remarks?: string };
 
 export type VoucherInput = Omit<Expense, 'id' | 'voucherNo' | 'createdAt' | 'total' | 'lines'> & {
@@ -239,6 +251,9 @@ interface AppContextType {
   preorderUnits: Vehicle[];
   preorders: PreOrder[];
   preorderSettings: PreOrderSettings;
+  paluwaganUnits: PaluwaganUnit[];
+  paluwagan: PaluwaganMember[]; // the client's own memberships; every member for the admin
+  careLogs: CareLog[]; // customer-care reminders, calls and notes (the agent's own; all for the admin)
   guides: Guide[];
   applications: VehicleApplication[];
   conversations: Conversation[];
@@ -340,6 +355,23 @@ interface AppContextType {
   savePreorderSettings: (s: PreOrderSettings) => Promise<boolean>;
   savePreorderUnit: (id: string | null, u: PreOrderUnitInput) => Promise<boolean>;
   deletePreorderUnit: (id: string) => Promise<boolean>;
+
+  // Paluwagan
+  savePaluwaganUnit: (id: string | null, u: PaluwaganUnitInput) => Promise<boolean>;
+  deletePaluwaganUnit: (id: string) => Promise<boolean>;
+  joinPaluwagan: (unitId: string, waitlist?: boolean) => Promise<PaluwaganMember | undefined>;
+  confirmPaluwagan: (memberId: string) => Promise<PaluwaganMember | undefined>;
+  setPaluwaganMonth: (memberId: string, month: number, changes: { paid?: boolean; amount?: number | null; note?: string }) => Promise<boolean>;
+  setCareAgent: (memberId: string, agent: string | null) => Promise<boolean>;
+  verifyPaluwagan: (memberId: string) => Promise<boolean>;
+  claimPaluwagan: (memberId: string) => Promise<boolean>;
+  careRemind: (memberId: string, text: string) => Promise<boolean>;
+  careLog: (memberId: string, kind: 'call' | 'note', text: string) => Promise<boolean>;
+  releasePaluwagan: (memberId: string, undo?: boolean) => Promise<boolean>;
+  setPaluwaganCommission: (memberId: string, amount: number) => Promise<boolean>;
+  decidePaluwaganCommission: (memberId: string, approve: boolean) => Promise<boolean>;
+  removePaluwaganMember: (memberId: string) => Promise<boolean>;
+  openPaluwaganChat: (unitId: string) => Promise<void>;
 
   // Messaging
   startOrOpenConversation: (vehicleId: string) => Promise<string>;
@@ -663,7 +695,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [comparedVehicleIds]);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterState>(defaultFilters);
+  const [filters, setFilters] = useState<FilterState>(PORTAL === 'buyer' && params.get('page') === 'paluwagan' ? { ...defaultFilters, category: 'paluwagan' } : defaultFilters);
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => setFilters((prev) => ({ ...prev, [key]: value }));
   const resetFilters = () => setFilters(defaultFilters);
 
@@ -893,6 +925,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const savePreorderUnit: AppContextType['savePreorderUnit'] = async (id, u) =>
     done(await run(() => (id ? api(`/preorder-units/${id}`, { method: 'PATCH', body: u }) : api('/preorder-units', { body: u })), [id ? 'Unit saved' : 'Unit added']));
   const deletePreorderUnit = async (id: string) => done(await run(() => api(`/preorder-units/${id}`, { method: 'DELETE' }), ['Unit deleted']));
+  const savePaluwaganUnit: AppContextType['savePaluwaganUnit'] = async (id, u) =>
+    done(await run(() => (id ? api(`/paluwagan-units/${id}`, { method: 'PATCH', body: u }) : api('/paluwagan-units', { body: u })), [id ? 'Listing saved' : 'Paluwagan listing added']));
+  const deletePaluwaganUnit = async (id: string) => done(await run(() => api(`/paluwagan-units/${id}`, { method: 'DELETE' }), ['Listing deleted']));
+  const joinPaluwagan = (unitId: string, waitlist?: boolean) =>
+    run(() => api<PaluwaganMember>(`/paluwagan-units/${unitId}/join`, { body: { ref: takeRef(), waitlist } }), waitlist ? ['You are on the waitlist', 'We will tell you when a slot opens.'] : undefined, 'Could not apply');
+  const releasePaluwagan = async (memberId: string, undo?: boolean) =>
+    done(await run(() => api(`/paluwagan-members/${memberId}/release`, { body: { undo } }), [undo ? 'Release undone' : 'Unit released', undo ? undefined : 'The client is told.']));
+  const setPaluwaganCommission = async (memberId: string, amount: number) =>
+    done(await run(() => api(`/paluwagan-members/${memberId}/commission`, { body: { amount } }), ['Commission sent for approval', 'The admin approves it; then it shows in Commissions.']));
+  const decidePaluwaganCommission = async (memberId: string, approve: boolean) =>
+    done(await run(() => api(`/paluwagan-members/${memberId}/commission/decide`, { body: { approve } }), [approve ? 'Commission approved' : 'Commission declined', approve ? 'It is payable in Commissions.' : 'The agent can ask again.']));
+  const confirmPaluwagan = (memberId: string) => run(() => api<PaluwaganMember>(`/paluwagan-members/${memberId}/confirm`, { body: {} }), undefined, 'Could not confirm');
+  const setPaluwaganMonth: AppContextType['setPaluwaganMonth'] = async (memberId, month, changes) =>
+    done(await run(() => api(`/paluwagan-members/${memberId}/months/${month}`, { method: 'PATCH', body: changes })));
+  const setCareAgent = async (memberId: string, agent: string | null) =>
+    done(await run(() => api(`/paluwagan-members/${memberId}/care-agent`, { method: 'PATCH', body: { agent } }), [agent ? `Care agent: ${agent}` : 'Care agent removed']));
+  const verifyPaluwagan = async (memberId: string) =>
+    done(await run(() => api(`/paluwagan-members/${memberId}/verify`, { body: {} }), ['Member verified', 'Month 1 is paid and agents can now claim them.']));
+  const claimPaluwagan = async (memberId: string) =>
+    done(await run(() => api(`/paluwagan-members/${memberId}/claim`, { body: {} }), ['Client claimed', 'They are in My clients now.']));
+  const careRemind = async (memberId: string, text: string) =>
+    done(await run(() => api(`/care/${memberId}/remind`, { body: { text } }), ['Reminder sent', 'It is in your chat with the client, and they were notified.']));
+  const careLog = async (memberId: string, kind: 'call' | 'note', text: string) =>
+    done(await run(() => api(`/care/${memberId}/log`, { body: { kind, text } }), [kind === 'call' ? 'Call logged' : 'Note saved']));
+  const removePaluwaganMember = async (memberId: string) =>
+    done(await run(() => api(`/paluwagan-members/${memberId}/remove`, { body: {} }), ['Member removed', 'Their slot is open again.']));
+  const openPaluwaganChat = async (unitId: string) => {
+    if (!currentUser) return setAuthModalOpen(true);
+    const conv = await run(() => api<Conversation>(`/paluwagan-units/${unitId}/chat`, { body: {} }), undefined, 'Chat not opened');
+    if (!conv) return;
+    setActiveConversationId(conv.id);
+    navigateTo('account', { accountTab: 'messages' });
+  };
 
   // ----- Chat -----
   const startOrOpenConversation = async (vehicleId: string) => {
@@ -1035,6 +1100,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         preorderUnits,
         preorders: data.preorders ?? [],
         preorderSettings: data.preorderSettings ?? { accessories: [], offRoadPrice: 0 },
+        paluwaganUnits: data.paluwaganUnits ?? [],
+        paluwagan: data.paluwagan ?? [],
+        careLogs: data.careLogs ?? [],
         guides: GUIDES,
         applications: data.applications ?? [],
         conversations: data.conversations ?? [],
@@ -1127,6 +1195,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         savePreorderSettings,
         savePreorderUnit,
         deletePreorderUnit,
+        savePaluwaganUnit,
+        deletePaluwaganUnit,
+        joinPaluwagan,
+        confirmPaluwagan,
+        setPaluwaganMonth,
+        removePaluwaganMember,
+        setCareAgent,
+        verifyPaluwagan,
+        claimPaluwagan,
+        careRemind,
+        careLog,
+        openPaluwaganChat,
+        releasePaluwagan,
+        setPaluwaganCommission,
+        decidePaluwaganCommission,
 
         startOrOpenConversation,
         writeToAgent,

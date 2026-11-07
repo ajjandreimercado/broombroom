@@ -7,7 +7,7 @@ import { CONTACT_EMAIL } from '../data/constants.ts';
 export const Footer: React.FC = () => {
   const { navigateTo, updateFilter } = useApp();
 
-  const handleCategoryClick = (cat: Exclude<VehicleCategory, 'all'>) => {
+  const handleCategoryClick = (cat: Exclude<VehicleCategory, 'all'> | 'paluwagan') => {
     updateFilter('category', cat);
     navigateTo('marketplace');
   };
@@ -25,6 +25,7 @@ export const Footer: React.FC = () => {
         { label: 'E-bikes', onClick: () => handleCategoryClick('ebikes') },
         { label: 'Scooters', onClick: () => handleCategoryClick('scooters') },
         { label: 'ATVs', onClick: () => handleCategoryClick('atvs') },
+        { label: 'Paluwagan', onClick: () => handleCategoryClick('paluwagan') },
       ],
     },
     {

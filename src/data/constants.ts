@@ -5,6 +5,9 @@ export const TEAM_NAME = 'Broom Broom sales team';
 
 // The company's contact address, shown on the site and used for support messages.
 export const CONTACT_EMAIL = 'broombroombookingservices@gmail.com';
+// The Google Form clients fill in to join a paluwagan. Its confirmation message should link back to
+// https://<site>/?page=paluwagan&submitted=1 so the client lands on a confirmation and takes their slot.
+export const PALUWAGAN_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfchsF-opJbbVuOBgx0ye_jUoRSyYDx159-jPGa9TVfOPAG-g/viewform';
 
 // Agent commission: this share of the sale price.
 export const COMMISSION_RATE = 0.03;

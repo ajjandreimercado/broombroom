@@ -3,6 +3,7 @@ import { PORTAL, PORTAL_LABEL, portalUrl } from './portals.ts';
 import { MotionConfig } from 'motion/react';
 import { AppProvider, useApp } from './context/AppContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
+import { PaluwaganDueBanner } from './components/PaluwaganSoa.tsx';
 import { Footer } from './components/Footer.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import { ReportModal } from './components/ReportModal.tsx';
@@ -87,7 +88,7 @@ const PortalFooter: React.FC = () => {
 const SHARED_VIEWS = ['help', 'terms', 'privacy'];
 
 const AppContent: React.FC = () => {
-  const { currentView, currentUser, ready, serverError, refresh, setAuthModalOpen } = useApp();
+  const { currentView, currentUser, ready, serverError, refresh, setAuthModalOpen, accountTab } = useApp();
 
   useEffect(() => {
     document.title = PORTAL === 'buyer' ? 'Broom Broom · A Happy Ride | Vehicle Marketplace' : `${PORTAL_LABEL[PORTAL]} · Broom Broom`;
@@ -164,6 +165,7 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen flex flex-col overflow-x-hidden bg-[#F7F8F8] text-[#141517]">
       <Navbar />
       <main key={currentView} className="flex-1 animate-view-fade">
+        {isBuyerSite && currentUser && !(currentView === 'account' && accountTab === 'paluwagan') && <PaluwaganDueBanner />}
         <ErrorBoundary key={currentView}>{isBuyerSite ? renderBuyerView() : renderPortalView()}</ErrorBoundary>
       </main>
       {isBuyerSite ? <Footer /> : <PortalFooter />}

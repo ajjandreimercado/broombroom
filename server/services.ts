@@ -27,7 +27,12 @@ import type {
   PreOrder,
   PreOrderSettings,
   AddOns,
+  PaluwaganUnit,
+  PaluwaganMember,
+  CareLog,
 } from '../src/types.ts';
+import { PALUWAGAN_SLOTS, PALUWAGAN_UNCLAIMED_MS, claimOpensAt } from '../src/types.ts';
+import { nextDue, dayText } from '../src/components/paluwaganSchedule.ts';
 import { TEAM_NAME, COMMISSION_RATE, generateVehicleSvg } from '../src/data/constants.ts';
 import { agentSlug, canTakeOver, shouldAlertUnclaimed, shouldRelease } from '../src/components/leads.ts';
 import { DEFAULT_RATE, DEFAULT_VALID_DAYS, QUOTE_TERMS, daysFromToday, isExpired } from '../src/components/quote.ts';
@@ -44,6 +49,9 @@ import { cleanInfoSheet, type InfoSheet } from '../src/components/infoSheet.ts';
 const now = () => new Date().toISOString();
 const year = () => new Date().getFullYear();
 const pad4 = (n: number) => String(n).padStart(4, '0');
+// AR numbers: issue date (Philippine time) + a running number for the year, e.g. 2026-01-31-0007.
+const arNumber = async (ymd = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10)) =>
+  `${ymd}-${pad4(await nextNumber(`ar-${ymd.slice(0, 4)}`))}`;
 export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}${randomBytes(4).toString('hex')}`;
 const bad = (msg: string): never => {
   throw new HttpError(400, msg);
@@ -126,7 +134,7 @@ export const ownerOf = async (clientId: string) => (await store.get<ClientLead>(
 // A client's chats, open applications and not-yet-earned commissions follow their owner (or go back to the team).
 const moveClient = async (clientId: string, owner: string | undefined) => {
   const name = owner ?? TEAM_NAME;
-  for (const c of await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false } }))
+  for (const c of await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false }, paluwagan: { $exists: false } }))
     await store.put('conversations', { ...c, sellerName: name, sellerId: owner ? agentSlug(owner) : 'team' });
   const apps = await store.all<VehicleApplication>('applications', { applicantId: clientId });
   for (const a of apps) if (!['completed', 'declined', 'withdrawn'].includes(a.status)) await store.put('applications', { ...a, sellerName: name });
@@ -348,12 +356,25 @@ export const setVehicleStatus = (id: string, status: unknown) =>
 
 // Statuses that hold the vehicle for a client.
 const HOLDING: ApplicationStatus[] = ['reserved', 'processing', 'approved'];
-const isReserved = async (vehicleId: string) => !!(await store.one('applications', { vehicleId, status: { $in: HOLDING } }));
+
+// A listing cannot be deleted while a client is processing it: an open application (sent, in review, reserved,
+// being processed or approved), or an open request to apply from a client who has not applied yet. Returns their name.
+const OPEN_APPLICATION: ApplicationStatus[] = ['submitted', 'under_review', 'contacted', ...HOLDING];
+const clientProcessing = async (vehicleId: string) => {
+  const app = await store.one<VehicleApplication>('applications', { vehicleId, status: { $in: OPEN_APPLICATION } });
+  if (app) return app.applicantName;
+  const applied = new Set((await store.all<VehicleApplication>('applications', { vehicleId })).map((a) => a.applicantId));
+  return (await store.all<ApplyRequest>('apply_requests', { vehicleId, doneAt: { $exists: false } })).find((r) => !applied.has(r.clientId))?.clientName;
+};
+const blockIfProcessing = async (vehicleId: string) => {
+  const who = await clientProcessing(vehicleId);
+  if (who) bad(`${who} is processing this unit. Finish, decline or withdraw their application first, or mark the listing sold or hidden instead.`);
+};
 
 export const deleteVehicle = (id: string) =>
   tx(async () => {
     need(await store.get<Vehicle>('vehicles', idOf(id)), 'Listing');
-    if (await isReserved(id)) bad('This vehicle is reserved for a client. Complete or cancel that application first.');
+    await blockIfProcessing(id);
     await store.remove('vehicles', id);
   });
 
@@ -403,7 +424,7 @@ export const decideListingRequest = (id: string, approve: boolean, reason: unkno
         await store.put('vehicles', { ...v, ...cleanListing(req.changes, true) });
       }
       if (req.type === 'remove' && req.vehicleId) {
-        if (await isReserved(req.vehicleId)) bad('This vehicle is reserved for a client, so it cannot be removed yet.');
+        await blockIfProcessing(req.vehicleId);
         await store.remove('vehicles', req.vehicleId);
       }
     }
@@ -835,7 +856,7 @@ export const addPayment = (me: User, appId: string, input: any) =>
     if (paid + amount > app.vehiclePrice) bad(`That is more than the balance of ${peso(app.vehiclePrice - paid)}.`);
     const shot = input?.fileId ? await attachUpload(input.fileId, me, app.applicantId, IMG) : undefined;
     const receipt: PaymentReceipt = {
-      arNo: `${year()}-${pad4(await nextNumber(`ar-${year()}`))}`,
+      arNo: await arNumber(),
       date: now(),
       description: text(input?.description, 'Description', 200),
       amount,
@@ -892,6 +913,7 @@ const receiptInput = (input: any) => {
       return { description: text(l?.description, `Line ${i + 1} description`, 200), qty, price: money(l?.price, `Line ${i + 1} price`) };
     }),
     remarks: text(input?.remarks, 'Remarks', 500, false) || undefined,
+    agentName: text(input?.agentName, 'Agent', 120, false) || undefined,
   };
 };
 
@@ -901,7 +923,7 @@ export const createReceipt = (me: User, input: any) =>
     const at = now();
     const r: ManualReceipt = {
       id: newId('ar'),
-      arNo: `${year()}-${pad4(await nextNumber(`ar-${year()}`))}`,
+      arNo: await arNumber(typeof input?.date === 'string' ? input.date : undefined),
       ...receiptInput(input),
       receivedBy: me.name,
       attachment: shot ? fileUrl(shot._id) : undefined,
@@ -1175,11 +1197,351 @@ export const savePreorderUnit = (id: string | null, input: any) =>
     return store.put<Vehicle>('vehicles', { ...v, ...data, images: data.images?.length ? data.images : v.images, sellerLocation: v.sellerLocation, status });
   });
 
+// ---------- paluwagan ----------
+// Units live apart from the marketplace (no specs, never applied for through an agent). Members join through the
+// Google Form: Apply records them as pending, coming back from the form gives them the next free slot (1-36).
+// A full paluwagan takes a waitlist; the admin releases units in slot order (or automatically at 36 paid months).
+type StoredUnit = Omit<PaluwaganUnit, 'taken'>;
+const HOLDS_SLOT = ['joined', 'released'];
+const takenSlots = async (unitId: string) =>
+  (await store.all<PaluwaganMember>('paluwagan_members', { unitId, status: { $in: HOLDS_SLOT } })).map((m) => m.slot!).filter(Boolean);
+const memberOf = async (id: string) => need(await store.get<PaluwaganMember>('paluwagan_members', idOf(id)), 'Member');
+const logged = (m: PaluwaganMember, text: string) => [...m.history, { at: now(), text }];
+
+export const paluwaganUnits = async (all: boolean): Promise<PaluwaganUnit[]> => {
+  const units = await store.all<StoredUnit>('paluwagan_units', all ? {} : { hidden: { $ne: true } }, { createdAt: -1 });
+  const members = await store.all<PaluwaganMember>('paluwagan_members', { unitId: { $in: units.map((u) => u.id) }, status: { $in: HOLDS_SLOT } });
+  return units.map((u) => ({ ...u, taken: members.filter((m) => m.unitId === u.id).map((m) => m.slot!).sort((a, b) => a - b) }));
+};
+
+export const savePaluwaganUnit = (id: string | null, input: any) =>
+  tx(async () => {
+    const images = input?.images ?? [];
+    if (!Array.isArray(images) || images.length < 1 || images.length > 8 || !images.every(safeMediaUrl)) bad('Add 1 to 8 photos.');
+    const startDate = input?.startDate ? (/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) ? input.startDate : bad('Pick the start date.')) : undefined;
+    const dueDay = input?.dueDay === undefined || input?.dueDay === null || input?.dueDay === '' ? undefined : Number(input.dueDay);
+    if (dueDay !== undefined && (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28)) bad('The due day must be from 1 to 28.');
+    const monthlyAmount = input?.monthlyAmount === undefined || input?.monthlyAmount === null || input?.monthlyAmount === '' ? undefined : money(input.monthlyAmount, 'Monthly amount', { min: 1 });
+    const data = { title: text(input?.title, 'Unit name', 120), images, description: text(input?.description, 'Description', 2000, false) || undefined, hidden: !!input?.hidden, startDate, dueDay: startDate ? dueDay : undefined, monthlyAmount };
+    await markMediaAttached(images);
+    if (!id) return store.put<StoredUnit>('paluwagan_units', { id: newId('pal'), ...data, createdAt: now() });
+    const u = need(await store.get<StoredUnit>('paluwagan_units', idOf(id)), 'Unit');
+    return store.put<StoredUnit>('paluwagan_units', { ...u, ...data });
+  });
+
+export const deletePaluwaganUnit = (id: string) =>
+  tx(async () => {
+    const u = need(await store.get<StoredUnit>('paluwagan_units', idOf(id)), 'Unit');
+    if (await store.one('paluwagan_members', { unitId: u.id, status: { $ne: 'removed' } })) bad('Clients joined this paluwagan. Hide it instead, so their records keep it.');
+    await store.remove('paluwagan_units', u.id);
+  });
+
+const blankMonths = () => Array.from({ length: PALUWAGAN_SLOTS }, () => ({ paid: false }));
+
+// Client: Apply. Records them (pending) before they open the Google Form; applying again reuses the record.
+// With every slot taken, { waitlist: true } puts them on the waitlist instead.
+export const joinPaluwagan = (me: User, unitId: string, ref?: unknown, waitlist?: unknown) =>
+  tx(async () => {
+    rateLimit(`paluwagan|${me.id}`, 20, 60 * 60e3, 'Too many requests. Please try again later.');
+    const u = need(await store.get<StoredUnit>('paluwagan_units', idOf(unitId)), 'Unit');
+    const full = (await takenSlots(u.id)).length >= PALUWAGAN_SLOTS;
+    const mine = await store.one<PaluwaganMember>('paluwagan_members', { unitId: u.id, clientId: me.id, status: { $ne: 'removed' } });
+    if (mine?.status === 'waitlist' && !full && waitlist !== true)
+      return store.put<PaluwaganMember>('paluwagan_members', { ...mine, status: 'pending', history: logged(mine, 'Off the waitlist: opened the Google Form') });
+    if (mine) return mine;
+    if (u.hidden) bad('This paluwagan is closed.');
+    if (full && waitlist !== true) bad(`All ${PALUWAGAN_SLOTS} slots of this paluwagan are taken. Join the waitlist instead.`);
+    const at = now();
+    const referredBy = await agentBySlug(ref);
+    const saved = await store.put<PaluwaganMember>('paluwagan_members', {
+      id: newId('palm'), unitId: u.id, unitTitle: u.title, clientId: me.id, clientName: me.name, clientEmail: me.email, clientPhone: me.phone ?? '',
+      status: full ? 'waitlist' : 'pending', months: blankMonths(), createdAt: at, referredBy,
+      history: [{ at, text: `${full ? 'Joined the waitlist' : 'Opened the Google Form'}${referredBy ? ` (through ${referredBy}'s link)` : ''}` }],
+    });
+    if (full) await notify('admin', 'Paluwagan waitlist', `${me.name} joined the waitlist for the ${u.title} paluwagan.`, 'paluwagan');
+    return saved;
+  });
+
+// Client: back from the Google Form. Takes the lowest free slot; the admin checks the form's answers.
+export const confirmPaluwagan = (me: User, memberId: string) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    if (m.clientId !== me.id) forbidden();
+    if (m.status === 'joined' || m.status === 'released') return m;
+    if (m.status === 'removed') bad('The admin took you off this paluwagan. Message us if this is a mistake.');
+    if (m.status === 'waitlist') bad('You are on the waitlist. Press Apply once a slot opens.');
+    const taken = new Set(await takenSlots(m.unitId));
+    const slot = Array.from({ length: PALUWAGAN_SLOTS }, (_, i) => i + 1).find((n) => !taken.has(n));
+    if (!slot) bad(`All ${PALUWAGAN_SLOTS} slots of this paluwagan are taken.`);
+    const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...m, status: 'joined', slot, joinedAt: now(), history: logged(m, `Sent the Google Form: slot ${slot}`) });
+    await notify('admin', 'Paluwagan member to verify', `${me.name} joined the ${m.unitTitle} paluwagan (slot ${slot} of ${PALUWAGAN_SLOTS}). Check their Google Form answers and month 1 payment, then verify them.`, 'paluwagan');
+    if (m.referredBy) await notify('agent', 'Paluwagan referral', `${me.name} joined the ${m.unitTitle} paluwagan through your link (slot ${slot}). Once the admin verifies their first payment, claim them in Leads.`, 'leads', m.referredBy);
+    return saved;
+  });
+
+const releaseNote = (m: PaluwaganMember) => notify('client', 'Paluwagan unit released', `Your ${m.unitTitle} (slot ${m.slot}) is released to you.`, 'messages', m.clientId);
+
+// Admin: one month. input: { paid?, amount?, note? }; leaving a field out keeps it, an empty amount or note clears it.
+// A month marked paid takes the unit's monthly amount, and a paid month with an amount gets its acknowledgement
+// receipt (AR) automatically, once; the client is told and can save it. All 36 paid releases the unit
+// (unless the admin already released it in slot order); unmarking a month takes an automatic release back.
+export const setPaluwaganMonth = (me: User, memberId: string, month: unknown, input: any) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    const n = Number(month);
+    if (!Number.isInteger(n) || n < 1 || n > PALUWAGAN_SLOTS) bad(`Choose a month from 1 to ${PALUWAGAN_SLOTS}.`);
+    if (!HOLDS_SLOT.includes(m.status)) bad('Only a member with a slot has monthly payments.');
+    const at = now();
+    const old = m.months[n - 1];
+    const next = { ...old };
+    if (input?.paid !== undefined) {
+      next.paid = input.paid === true;
+      next.paidAt = next.paid ? (old.paid ? old.paidAt : at) : undefined;
+    }
+    if (input?.amount !== undefined) next.amount = input.amount === null || input.amount === '' ? undefined : money(input.amount, 'Amount', { min: 0 });
+    if (input?.note !== undefined) next.note = text(input.note, 'Note', 300, false) || undefined;
+    if (next.paid && !old.paid && next.amount === undefined) next.amount = (await store.get<StoredUnit>('paluwagan_units', m.unitId))?.monthlyAmount;
+    if (next.paid && next.amount && !old.arNo) {
+      const r = await createReceipt(me, {
+        date: new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10),
+        receivedFrom: m.clientName,
+        lines: [{ description: `Paluwagan: ${m.unitTitle}, slot ${m.slot}, month ${n} of ${PALUWAGAN_SLOTS}`, qty: 1, price: next.amount }],
+        remarks: next.note,
+        agentName: m.careAgent ?? m.referredBy,
+      });
+      await store.put<ManualReceipt>('receipts', { ...r, clientId: m.clientId });
+      next.arNo = r.arNo;
+      await notify('client', 'Paluwagan receipt', `We received your ₱${next.amount.toLocaleString()} for month ${n} of your ${m.unitTitle} paluwagan. Acknowledgement receipt ${r.arNo} is ready to view and save.`, 'paluwagan', m.clientId);
+    }
+    const months = m.months.map((x, i) => (i === n - 1 ? next : x));
+    const changes = [
+      next.paid !== old.paid && (next.paid ? 'paid' : 'unpaid'),
+      next.amount !== old.amount && (next.amount !== undefined ? `₱${next.amount.toLocaleString()}` : 'amount cleared'),
+      next.note !== old.note && (next.note ? `note: ${next.note}` : 'note cleared'),
+      next.arNo !== old.arNo && `receipt AR ${next.arNo}`,
+    ].filter(Boolean);
+    const history = [...m.history, { at, text: `Month ${n}: ${changes.join(', ') || 'no change'}` }];
+    const allPaid = months.every((x) => x.paid);
+    if (allPaid && m.status === 'joined') {
+      const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...m, months, status: 'released', releasedAt: at, history: [...history, { at, text: `All ${PALUWAGAN_SLOTS} months paid: the ${m.unitTitle} is released` }] });
+      await notify('client', 'Paluwagan complete', `All ${PALUWAGAN_SLOTS} months are paid. Your ${m.unitTitle} is released to you.`, 'messages', m.clientId);
+      await notify('admin', 'Paluwagan complete', `${m.clientName} paid all ${PALUWAGAN_SLOTS} months: the ${m.unitTitle} (slot ${m.slot}) is released.`, 'paluwagan');
+      return saved;
+    }
+    if (!allPaid && m.status === 'released' && !m.releasedManually)
+      return store.put<PaluwaganMember>('paluwagan_members', { ...m, months, status: 'joined', releasedAt: undefined, history: [...history, { at, text: 'A month was unmarked: no longer released' }] });
+    return store.put<PaluwaganMember>('paluwagan_members', { ...m, months, history });
+  });
+
+// Admin: hand the unit to a member before all 36 months are in (paluwagan usually go in slot order). They keep paying.
+export const releasePaluwagan = (memberId: string, undo?: unknown) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    if (undo === true) {
+      if (m.status !== 'released' || !m.releasedManually) bad('Only a release done by hand can be undone.');
+      return store.put<PaluwaganMember>('paluwagan_members', { ...m, status: 'joined', releasedAt: undefined, releasedManually: undefined, history: logged(m, 'Release undone by the admin') });
+    }
+    if (m.status !== 'joined') bad('Only a member with a slot can get the unit.');
+    const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...m, status: 'released', releasedAt: now(), releasedManually: true, history: logged(m, `Unit released by the admin (slot ${m.slot})`) });
+    await releaseNote(m);
+    return saved;
+  });
+
+// Members who had every month marked before releases existed: released now (safe to run on every start).
+export const releaseFinishedPaluwagan = async () => {
+  for (const m of await store.all<PaluwaganMember>('paluwagan_members', { status: 'joined' })) {
+    if (!m.months.every((x) => x.paid)) continue;
+    await store.put<PaluwaganMember>('paluwagan_members', { ...m, status: 'released', releasedAt: now(), history: logged(m, `All ${PALUWAGAN_SLOTS} months paid: the ${m.unitTitle} is released`) });
+    await notify('client', 'Paluwagan complete', `All ${PALUWAGAN_SLOTS} months are paid. Your ${m.unitTitle} is released to you.`, 'messages', m.clientId);
+  }
+};
+
+// Reminders a few days before each due date, once per month, for members with a slot (run by the minute job).
+const REMIND_DAYS = 3;
+export const paluwaganReminders = async (today = new Date()): Promise<boolean> => {
+  const units = await store.all<StoredUnit>('paluwagan_units', { startDate: { $exists: true } });
+  if (!units.length) return false;
+  let changed = false;
+  const day = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  for (const m of await store.all<PaluwaganMember>('paluwagan_members', { unitId: { $in: units.map((u) => u.id) }, status: { $in: HOLDS_SLOT } })) {
+    const next = nextDue(units.find((u) => u.id === m.unitId)!, m);
+    if (!next?.date || m.remindedMonths?.includes(next.month)) continue;
+    const days = Math.round((next.date.getTime() - day.getTime()) / 86400e3);
+    if (days < 0 || days > REMIND_DAYS) continue;
+    await store.put<PaluwaganMember>('paluwagan_members', { ...m, remindedMonths: [...(m.remindedMonths ?? []), next.month] });
+    await notify('client', 'Paluwagan payment due', `Month ${next.month} of your ${m.unitTitle} paluwagan is due on ${dayText(next.date)}.`, 'paluwagan', m.clientId);
+    if (m.careAgent) await notify('agent', 'Client payment due soon', `Remind ${m.clientName}: month ${next.month} of the ${m.unitTitle} paluwagan is due on ${dayText(next.date)}.`, 'clients', m.careAgent);
+    changed = true;
+  }
+  return changed;
+};
+
+// Admin: take a member (or someone waiting) off. A freed slot is announced to the waitlist. The record stays.
+export const removePaluwaganMember = (memberId: string) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    if (m.status === 'removed') return m;
+    if (m.status === 'released') bad('This member already has the unit. They cannot be removed.');
+    const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...m, status: 'removed', slot: undefined, history: logged(m, `Removed by the admin${m.slot ? ` (slot ${m.slot} opened)` : ''}`) });
+    if (m.slot)
+      for (const w of await store.all<PaluwaganMember>('paluwagan_members', { unitId: m.unitId, status: 'waitlist' }))
+        await notify('client', 'A paluwagan slot opened', `A slot opened in the ${m.unitTitle} paluwagan. Press Apply on the Paluwagan page to take it.`, 'messages', w.clientId);
+    return saved;
+  });
+
+// ---------- customer care ----------
+// Each paluwagan member has a care agent (the agent whose link they used, else the agent who owns them as a lead;
+// the admin can change it). The agent keeps them updated: reminders go into their chat and are logged.
+export const setCareAgent = (memberId: string, agent: unknown) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    const name = agent === null || agent === '' ? undefined : (await users.agents()).find((a) => a.name === agent)?.name ?? bad('Choose an agent.');
+    const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...m, careAgent: name, history: logged(m, name ? `Care agent: ${name}` : 'Care agent removed') });
+    if (name && name !== m.careAgent) await notify('agent', 'New client to care for', `${m.clientName} (${m.unitTitle}, slot ${m.slot ?? '-'}) is now yours to keep updated in My clients.`, 'clients', name);
+    return saved;
+  });
+
+// Admin: the Google Form answers check out and month 1 is paid. Month 1 is marked paid (its AR goes to the client)
+// and the client opens for claiming: first to the agent whose link they used (24 hours), then to every agent.
+export const verifyPaluwagan = (me: User, memberId: string) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    if (!HOLDS_SLOT.includes(m.status)) bad('Only a member with a slot can be verified.');
+    if (m.verifiedAt) return m;
+    const paid = m.months[0].paid ? m : await setPaluwaganMonth(me, m.id, 1, { paid: true });
+    const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...paid, verifiedAt: now(), history: logged(paid, 'Verified by the admin: form checked, month 1 paid') });
+    if (!saved.careAgent) {
+      if (m.referredBy) await notify('agent', 'Claim your paluwagan client', `${m.clientName} (${m.unitTitle}, slot ${m.slot}) is verified. They joined through your link: claim them in Leads within 24 hours.`, 'leads', m.referredBy);
+      else await notify('agent', 'Paluwagan client to claim', `${m.clientName} (${m.unitTitle}, slot ${m.slot}) is verified. Claim them in Leads to be their customer care.`, 'leads');
+    }
+    return saved;
+  });
+
+// Agent: become the client's customer care. Reserved for the referring agent for 24 hours after verification.
+export const claimPaluwagan = (me: User, memberId: string) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    if (!HOLDS_SLOT.includes(m.status) || !m.verifiedAt) bad('This client is not verified yet.');
+    if (m.careAgent === me.name) return m;
+    if (m.careAgent) bad(`${m.careAgent} already claimed this client.`);
+    if (m.referredBy && m.referredBy !== me.name && Date.now() < claimOpensAt(m)) forbidden(`Reserved for ${m.referredBy}, who brought this client in, until ${new Date(claimOpensAt(m)).toLocaleString('en-PH')}.`);
+    const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...m, careAgent: me.name, history: logged(m, `Claimed by ${me.name} (customer care)`) });
+    await notify('client', 'Your paluwagan agent', `${me.name} is now your Broom Broom agent for the ${m.unitTitle} paluwagan and will keep you updated on your payments.`, 'paluwagan', m.clientId);
+    return saved;
+  });
+
+// Verified members nobody claimed 2 hours after anyone could: the admin is told once (run by the minute job).
+export const paluwaganClaimAlerts = async (at = Date.now()): Promise<boolean> => {
+  let changed = false;
+  for (const m of await store.all<PaluwaganMember>('paluwagan_members', { verifiedAt: { $exists: true }, careAgent: { $exists: false }, claimAlertAt: { $exists: false }, status: { $in: HOLDS_SLOT } })) {
+    if (at < claimOpensAt(m) + PALUWAGAN_UNCLAIMED_MS) continue;
+    await store.put<PaluwaganMember>('paluwagan_members', { ...m, claimAlertAt: new Date(at).toISOString() });
+    await notify('admin', 'Paluwagan client not claimed', `No agent claimed ${m.clientName} (${m.unitTitle}, slot ${m.slot}). Assign a care agent on their member row.`, 'paluwagan');
+    changed = true;
+  }
+  return changed;
+};
+
+// Members from before verification existed: their payments were already being checked, so they count as verified.
+// Care agents that were filled in automatically (never claimed or assigned) are taken off: agents claim them now.
+// Safe to run on every start.
+export const verifyOlderPaluwagan = async () => {
+  for (const m of await store.all<PaluwaganMember>('paluwagan_members', { verifiedAt: { $exists: false }, status: { $in: HOLDS_SLOT } })) {
+    const chosen = m.history.some((h) => /^Care agent: |^Claimed by /.test(h.text));
+    await store.put<PaluwaganMember>('paluwagan_members', { ...m, verifiedAt: m.joinedAt ?? m.createdAt, careAgent: chosen ? m.careAgent : undefined });
+  }
+};
+
+const careMember = async (me: User, memberId: unknown) => {
+  const m = await memberOf(idOf(memberId));
+  if (m.careAgent !== me.name) forbidden('This client is not in your care.');
+  return m;
+};
+
+// Agent: a reminder in their chat with the client (friendly before the due date, firmer once it is late), logged.
+export const careRemind = (me: User, memberId: unknown, message: unknown) =>
+  tx(async () => {
+    rateLimit(`care|${me.id}`, 60, 60 * 60e3, 'Too many reminders. Please try again later.');
+    const m = await careMember(me, memberId);
+    const t = text(message, 'Message', 1000);
+    const client = need(await users.byId(m.clientId), 'Client');
+    const at = now();
+    const conv = (await store.all<Conversation>('conversations', { buyerId: m.clientId, sellerName: me.name, closedAt: { $exists: false }, paluwagan: { $exists: false } }, { updatedAt: -1 }))[0] ?? {
+      id: newId('conv'), vehicleId: '', vehicleTitle: GENERAL_TOPIC, vehiclePrice: 0, vehicleImage: '',
+      buyerId: m.clientId, buyerName: client.name, sellerId: agentSlug(me.name), sellerName: me.name, lastMessage: '', updatedAt: at, unreadBuyer: 0, unreadSeller: 0, messages: [],
+    };
+    await store.put<Conversation>('conversations', {
+      ...conv, lastMessage: t, updatedAt: at, unreadBuyer: conv.unreadBuyer + 1,
+      messages: [...conv.messages, { id: newId('msg'), senderId: me.id, senderName: me.name, text: t, timestamp: at, isSeller: true }],
+    });
+    await notify('client', 'Message from your agent', `${me.name}: ${t.length > 140 ? `${t.slice(0, 140)}…` : t}`, 'messages', m.clientId);
+    return store.put<CareLog>('care_logs', { id: newId('care'), clientId: m.clientId, clientName: m.clientName, agentName: me.name, kind: 'reminder', text: t, memberId: m.id, createdAt: at });
+  });
+
+// Agent: a call or a note about the client, for the history.
+export const careLog = (me: User, memberId: unknown, kind: unknown, note: unknown) =>
+  tx(async () => {
+    const m = await careMember(me, memberId);
+    if (kind !== 'call' && kind !== 'note') bad('Choose call or note.');
+    return store.put<CareLog>('care_logs', { id: newId('care'), clientId: m.clientId, clientName: m.clientName, agentName: me.name, kind: kind as 'call' | 'note', text: text(note, 'Note', 1000), memberId: m.id, createdAt: now() });
+  });
+
+// Agent: the commission they ask for a member who joined through their link: any amount, until the admin approves it.
+export const setPaluwaganCommission = (me: User, memberId: string, amount: unknown) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    if (m.referredBy !== me.name) forbidden('This member did not join through your link.');
+    if (!HOLDS_SLOT.includes(m.status)) bad('Set it once the client has a slot.');
+    if (!m.verifiedAt) bad('Ask for it once the admin verifies the client\'s first payment.');
+    if (m.commission?.status === 'approved') bad('The admin already approved this commission.');
+    const value = money(amount, 'Commission', { min: 1 });
+    const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...m, commission: { amount: value, status: 'requested', setAt: now() }, history: logged(m, `${me.name} asked ₱${value.toLocaleString()} commission`) });
+    await notify('admin', 'Paluwagan commission', `${me.name} asked ₱${value.toLocaleString()} for ${m.clientName} (${m.unitTitle}, slot ${m.slot}).`, 'paluwagan');
+    return saved;
+  });
+
+// Admin: approve (it becomes payable in Commissions, paid there with proof) or decline (the agent can ask again).
+export const decidePaluwaganCommission = (memberId: string, approve: unknown) =>
+  tx(async () => {
+    const m = await memberOf(memberId);
+    const c = m.commission;
+    if (c?.status !== 'requested') return bad('There is no commission request to decide.');
+    if (approve !== true) {
+      await notify('agent', 'Paluwagan commission declined', `Your ₱${c.amount.toLocaleString()} commission for ${m.clientName} was declined. You can ask again.`, 'vehicles', m.referredBy);
+      return store.put<PaluwaganMember>('paluwagan_members', { ...m, commission: { ...c, status: 'declined' }, history: logged(m, 'Commission declined by the admin') });
+    }
+    const at = now();
+    const com = await store.put<Commission>('commissions', {
+      id: newId('com'), agentName: m.referredBy!, applicationRef: `Paluwagan slot ${m.slot}`, vehicleTitle: `Paluwagan: ${m.unitTitle}`, clientName: m.clientName,
+      salePrice: 0, rate: 0, amount: c.amount, status: 'payable', transactionCompleted: false, approvedAt: at, createdAt: at,
+    });
+    await notify('agent', 'Paluwagan commission approved', `Your ₱${c.amount.toLocaleString()} commission for ${m.clientName} (${m.unitTitle}) is approved and awaiting the cash transfer.`, 'commissions', m.referredBy);
+    return store.put<PaluwaganMember>('paluwagan_members', { ...m, commission: { ...c, status: 'approved', commissionId: com.id }, history: logged(m, `Commission ₱${c.amount.toLocaleString()} approved`) });
+  });
+
+// Client: the message button. One chat with the Broom Broom team for paluwagan, answered by the admin.
+export const paluwaganChat = (me: User, unitId: string, message?: unknown) =>
+  tx(async () => {
+    const u = need(await store.get<StoredUnit>('paluwagan_units', idOf(unitId)), 'Unit');
+    const first = text(message, 'Message', 2000, false);
+    const conv = await store.one<Conversation>('conversations', { buyerId: me.id, paluwagan: true, closedAt: { $exists: false } });
+    const about = { vehicleId: u.id, vehicleTitle: `Paluwagan: ${u.title}`, vehiclePrice: 0, vehicleImage: u.images[0] ?? '' };
+    const saved = conv
+      ? await store.put<Conversation>('conversations', { ...conv, ...about })
+      : await store.put<Conversation>('conversations', {
+          id: newId('conv'), ...about, buyerId: me.id, buyerName: me.name, sellerId: 'team', sellerName: TEAM_NAME,
+          lastMessage: '', updatedAt: now(), unreadBuyer: 0, unreadSeller: 0, messages: [], paluwagan: true,
+        });
+    if (first) await sendMessage(me, saved.id, { text: first });
+    return (await store.get<Conversation>('conversations', saved.id))!;
+  });
+
 export const deletePreorderUnit = (id: string) =>
   tx(async () => {
     const v = need(await store.get<Vehicle>('vehicles', idOf(id)), 'Unit');
     if (!v.preorder) bad('That is a marketplace listing, not a pre-order unit.');
     if (await store.one('preorders', { unitId: v.id })) bad('Clients have pre-ordered this unit. Hide it instead, so their pre-orders keep it.');
+    await blockIfProcessing(v.id);
     await store.remove('vehicles', v.id);
   });
 
@@ -1437,7 +1799,7 @@ export const startConversation = (me: User, vehicleId: unknown, ref: unknown, me
     const v = vehicleId ? need(await store.get<Vehicle>('vehicles', idOf(vehicleId)), 'Listing') : undefined;
     const first = text(message, 'Message', 2000, false);
     if (!v && !first) bad('Write your message.');
-    const existing = (await store.all<Conversation>('conversations', { buyerId: me.id, closedAt: { $exists: false } }, { updatedAt: -1 }))[0];
+    const existing = (await store.all<Conversation>('conversations', { buyerId: me.id, closedAt: { $exists: false }, paluwagan: { $exists: false } }, { updatedAt: -1 }))[0];
     if (existing) {
       if (v && v.id !== existing.vehicleId) await store.put<Conversation>('conversations', aboutUnit(existing, v));
       if (first) await sendMessage(me, existing.id, { text: first });
@@ -1474,7 +1836,7 @@ const introducedBy = (c: Conversation, agent: string) => c.messages.some((m) => 
 // time order, and points the requests that named a removed chat at it. Safe to run on every start.
 export const mergeChats = async () => {
   const groups = new Map<string, Conversation[]>();
-  for (const c of await store.all<Conversation>('conversations', { closedAt: { $exists: false } }, { updatedAt: 1 })) {
+  for (const c of await store.all<Conversation>('conversations', { closedAt: { $exists: false }, paluwagan: { $exists: false } }, { updatedAt: 1 })) {
     const k = `${c.buyerId}|${c.sellerName}`;
     groups.set(k, [...(groups.get(k) ?? []), c]);
   }
@@ -1508,7 +1870,7 @@ const introduceAgent = async (clientId: string, agent: string): Promise<string |
   const client = await users.byId(clientId);
   if (!client) return undefined;
   const wanted = (await store.get<ClientLead>('leads', clientId))?.applyVehicleId;
-  let conv = (await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false } }, { updatedAt: -1 }))[0];
+  let conv = (await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false }, paluwagan: { $exists: false } }, { updatedAt: -1 }))[0];
   if (!conv) {
     const app = (await store.all<VehicleApplication>('applications', { applicantId: clientId }, { submittedAt: -1 }))[0];
     const quote = (await store.all<Quotation>('quotations', { clientId }, { requestedAt: -1 }))[0];
@@ -1558,9 +1920,9 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     const isAgent = me.role === 'seller';
     if (me.role === 'buyer' && conv.buyerId !== me.id) forbidden();
     if (conv.closedAt) bad('This chat ended when your vehicle was released. Press "Request to apply" on a vehicle to get an agent again.');
-    if (me.role === 'buyer' && conv.sellerName === TEAM_NAME && !conv.takenOverAt) bad(NEEDS_AGENT);
+    if (me.role === 'buyer' && conv.sellerName === TEAM_NAME && !conv.takenOverAt && !conv.paluwagan) bad(NEEDS_AGENT);
     if (isAgent && conv.sellerName !== me.name) forbidden('This client is not yours. Claim them in Open leads first.');
-    if (me.role === 'admin' && !conv.takenOverAt) forbidden('Admins can read conversations but not reply in them. Take over the chat first.');
+    if (me.role === 'admin' && !conv.takenOverAt && !conv.paluwagan) forbidden('Admins can read conversations but not reply in them. Take over the chat first.');
     let link: Pick<ChatMessage, 'applyVehicleId' | 'applyVehicleTitle' | 'applyAgent'> = {};
     let unit: Vehicle | undefined;
     if (input?.applyVehicleId) {
@@ -1585,6 +1947,11 @@ export const sendMessage = (me: User, convId: string, input: any) =>
       messages: [...conv.messages, msg],
     });
     // Track who is waiting on whom for the 24-hour reply rule.
+    if (conv.paluwagan) {
+      if (!reply) await notify('admin', 'Paluwagan message', `${me.name}: ${t.slice(0, 120)}`, 'conversations');
+      else await notify('client', 'New message', `Broom Broom replied about ${conv.vehicleTitle}.`, 'messages', conv.buyerId);
+      return;
+    }
     const lead = await store.get<ClientLead>('leads', conv.buyerId);
     if (lead) await store.put('leads', reply ? (isAdmin || lead.agentName === me.name ? { ...lead, lastAgentAt: at } : lead) : { ...lead, lastClientAt: at });
     if (reply) await notify('client', 'New message', `${msg.senderName} replied about the ${conv.vehicleTitle}.`, 'messages', conv.buyerId);
@@ -1640,7 +2007,7 @@ export const claimRequest = (me: User, id: string) =>
       });
     else if (lead) await store.put<ClientLead>('leads', { ...lead, history: [...lead.history, { at, text: `${me.name} claimed the request for the ${r.vehicleTitle}` }] });
     // The chat about this vehicle, now with this agent.
-    let conv = (await store.all<Conversation>('conversations', { buyerId: r.clientId, closedAt: { $exists: false }, sellerName: { $in: [TEAM_NAME, me.name] } }, { updatedAt: -1 }))[0];
+    let conv = (await store.all<Conversation>('conversations', { buyerId: r.clientId, closedAt: { $exists: false }, paluwagan: { $exists: false }, sellerName: { $in: [TEAM_NAME, me.name] } }, { updatedAt: -1 }))[0];
     if (conv) conv = aboutUnit(conv, v);
     else
       conv = {

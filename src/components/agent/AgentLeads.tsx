@@ -1,17 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
-import { ClientLead } from '../../types.ts';
+import { ClientLead, PALUWAGAN_SLOTS, claimOpensAt, type PaluwaganMember } from '../../types.ts';
 import { EmptyState, FilterTabs, SectionHeader, btn } from '../admin/ui.tsx';
 import { REPLY_RELEASE_MS, duration, waitingSince } from '../leads.ts';
-import { Hand, MessageSquare } from 'lucide-react';
+import { Hand, MessageSquare, Lock } from 'lucide-react';
+
+// Verified paluwagan members nobody has claimed yet (the agent can then be their customer care).
+export const claimablePaluwagan = (paluwagan: PaluwaganMember[]) =>
+  paluwagan.filter((m) => m.verifiedAt && !m.careAgent && (m.status === 'joined' || m.status === 'released'));
 
 const SOURCE: Record<ClientLead['source'], string> = { link: 'Came through your link', pool: 'Claimed from Open leads', admin: 'Assigned by the admin' };
 
 // Agent: claim new clients from the shared pool, and keep track of the clients who are yours.
 export const AgentLeads: React.FC = () => {
-  const { leads, applyRequests, claimLead, claimRequest, openClientChat, currentUser, conversations, navigateTo, setActiveConversationId } = useApp();
+  const { leads, applyRequests, claimLead, claimRequest, openClientChat, currentUser, conversations, navigateTo, setActiveConversationId, paluwagan, claimPaluwagan } = useApp();
   const me = currentUser?.name;
-  const [view, setView] = useState<'open' | 'mine'>('open');
+  const [view, setView] = useState<'open' | 'paluwagan' | 'mine'>('open');
+  const toClaim = claimablePaluwagan(paluwagan).sort((a, b) => (a.verifiedAt ?? '').localeCompare(b.verifiedAt ?? ''));
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -52,6 +57,7 @@ export const AgentLeads: React.FC = () => {
         onChange={setView}
         options={[
           { value: 'open', label: 'Open leads', count: requests.length + open.length },
+          { value: 'paluwagan', label: 'Paluwagan', count: toClaim.length },
           { value: 'mine', label: 'My clients', count: mine.length },
         ]}
       />
@@ -86,6 +92,37 @@ export const AgentLeads: React.FC = () => {
                   <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-center`} onClick={() => claim(l.clientId)}>
                     <Hand className="w-4 h-4" aria-hidden="true" /> {l.applyVehicleId ? 'Claim & send apply link' : 'Claim client'}
                   </button>
+                </li>
+              );
+            })}
+          </ul>
+        ))}
+
+      {view === 'paluwagan' &&
+        (toClaim.length === 0 ? (
+          <EmptyState title="No paluwagan clients to claim" body="Once the admin verifies a new member's first payment, they show here. Members who joined through your link are kept for you for 24 hours." />
+        ) : (
+          <ul key="paluwagan" className="animate-view-fade border-b border-[#C9D1D6]">
+            {toClaim.map((m) => {
+              const opens = claimOpensAt(m);
+              const mineRef = m.referredBy === me;
+              const reserved = !!m.referredBy && !mineRef && now < opens;
+              return (
+                <li key={m.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4 border-t border-[#C9D1D6]">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[15px] text-[#141517]">{m.clientName}</p>
+                    <p className="text-[13px] text-[#2A2E31]">{m.unitTitle} paluwagan · slot {m.slot} of {PALUWAGAN_SLOTS} · paid {m.months.filter((x) => x.paid).length}/{PALUWAGAN_SLOTS}</p>
+                    <p className={`text-[12px] tabular-nums ${mineRef ? 'text-[#1D5FD1] font-medium' : 'text-[#6B767D]'}`}>
+                      {mineRef && now < opens ? `Joined through your link · kept for you for ${duration(opens - now)}` : reserved ? `Kept for ${m.referredBy}, who brought them in · opens to everyone in ${duration(opens - now)}` : `Verified ${duration(now - new Date(m.verifiedAt!).getTime())} ago`}
+                    </p>
+                  </div>
+                  {reserved ? (
+                    <span className="inline-flex items-center gap-1.5 self-start sm:self-center text-[13px] text-[#6B767D]"><Lock className="w-4 h-4" aria-hidden="true" /> Reserved</span>
+                  ) : (
+                    <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-center`} onClick={async () => (await claimPaluwagan(m.id)) && navigateTo('seller', { sellerTab: 'clients' })}>
+                      <Hand className="w-4 h-4" aria-hidden="true" /> Claim client
+                    </button>
+                  )}
                 </li>
               );
             })}

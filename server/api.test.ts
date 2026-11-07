@@ -301,7 +301,7 @@ test('financing: needs 2 uploads; documents first; reserve -> information sheet 
   assert.equal((await c.post(`/api/applications/${app.id}/reserve`, { amount: 5000 })).status, 403, 'admins only');
   const r = await reserve(ad, app.id, 20000);
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.match(r.data.arNo, /^\d{4}-\d{4}$/);
+  assert.match(r.data.arNo, /^\d{4}-\d{2}-\d{2}-\d{4}$/, 'issue date + running number');
   const s = await ad.state();
   assert.equal(s.vehicles.find((x: any) => x.id === v.id).status, 'reserved');
   const reserved = s.applications.find((a: any) => a.id === app.id);
@@ -374,7 +374,7 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
   const p1 = await ad.post(`/api/applications/${app.id}/payments`, { amount: 50000, description: 'Reservation', fileId: shot });
   const p2 = await ad.post(`/api/applications/${app.id}/payments`, { amount: 1000.5, description: 'Partial' });
   assert.equal(p1.status, 200);
-  assert.equal(Number(p2.data.arNo.slice(5)), Number(p1.data.arNo.slice(5)) + 1);
+  assert.equal(Number(p2.data.arNo.slice(-4)), Number(p1.data.arNo.slice(-4)) + 1);
   assert.equal((await ad.post(`/api/applications/${app.id}/payments`, { amount: v.price, description: 'Too much' })).status, 400);
   assert.equal((await c.get(p1.data.attachment)).status, 200); // the client can open their payment screenshot
 
@@ -795,8 +795,7 @@ test('ARs: payment receipts take remarks and can be edited or deleted; hand-writ
   assert.equal((await c.post('/api/receipts', { date: '2026-10-17', receivedFrom: 'Walk-in', lines })).status, 403);
   const r = await ad.post('/api/receipts', { date: '2026-10-17', receivedFrom: 'Walk-in', lines, remarks: 'Paid cash' });
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  const [y, n] = ar.split('-');
-  assert.equal(r.data.arNo, `${y}-${String(Number(n) + 1).padStart(4, '0')}`, 'next AR number after the payment one');
+  assert.equal(r.data.arNo, `2026-10-17-${String(Number(ar.slice(-4)) + 1).padStart(4, '0')}`, 'its own date, the next number after the payment one');
   const r2 = await ad.patch(`/api/receipts/${r.data.id}`, { date: '2026-10-18', receivedFrom: 'Walk-in client', lines: lines.slice(0, 1) });
   assert.equal(r2.status, 200);
   assert.equal(r2.data.arNo, r.data.arNo);
@@ -1100,6 +1099,210 @@ test('one chat for each client and agent: every unit is a link inside it, one in
   await toApproved(ad, c, a2.id);
   assert.equal((await ad.post(`/api/applications/${a2.id}/release`, { orcrConfirmed: true, orcrFileId: await orcrFile(ad) })).status, 200);
   assert.ok((await c.state()).conversations.every((x: any) => x.closedAt), 'ended with the last unit');
+});
+
+test('paluwagan: admin lists a unit, clients apply through the form and take slots 1-36, the admin marks months; one team chat answered by the admin', async () => {
+  const ad = await admin();
+  const img = (await ad.upload(PNG, 'image/png', 'hilux.png', 'public')).data;
+  const made = await ad.post('/api/paluwagan-units', { title: 'Hilux Paluwagan', images: [img.url], description: 'Monthly pool' });
+  assert.equal(made.status, 200, JSON.stringify(made.json));
+  const unit = made.data;
+  assert.equal((await ad.post('/api/paluwagan-units', { title: 'No photo', images: [] })).status, 400, 'needs a photo');
+  assert.equal((await (await carlo()).post('/api/paluwagan-units', { title: 'X', images: [img.url] })).status, 403, 'admins only');
+
+  // anyone sees the unit and its open slots, never who holds them
+  const pub = await client('buyer').state();
+  const shown = pub.paluwaganUnits.find((u: any) => u.id === unit.id);
+  assert.deepEqual(shown.taken, []);
+  assert.equal(pub.paluwagan, undefined);
+
+  const c = await newClient();
+  const d = await newClient();
+  const m = (await c.post(`/api/paluwagan-units/${unit.id}/join`)).data;
+  assert.equal(m.status, 'pending');
+  assert.equal((await c.post(`/api/paluwagan-units/${unit.id}/join`)).data.id, m.id, 'applying again reuses the record');
+  assert.equal((await d.post(`/api/paluwagan-members/${m.id}/confirm`)).status, 403, 'not theirs');
+  const joined = (await c.post(`/api/paluwagan-members/${m.id}/confirm`)).data;
+  assert.equal(joined.status, 'joined');
+  assert.equal(joined.slot, 1);
+  assert.equal(joined.months.length, 36);
+  const dm = (await d.post(`/api/paluwagan-units/${unit.id}/join`, { ref: 'carlo-santos' })).data;
+  assert.equal(dm.referredBy, 'Carlo Santos', 'joined through the agent link');
+  assert.equal((await d.post(`/api/paluwagan-members/${dm.id}/confirm`)).data.slot, 2, 'the next slot');
+  assert.deepEqual((await client('buyer').state()).paluwaganUnits.find((u: any) => u.id === unit.id).taken, [1, 2]);
+  assert.ok((await ad.state()).notifications.some((n: any) => n.title === 'Paluwagan member to verify'));
+
+  // the admin marks months; nobody else can
+  assert.equal((await c.patch(`/api/paluwagan-members/${m.id}/months/1`, { paid: true })).status, 403);
+  assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/37`, { paid: true })).status, 400);
+  const paid = await ad.patch(`/api/paluwagan-members/${m.id}/months/1`, { paid: true });
+  assert.equal(paid.status, 200);
+  assert.equal(paid.data.months[0].paid, true);
+  assert.ok(paid.data.months[0].paidAt);
+  assert.equal((await c.state()).paluwagan.find((x: any) => x.id === m.id).months.filter((x: any) => x.paid).length, 1, 'the client sees it');
+  assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/1`, { paid: false })).data.months[0].paid, false, 'and it can be undone');
+  // amount and note are optional; an empty value clears them
+  const noted = (await ad.patch(`/api/paluwagan-members/${m.id}/months/2`, { amount: 5000, note: 'GCash' })).data.months[1];
+  assert.deepEqual([noted.paid, noted.amount, noted.note], [false, 5000, 'GCash']);
+  assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/2`, { amount: -1 })).status, 400);
+  const cleared = (await ad.patch(`/api/paluwagan-members/${m.id}/months/2`, { amount: null, note: '' })).data.months[1];
+  assert.deepEqual([cleared.amount, cleared.note], [undefined, undefined]);
+  // the agent sees who joined through their link, without contact details
+  const agentView = (await (await carlo()).state()).paluwagan;
+  assert.ok(agentView.some((x: any) => x.id === dm.id && x.clientEmail === undefined));
+  assert.ok(!agentView.some((x: any) => x.id === m.id), 'not other members');
+
+  // all 36 months paid: the unit is released; unmarking one takes it back
+  for (let n = 1; n <= 36; n++) await ad.patch(`/api/paluwagan-members/${m.id}/months/${n}`, { paid: true });
+  let done = (await c.state()).paluwagan.find((x: any) => x.id === m.id);
+  assert.equal(done.status, 'released');
+  assert.ok(done.releasedAt);
+  assert.ok((await c.state()).notifications.some((x: any) => x.title === 'Paluwagan complete'));
+  assert.equal((await ad.post(`/api/paluwagan-members/${m.id}/remove`)).status, 400, 'a released member is not removed');
+  assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/36`, { paid: false })).data.status, 'joined');
+  assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/36`, { paid: true })).data.status, 'released');
+
+  // a full paluwagan refuses new members; removing one opens their slot
+  for (let n = 3; n <= 36; n++)
+    await store.put('paluwagan_members', { ...joined, id: `palm-fill-${n}`, clientId: `fill-${n}`, slot: n });
+  const e = await newClient();
+  assert.equal((await e.post(`/api/paluwagan-units/${unit.id}/join`)).status, 400, 'all 36 taken');
+  assert.equal((await ad.post(`/api/paluwagan-members/${dm.id}/remove`)).status, 200);
+  const em = (await e.post(`/api/paluwagan-units/${unit.id}/join`)).data;
+  assert.equal((await e.post(`/api/paluwagan-members/${em.id}/confirm`)).data.slot, 2, 'the opened slot');
+  assert.equal((await ad.raw('DELETE', `/api/paluwagan-units/${unit.id}`)).status, 400, 'members: hide, not delete');
+  assert.equal((await ad.patch(`/api/paluwagan-units/${unit.id}`, { title: unit.title, images: unit.images, hidden: true })).status, 200);
+  assert.ok(!(await client('buyer').state()).paluwaganUnits.some((u: any) => u.id === unit.id), 'hidden from clients');
+  assert.equal((await e.post(`/api/paluwagan-units/${unit.id}/join`)).data.id, em.id);
+  await ad.patch(`/api/paluwagan-units/${unit.id}`, { title: unit.title, images: unit.images, hidden: false });
+
+  // the message button: one chat with the team, the admin answers without a takeover, agents never get it
+  const chat = (await c.post(`/api/paluwagan-units/${unit.id}/chat`, { text: 'When is the first payment?' })).data;
+  assert.equal(chat.paluwagan, true);
+  assert.equal(chat.messages.at(-1).text, 'When is the first payment?');
+  assert.equal((await c.post(`/api/paluwagan-units/${unit.id}/chat`)).data.id, chat.id, 'same chat');
+  assert.ok((await ad.state()).notifications.some((n: any) => n.title === 'Paluwagan message'));
+  assert.equal((await ad.post(`/api/conversations/${chat.id}/messages`, { text: 'On the 15th.' })).status, 200);
+  assert.equal((await c.state()).conversations.find((x: any) => x.id === chat.id).unreadBuyer, 1);
+  await c.post('/api/apply-requests', { vehicleId: (await freeVehicle()).id });
+  const ca = await carlo();
+  const claimed = await ca.post(`/api/leads/${c.id}/claim`);
+  assert.notEqual(claimed.data.conversationId, chat.id, 'the agent gets their own chat');
+  assert.ok(!(await ca.state()).conversations.some((x: any) => x.id === chat.id), 'agents never see the paluwagan chat');
+  assert.equal((await c.state()).conversations.find((x: any) => x.id === chat.id).sellerName, 'Broom Broom sales team');
+});
+
+test('paluwagan: due dates and reminders, a receipt per month, release in slot order, the waitlist, and the agent commission the admin approves', async () => {
+  const ad = await admin();
+  const img = (await ad.upload(PNG, 'image/png', 'van.png', 'public')).data;
+  assert.equal((await ad.post('/api/paluwagan-units', { title: 'X', images: [img.url], startDate: '2026-01-05', dueDay: 31 })).status, 400, 'due day 1-28');
+  assert.equal((await ad.post('/api/paluwagan-units', { title: 'X', images: [img.url], monthlyAmount: -5 })).status, 400, 'monthly amount');
+  const unit = (await ad.post('/api/paluwagan-units', { title: 'Every Van Paluwagan', images: [img.url], startDate: '2026-01-05', dueDay: 10, monthlyAmount: 8000 })).data;
+  assert.equal(unit.dueDay, 10);
+  const join = async (c: Awaited<ReturnType<typeof newClient>>, ref?: string) => {
+    const m = (await c.post(`/api/paluwagan-units/${unit.id}/join`, { ref })).data;
+    return (await c.post(`/api/paluwagan-members/${m.id}/confirm`)).data;
+  };
+  const c = await newClient();
+  const m = await join(c, 'carlo-santos');
+
+  // reminders: month 1 is due Jan 10; three days before it the client is told once
+  assert.equal(await svc.paluwaganReminders(new Date(2026, 0, 5)), false, 'too early');
+  assert.equal(await svc.paluwaganReminders(new Date(2026, 0, 8)), true);
+  assert.equal(await svc.paluwaganReminders(new Date(2026, 0, 9)), false, 'only once');
+  assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Paluwagan payment due' && /Month 1/.test(n.message)));
+  // nobody is their agent until the admin verifies them and an agent claims them
+  assert.equal(m.careAgent, undefined);
+  const ca = await carlo();
+  const be = await bea();
+  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/claim`)).status, 400, 'not verified yet');
+  assert.equal((await ca.post(`/api/care/${m.id}/remind`, { text: 'Hi' })).status, 403, 'no messaging before claiming');
+  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/commission`, { amount: 100 })).status, 400, 'no commission before verification');
+  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/verify`)).status, 403, 'admins verify');
+  assert.ok(!(await be.state()).paluwagan.some((x: any) => x.id === m.id), 'others do not see an unverified member');
+
+  // verifying marks month 1 paid, with its AR (the unit's monthly amount); the client gets the receipt
+  const verified = (await ad.post(`/api/paluwagan-members/${m.id}/verify`)).data;
+  assert.ok(verified.verifiedAt);
+  const r = verified.months[0];
+  assert.equal(r.paid, true);
+  assert.equal(r.amount, 8000);
+  assert.match(r.arNo, /^\d{4}-\d{2}-\d{2}-\d{4}$/);
+  const ar = (await ad.state()).receipts.find((x: any) => x.arNo === r.arNo);
+  assert.deepEqual([ar.receivedFrom, ar.lines[0].price, ar.clientId, ar.agentName], [m.clientName, 8000, m.clientId, 'Carlo Santos']);
+  const cs = await c.state();
+  assert.deepEqual(cs.receipts.map((x: any) => x.arNo), [r.arNo], 'the client sees their own receipt');
+  assert.ok(cs.notifications.some((n: any) => n.title === 'Paluwagan receipt' && n.message.includes(r.arNo)));
+  assert.equal((await (await newClient()).state()).receipts.length, 0, 'never another client\'s');
+  assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/1`, { note: 'GCash' })).data.months[0].arNo, r.arNo, 'not twice');
+
+  // claiming: kept 24 hours for the agent whose link they used, then open to every agent
+  const pool = (await be.state()).paluwagan.find((x: any) => x.id === m.id);
+  assert.deepEqual([pool.clientPhone, pool.clientEmail, pool.history], [undefined, undefined, undefined], 'claimable: no contact details');
+  assert.equal((await be.post(`/api/paluwagan-members/${m.id}/claim`)).status, 403, 'reserved for Carlo');
+  assert.equal(await svc.paluwaganClaimAlerts(Date.now() + 25 * 3600e3), false, 'not yet 2 hours after it opened');
+  assert.equal(await svc.paluwaganClaimAlerts(Date.now() + 27 * 3600e3), true, 'the admin is told nobody claimed them');
+  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/claim`)).data.careAgent, 'Carlo Santos');
+  assert.equal((await be.post(`/api/paluwagan-members/${m.id}/claim`)).status, 400, 'already claimed');
+  assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Your paluwagan agent'));
+  // their care agent is now told before each due date too
+  assert.equal(await svc.paluwaganReminders(new Date(2026, 1, 8)), true);
+  assert.ok((await ca.state()).notifications.some((n: any) => n.title === 'Client payment due soon' && n.message.includes(m.clientName)));
+
+  // customer care: only the client's care agent reminds them (in their chat) and logs calls; the admin can reassign
+  assert.equal((await be.post(`/api/care/${m.id}/remind`, { text: 'Hi' })).status, 403, 'not her client');
+  assert.equal((await ca.post(`/api/care/${m.id}/remind`, { text: '' })).status, 400);
+  assert.equal((await ca.post(`/api/care/${m.id}/remind`, { text: 'Hi! Month 2 is due on Feb 10.' })).status, 200);
+  const chat = (await c.state()).conversations.find((x: any) => x.sellerName === 'Carlo Santos');
+  assert.equal(chat.messages.at(-1).text, 'Hi! Month 2 is due on Feb 10.');
+  assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Message from your agent'));
+  assert.equal((await ca.post(`/api/care/${m.id}/log`, { kind: 'visit', text: 'x' })).status, 400);
+  assert.equal((await ca.post(`/api/care/${m.id}/log`, { kind: 'call', text: 'Will pay Friday' })).status, 200);
+  assert.deepEqual((await ca.state()).careLogs.map((x: any) => x.kind), ['call', 'reminder']);
+  assert.ok((await ca.state()).paluwagan.find((x: any) => x.id === m.id).clientPhone !== undefined, 'care agent gets the phone');
+  assert.equal((await ca.raw('PATCH', `/api/paluwagan-members/${m.id}/care-agent`, { agent: 'Bea Villanueva' })).status, 403, 'admins only');
+  assert.equal((await ad.raw('PATCH', `/api/paluwagan-members/${m.id}/care-agent`, { agent: 'Nobody' })).status, 400);
+  assert.equal((await ad.raw('PATCH', `/api/paluwagan-members/${m.id}/care-agent`, { agent: 'Bea Villanueva' })).status, 200);
+  assert.equal((await be.post(`/api/care/${m.id}/log`, { kind: 'note', text: 'Took over' })).status, 200);
+  assert.equal((await ca.post(`/api/care/${m.id}/log`, { kind: 'note', text: 'x' })).status, 403);
+  await ad.raw('PATCH', `/api/paluwagan-members/${m.id}/care-agent`, { agent: 'Carlo Santos' });
+
+  // release in slot order: the unit goes now, payments go on; unmarking a month keeps it; it can be undone
+  assert.equal((await c.post(`/api/paluwagan-members/${m.id}/release`)).status, 403, 'admins only');
+  const rel = (await ad.post(`/api/paluwagan-members/${m.id}/release`)).data;
+  assert.equal(rel.status, 'released');
+  assert.equal(rel.releasedManually, true);
+  assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Paluwagan unit released'));
+  assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/2`, { paid: true })).data.status, 'released', 'still paying');
+  assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/2`, { paid: false })).data.status, 'released', 'a release by hand stays');
+  assert.equal((await ad.post(`/api/paluwagan-members/${m.id}/release`, { undo: true })).data.status, 'joined');
+
+  // the agent who referred them asks any amount; the admin approves it into Commissions (or declines)
+  assert.equal((await (await bea()).post(`/api/paluwagan-members/${m.id}/commission`, { amount: 1000 })).status, 403, 'not her referral');
+  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/commission`, { amount: 0 })).status, 400);
+  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/commission`, { amount: 2750 })).data.commission.status, 'requested');
+  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/commission/decide`, { approve: true })).status, 403, 'agents cannot approve');
+  assert.equal((await ad.post(`/api/paluwagan-members/${m.id}/commission/decide`, { approve: false })).data.commission.status, 'declined');
+  await ca.post(`/api/paluwagan-members/${m.id}/commission`, { amount: 3100 });
+  const ok = (await ad.post(`/api/paluwagan-members/${m.id}/commission/decide`, { approve: true })).data;
+  assert.equal(ok.commission.status, 'approved');
+  const com = (await ca.state()).commissions.find((x: any) => x.id === ok.commission.commissionId);
+  assert.deepEqual([com.amount, com.status, com.agentName], [3100, 'payable', 'Carlo Santos']);
+  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/commission`, { amount: 9999 })).status, 400, 'locked once approved');
+
+  // full: new clients join the waitlist; a freed slot tells them, and Apply then takes them off it
+  for (let n = 2; n <= 36; n++) await store.put('paluwagan_members', { ...m, id: `palm-van-${n}`, clientId: `van-${n}`, slot: n, commission: undefined, referredBy: undefined, verifiedAt: undefined });
+  const w = await newClient();
+  assert.equal((await w.post(`/api/paluwagan-units/${unit.id}/join`)).status, 400, 'full: Apply refused');
+  const wm = (await w.post(`/api/paluwagan-units/${unit.id}/join`, { waitlist: true })).data;
+  assert.equal(wm.status, 'waitlist');
+  assert.equal((await w.post(`/api/paluwagan-members/${wm.id}/confirm`)).status, 400, 'no slot from the waitlist');
+  assert.equal((await ad.post('/api/paluwagan-members/palm-van-7/remove')).status, 200);
+  assert.ok((await w.state()).notifications.some((n: any) => n.title === 'A paluwagan slot opened'));
+  const back = (await w.post(`/api/paluwagan-units/${unit.id}/join`)).data;
+  assert.equal(back.id, wm.id);
+  assert.equal(back.status, 'pending');
+  assert.equal((await w.post(`/api/paluwagan-members/${wm.id}/confirm`)).data.slot, 7);
 });
 
 test('older data: separate chats of one client with one agent are merged into the oldest, in time order', async () => {
@@ -1513,4 +1716,31 @@ test('ready unit add-ons: client picks them when applying, agent and admin chang
   const plain = (await apply(c2, (await freeVehicle()).id)).data;
   assert.equal(plain.addOns, undefined);
   assert.equal(plain.vehiclePrice, 950000);
+});
+
+test('sales categories: financing, cash, pre-order, and the add-ons part of a ready unit', async () => {
+  const { saleCategory, addOnsAmount } = await import('../src/components/accounting/ledger.ts');
+  assert.equal(saleCategory({ purchaseMethod: 'financing' }), 'financing');
+  assert.equal(saleCategory({ purchaseMethod: 'cash' }), 'cash');
+  assert.equal(saleCategory({ purchaseMethod: 'financing', preorderRef: 'PO-1' }), 'preorder');
+  assert.equal(saleCategory(undefined), 'cash', 'a sale entered by hand');
+  assert.equal(addOnsAmount({ addOns: {} as any, listPrice: 500000, vehiclePrice: 535000 }), 35000);
+  assert.equal(addOnsAmount({ listPrice: 500000, vehiclePrice: 535000 }), 0, 'no add-ons');
+  assert.equal(addOnsAmount({ addOns: {} as any, listPrice: 500000, vehiclePrice: 535000, preorderRef: 'PO-1' }), 0, 'pre-orders are their own category');
+});
+
+test('a listing a client is processing cannot be deleted (application or request to apply)', async () => {
+  const ad = await admin();
+  const v = await freeVehicle();
+  const c = await newClient();
+  const app = (await apply(c, v.id)).data;
+  const del = await ad.raw('DELETE', `/api/vehicles/${v.id}`);
+  assert.equal(del.status, 400);
+  assert.match(del.json.error, /is processing this unit/);
+  assert.equal((await ad.post(`/api/applications/${app.id}/status`, { status: 'withdrawn' })).status, 200);
+  assert.equal((await ad.raw('DELETE', `/api/vehicles/${v.id}`)).status, 200, 'free again once withdrawn');
+  const v2 = await freeVehicle();
+  const c2 = await newClient();
+  assert.equal((await c2.post('/api/apply-requests', { vehicleId: v2.id })).status, 200);
+  assert.equal((await ad.raw('DELETE', `/api/vehicles/${v2.id}`)).status, 400, 'an open request to apply holds it too');
 });
