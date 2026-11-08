@@ -80,6 +80,16 @@ export const createApp = () => {
     next();
   });
 
+  // Keep-awake check for an uptime monitor (Render's free plan sleeps after 15 idle minutes): no database, a few bytes.
+  app.get('/healthz', (_req, res) => void res.type('text/plain').setHeader('Cache-Control', 'no-store').send('ok'));
+  // On Render, one log line per request (not the health checks), so the logs show whether requests reach the server.
+  if (process.env.RENDER)
+    app.use((req, res, next) => {
+      const start = Date.now();
+      res.on('finish', () => console.log(`${req.method} ${req.path} ${res.statusCode} ${Date.now() - start}ms`));
+      next();
+    });
+
   // ---------- files (stored in Cloudflare R2, or MongoDB GridFS when R2 is not set up; see storage.ts) ----------
   // Any portal's session may open a file: public files are for everyone, private ones only for their owner and admins.
   app.get(

@@ -1744,3 +1744,10 @@ test('a listing a client is processing cannot be deleted (application or request
   assert.equal((await c2.post('/api/apply-requests', { vehicleId: v2.id })).status, 200);
   assert.equal((await ad.raw('DELETE', `/api/vehicles/${v2.id}`)).status, 400, 'an open request to apply holds it too');
 });
+
+test('healthz: a tiny, uncached keep-awake answer without signing in', async () => {
+  const r = await fetch(`${base}/healthz`);
+  assert.equal(r.status, 200);
+  assert.equal(await r.text(), 'ok');
+  assert.equal(r.headers.get('cache-control'), 'no-store');
+});
