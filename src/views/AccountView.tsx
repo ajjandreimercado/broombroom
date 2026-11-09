@@ -43,7 +43,6 @@ import {
 export const AccountView: React.FC = () => {
   const {
     currentUser,
-    paluwagan,
     accountTab,
     navigateTo,
     logout,
@@ -182,7 +181,7 @@ export const AccountView: React.FC = () => {
     { id: 'applications', label: 'My Applications', icon: FileText, badge: userApplications.length },
     { id: 'quotations', label: 'My Quotations', icon: Calculator, badge: quotations.filter((q) => q.clientId === currentUser?.id).length || undefined },
     { id: 'preorders', label: 'My Pre-orders', icon: FileText, badge: preorders.length || undefined },
-    ...(paluwagan.some((m) => m.status === 'joined' || m.status === 'released') ? [{ id: 'paluwagan' as const, label: 'My Paluwagan', icon: HandCoins }] : []),
+    { id: 'paluwagan', label: 'My Paluwagan', icon: HandCoins }, // always shown: without a slot it points to the paluwagan units
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: conversations.filter((c) => c.unreadBuyer > 0).length },
     { id: 'recently_viewed', label: 'Recently Viewed', icon: Clock },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: notifications.filter((n) => !n.read).length },
