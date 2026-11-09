@@ -96,6 +96,12 @@ const Card: React.FC<{ unit: PaluwaganUnit; member?: PaluwaganMember; onConfirme
       <div className="p-5 flex flex-col gap-4 flex-1">
         <div>
           <h3 className="font-display text-[22px] leading-tight text-[#141517]">{unit.title}</h3>
+          {unit.monthlyAmount ? (
+            <p className="mt-1 text-[#141517]">
+              <span className="font-display text-[20px] tabular-nums">₱{unit.monthlyAmount.toLocaleString('en-PH')}</span>
+              <span className="text-[13.5px] text-[#4E585E]"> / month · {PALUWAGAN_SLOTS} months</span>
+            </p>
+          ) : null}
           {unit.description && <p className="mt-1.5 text-[13.5px] text-[#4E585E] line-clamp-3">{unit.description}</p>}
         </div>
         <SlotBar taken={unit.taken.length} mine={joined ? member!.slot : undefined} />
