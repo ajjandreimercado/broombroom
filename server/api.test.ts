@@ -1751,3 +1751,48 @@ test('healthz: a tiny, uncached keep-awake answer without signing in', async () 
   assert.equal(await r.text(), 'ok');
   assert.equal(r.headers.get('cache-control'), 'no-store');
 });
+
+test('phone notifications: only signed-in users subscribe; bell notifications and client messages are pushed; gone phones are dropped', async () => {
+  const push = await import('./push.ts');
+  const sent: { endpoint: string; payload: any }[] = [];
+  let gone = '';
+  push.setSender(async (s, payload) => {
+    if (s.endpoint === gone) throw Object.assign(new Error('gone'), { statusCode: 410 });
+    sent.push({ endpoint: s.endpoint, payload: JSON.parse(payload) });
+  });
+  const keys = { p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg' };
+  const sub = (n: string) => ({ endpoint: `https://push.example.test/${n}`, keys });
+  assert.equal((await client('buyer').post('/api/push/subscribe', { subscription: sub('anon') })).status, 401);
+  const c = await newClient();
+  assert.equal((await c.post('/api/push/subscribe', { subscription: { endpoint: 'http://evil.test/x', keys } })).status, 400, 'https only');
+  assert.equal((await c.post('/api/push/subscribe', { subscription: { endpoint: 'https://push.example.test/x', keys: { p256dh: '<script>', auth: 'x' } } })).status, 400);
+  assert.equal((await c.post('/api/push/subscribe', { subscription: sub('client') })).status, 200);
+  const settle = () => new Promise((r) => setTimeout(r, 300));
+
+  // a bell notification for this client reaches their phone, with a link into their account
+  await svc.notify('client', 'Paluwagan receipt', 'AR ready', 'paluwagan', (await c.state()).me.id);
+  await settle();
+  const mine = sent.find((x) => x.endpoint.endsWith('/client'));
+  assert.deepEqual([mine?.payload.title, mine?.payload.url], ['Paluwagan receipt', '/?go=paluwagan']);
+
+  // an agent's phone gets their client's chat message
+  const ca = await carlo();
+  assert.equal((await ca.post('/api/push/subscribe', { subscription: sub('carlo') })).status, 200);
+  const v = await freeVehicle();
+  await linkFor(c, v.id); // Carlo claims them: their chat is with Carlo
+  const chat = (await c.state()).conversations.find((x: any) => x.sellerName === 'Carlo Santos');
+  assert.ok(chat, 'Carlo has the chat after claiming');
+  sent.length = 0;
+  assert.equal((await c.post(`/api/conversations/${chat.id}/messages`, { text: 'Is it still available?' })).status, 200);
+  await settle();
+  assert.ok(sent.some((x) => x.endpoint.endsWith('/carlo') && x.payload.body === 'Is it still available?' && x.payload.url === '/?portal=agent&go=messages'), JSON.stringify(sent));
+
+  // a phone the push service says is gone is removed
+  gone = 'https://push.example.test/client';
+  await svc.notify('client', 'x', 'y', 'messages', (await c.state()).me.id);
+  await settle();
+  assert.equal(await store.get('push_subs', (await store.one<any>('push_subs', { endpoint: gone }))?.id ?? 'none'), undefined);
+  // only the owner can unsubscribe a phone
+  assert.equal((await ca.post('/api/push/unsubscribe', { endpoint: 'https://push.example.test/carlo' })).status, 200);
+  assert.equal(await store.one('push_subs', { endpoint: 'https://push.example.test/carlo' }), undefined);
+});

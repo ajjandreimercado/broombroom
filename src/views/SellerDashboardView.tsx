@@ -9,6 +9,7 @@ import { Commissions } from '../components/Commissions.tsx';
 import { AgentListings } from '../components/agent/AgentListings.tsx';
 import { AgentLeads, claimablePaluwagan } from '../components/agent/AgentLeads.tsx';
 import { CareDesk, careAttention } from '../components/agent/CareDesk.tsx';
+import { PushToggle } from '../components/PushToggle.tsx';
 import { PreOrderPanel } from '../components/PreOrderPanel.tsx';
 import { AddOnsPanel } from '../components/AddOnsPanel.tsx';
 import {
@@ -201,6 +202,7 @@ export const SellerDashboardView: React.FC = () => {
             {/* 1. OVERVIEW DASHBOARD */}
             {sellerTab === 'dashboard' && (
               <div className="space-y-12">
+                <PushToggle />
                 {/* Ledger: the dealership's figures as one ruled row */}
                 <section aria-labelledby="ledger-heading">
                   <div className="flex items-end justify-between gap-4 pb-3 border-b-2 border-[#141517]">

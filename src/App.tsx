@@ -4,6 +4,11 @@ import { MotionConfig } from 'motion/react';
 import { AppProvider, useApp } from './context/AppContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { PaluwaganDueBanner } from './components/PaluwaganSoa.tsx';
+import { ChatBubble } from './components/ChatBubble.tsx';
+import { AppPrompt } from './components/PushToggle.tsx';
+import { registerServiceWorker } from './push.ts';
+
+registerServiceWorker();
 import { Footer } from './components/Footer.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import { ReportModal } from './components/ReportModal.tsx';
@@ -172,6 +177,8 @@ const AppContent: React.FC = () => {
       <AuthModal />
       <ReportModal />
       <ToastContainer />
+      {currentUser && !currentUser.mustChangePassword && <ChatBubble />}
+      {currentUser && !currentUser.mustChangePassword && <AppPrompt />}
       {isBuyerSite && <CompareDock />}
       {isBuyerSite && <CompareModal />}
     </div>

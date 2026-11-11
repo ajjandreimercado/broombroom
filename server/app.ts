@@ -4,6 +4,7 @@ import { raw, ping } from './db.ts';
 import { HttpError, sessionUser, requireRole, startSession, endSession, portalOf, users, throttle, publicUser, validPassword, PASSWORD_RULE, rateLimit, type User, type Portal } from './auth.ts';
 import { buildState } from './state.ts';
 import { eventStream, broadcastChange } from './events.ts';
+import { pushPublicKey, subscribe, unsubscribe } from './push.ts';
 import * as svc from './services.ts';
 import { sendMail, resubmitEmail, supportEmail, infoSheetEmail } from './mailer.ts';
 import { CONTACT_EMAIL } from '../src/data/constants.ts';
@@ -250,6 +251,12 @@ export const createApp = () => {
       res.json({ ok: true });
     })
   );
+
+  // ---------- phone notifications (Web Push) ----------
+  // Plain handlers: these change nothing anyone else sees, so no live-update broadcast (saves bandwidth).
+  api.get('/push/key', requireRole('buyer', 'seller', 'admin'), handle(async (_req, res) => void res.json({ ok: true, data: { key: pushPublicKey() } })));
+  api.post('/push/subscribe', requireRole('buyer', 'seller', 'admin'), handle(async (req, res) => void (await subscribe(me(req), body(req).subscription), res.json({ ok: true, data: null }))));
+  api.post('/push/unsubscribe', requireRole('buyer', 'seller', 'admin'), handle(async (req, res) => void (await unsubscribe(me(req), body(req).endpoint), res.json({ ok: true, data: null }))));
 
   // ---------- my account ----------
   api.patch('/me', requireRole('buyer', 'seller', 'admin'), act(async (req) => publicUser(await svc.updateProfile(me(req), body(req)))));

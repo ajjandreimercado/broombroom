@@ -31,6 +31,7 @@ import {
   CareLog,
 } from '../types.ts';
 import { api, uploadFile, ApiError } from '../api.ts';
+import { disablePush } from '../push.ts';
 import type { InfoSheet } from '../components/infoSheet.ts';
 import { GUIDES } from '../data/guides.ts';
 
@@ -475,7 +476,17 @@ const linkedApplicationId = PORTAL === 'buyer' ? params.get('resubmit') : null;
 const linkedSheetId = PORTAL === 'buyer' ? params.get('infosheet') : null;
 // Direct links to the info pages: /?page=privacy, /?page=terms, /?page=help, /?page=permits.
 const linkedPage = PORTAL === 'buyer' ? (['privacy', 'terms', 'help', 'permits'] as const).find((p) => p === params.get('page')) : undefined;
-const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : linkedSheetId ? 'info_sheet' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : linkedPage ?? 'marketplace';
+// A tapped phone notification opens /?go=<where> (the same places the bell links to; see server/push.ts linkFor).
+const go = params.get('go');
+const ACCOUNT_TABS: AccountTab[] = ['messages', 'applications', 'quotations', 'paluwagan', 'notifications', 'preorders'];
+const goAccountTab = PORTAL === 'buyer' && go && go !== 'deals' ? (ACCOUNT_TABS.find((t) => t === go) ?? 'notifications') : undefined;
+const goSellerTab: SellerTab | undefined = PORTAL === 'seller' && go ? (['commissions', 'vehicles', 'leads', 'clients', 'dashboard'] as SellerTab[]).find((t) => t === go) ?? 'messages' : undefined;
+const goAdminTab: AdminTab | undefined = PORTAL === 'admin' && go ? (['approvals', 'applications', 'financing', 'commissions', 'reports', 'quotations', 'leads', 'conversations', 'paluwagan'] as AdminTab[]).find((t) => t === go) ?? 'dashboard' : undefined;
+if (go) {
+  params.delete('go');
+  window.history.replaceState(null, '', `${window.location.pathname}${params.toString() ? `?${params}` : ''}`);
+}
+const startView: CurrentView = PORTAL === 'seller' ? 'seller' : PORTAL === 'admin' ? 'admin' : go === 'deals' ? 'deals' : goAccountTab ? 'account' : linkedSheetId ? 'info_sheet' : linkedApplicationId ? 'account' : linkedVehicleId ? 'vehicle_detail' : linkedPage ?? 'marketplace';
 
 const EMPTY: ServerState = { me: null, vehicles: [] };
 
@@ -484,9 +495,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [currentView, setCurrentView] = useState<CurrentView>(startView);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(linkedVehicleId);
   const [selectedGuideSlug, setSelectedGuideSlug] = useState<string | null>(null);
-  const [accountTab, setAccountTab] = useState<AccountTab>(linkedApplicationId ? 'applications' : 'profile');
-  const [sellerTab, setSellerTab] = useState<SellerTab>('dashboard');
-  const [adminTab, setAdminTab] = useState<AdminTab>('dashboard');
+  const [accountTab, setAccountTab] = useState<AccountTab>(goAccountTab ?? (linkedApplicationId ? 'applications' : 'profile'));
+  const [sellerTab, setSellerTab] = useState<SellerTab>(goSellerTab ?? 'dashboard');
+  const [adminTab, setAdminTab] = useState<AdminTab>(goAdminTab ?? 'dashboard');
   const [selectedQuotationId, setSelectedQuotationId] = useState<string | null>(null);
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(linkedSheetId ?? linkedApplicationId);
 
@@ -666,6 +677,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const logout = async () => {
+    await disablePush().catch(() => {});
     try {
       await api('/auth/logout', { body: {} });
     } catch {}

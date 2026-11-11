@@ -7,6 +7,7 @@ import { openAcknowledgementReceipt, openImage } from '../components/receipt.ts'
 import { ApplicationProgress, isOngoing } from '../components/ApplicationProgress.tsx';
 import { MyQuotations } from '../components/MyQuotations.tsx';
 import { MyPaluwagan } from '../components/PaluwaganSoa.tsx';
+import { PushToggle } from '../components/PushToggle.tsx';
 import { PreOrderPanel } from '../components/PreOrderPanel.tsx';
 import { AddOnsPanel } from '../components/AddOnsPanel.tsx';
 import { quoteFor } from '../components/quote.ts';
@@ -882,6 +883,7 @@ export const AccountView: React.FC = () => {
             {/* 7. SETTINGS TAB */}
             {accountTab === 'settings' && (
               <div className="border-t-2 border-[#141517] pt-6 space-y-6">
+                <PushToggle />
                 <div>
                   <h2 className="font-display text-[22px] leading-tight text-[#141517]">Password & security</h2>
                   <p className="text-xs text-[#4E585E] mt-1">

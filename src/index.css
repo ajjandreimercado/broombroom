@@ -176,6 +176,10 @@ select:focus, textarea:focus {
 .gb-rise > *        { flex: 1; min-width: 0; }
 @keyframes step-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 .animate-step-in    { animation: step-in 260ms var(--ease-out) both; }
+/* Chat bubble: a small hop when a message arrives (reduced motion: none, the badge alone says it). */
+@keyframes bubble-hop { 0%, 100% { transform: none; } 35% { transform: translateY(-8px) scale(1.06); } 65% { transform: translateY(0) scale(0.97); } }
+.animate-bubble-hop { animation: bubble-hop 520ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .animate-bubble-hop { animation: none; } }
 .delay-100 { animation-delay: 100ms; }
 .delay-150 { animation-delay: 150ms; }
 .delay-200 { animation-delay: 200ms; }

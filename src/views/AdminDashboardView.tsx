@@ -17,6 +17,7 @@ import { SalesReport } from '../components/accounting/SalesReport.tsx';
 import { ReceiptsPage } from '../components/accounting/ReceiptsPage.tsx';
 import { LeadsManager } from '../components/admin/LeadsManager.tsx';
 import { ClientLookup } from '../components/admin/ClientLookup.tsx';
+import { PushToggle } from '../components/PushToggle.tsx';
 import { AccountsManager } from '../components/admin/AccountsManager.tsx';
 import { PreOrdersList, PreOrderSetup } from '../components/admin/PreOrders.tsx';
 import { PaluwaganMembers, PaluwaganSetup } from '../components/admin/Paluwagan.tsx';
@@ -159,7 +160,12 @@ export const AdminDashboardView: React.FC = () => {
 
           <main className="lg:col-span-9 min-w-0">
             <ErrorBoundary key={adminTab}>
-            {adminTab === 'dashboard' && <AdminOverview />}
+            {adminTab === 'dashboard' && (
+              <div className="space-y-6">
+                <PushToggle />
+                <AdminOverview />
+              </div>
+            )}
             {adminTab === 'approvals' && <ListingRequests />}
             {(adminTab === 'applications' || adminTab === 'quotations') && <ApplicationsManager key={adminTab} initial={adminTab === 'quotations' ? 'quotations' : 'review'} />}
             {adminTab === 'financing' && <FinancingReview />}

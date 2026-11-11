@@ -41,6 +41,7 @@ import { PREORDER_COMMISSION_RATE, PREORDER_DOWN_PCTS, PREORDER_MONTHLY_ADD_ON, 
 import { accountBalance, creditAvailable } from '../src/components/accounting/ledger.ts';
 import { store, tx, nextNumber, raw, opts } from './db.ts';
 import { deleteFile } from './storage.ts';
+import { pushLater, linkFor } from './push.ts';
 import { users, HttpError, validPassword, PASSWORD_RULE, rateLimit, type User } from './auth.ts';
 import type { GoogleProfile } from './google.ts';
 import { cleanInfoSheet, type InfoSheet } from '../src/components/infoSheet.ts';
@@ -87,8 +88,10 @@ const safeMediaUrl = (u: unknown) => typeof u === 'string' && /^(\/files\/[\w-]+
 // Ids from the browser are only ever compared as strings (never as query objects).
 const idOf = (v: unknown) => (typeof v === 'string' ? v : '');
 
-export const notify = (audience: 'client' | 'agent' | 'admin', title: string, message: string, linkTarget?: string, recipient?: string) =>
-  store.put<AppNotification>('notifications', {
+// A bell notification, also pushed to the person's phones (when they turned phone notifications on).
+export const notify = async (audience: 'client' | 'agent' | 'admin', title: string, message: string, linkTarget?: string, recipient?: string) => {
+  pushLater(audience, recipient, { title, body: message, url: linkFor(audience, linkTarget) });
+  return store.put<AppNotification>('notifications', {
     id: newId('notif'),
     audience,
     recipient,
@@ -99,6 +102,7 @@ export const notify = (audience: 'client' | 'agent' | 'admin', title: string, me
     read: false,
     createdAt: now(),
   });
+};
 
 // ---------- uploads ----------
 type UploadRow = { _id: string; ownerId: string; uploadedBy: string; visibility: string; mime: string; name: string; size: number; attached: boolean };
@@ -1955,6 +1959,10 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     const lead = await store.get<ClientLead>('leads', conv.buyerId);
     if (lead) await store.put('leads', reply ? (isAdmin || lead.agentName === me.name ? { ...lead, lastAgentAt: at } : lead) : { ...lead, lastClientAt: at });
     if (reply) await notify('client', 'New message', `${msg.senderName} replied about the ${conv.vehicleTitle}.`, 'messages', conv.buyerId);
+    // A client's message is not a bell notification (the chat shows it unread), but it still goes to the phones of
+    // whoever answers: their agent, or the admins while the chat is with the team.
+    else if (conv.sellerName === TEAM_NAME || conv.takenOverAt) pushLater('admin', undefined, { title: `Message from ${me.name}`, body: t, url: linkFor('admin', 'conversations') });
+    else pushLater('agent', conv.sellerName, { title: `Message from ${me.name}`, body: t, url: linkFor('agent', 'messages') });
   });
 
 // Client: "Request to apply". No chat yet: the client waits in Open leads (or their agent is told) with the vehicle noted.

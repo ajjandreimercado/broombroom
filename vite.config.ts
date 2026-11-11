@@ -35,6 +35,8 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // server/data holds the dev database and saved emails; changes there are not code changes.
       watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/server/data/**'] },
+      // Phone testing over an HTTPS tunnel (cloudflared tunnel --url http://localhost:3000): push needs https.
+      allowedHosts: ['.trycloudflare.com'],
     },
   };
 });

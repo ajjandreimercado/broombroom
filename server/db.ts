@@ -29,6 +29,7 @@ export const COLLECTIONS = [
   'paluwagan_units',
   'paluwagan_members',
   'care_logs',
+  'push_subs',
 ] as const;
 export type Table = (typeof COLLECTIONS)[number];
 
@@ -48,6 +49,8 @@ export const connectDb = async (uri: string, dbName = process.env.MONGODB_DB || 
     col('paluwagan_members').createIndex({ clientId: 1 }),
     col('care_logs').createIndex({ agentName: 1 }),
     col('care_logs').createIndex({ clientId: 1 }),
+    col('push_subs').createIndex({ role: 1, userId: 1 }),
+    col('push_subs').createIndex({ role: 1, name: 1 }),
     col('preorders').createIndex({ requestId: 1 }),
     col('conversations').createIndex({ buyerId: 1, vehicleId: 1 }),
     col('conversations').createIndex({ sellerName: 1 }),
@@ -91,6 +94,8 @@ export const files = () => {
 
 // Every database call made inside tx() joins its transaction automatically.
 const txSession = new AsyncLocalStorage<ClientSession>();
+// Work started from inside a transaction that must not use its session (e.g. sending after it commits).
+export const outsideTx = <T>(fn: () => T): T => txSession.exit(fn);
 export const opts = () => {
   const session = txSession.getStore();
   return session ? { session } : {};
