@@ -12,6 +12,7 @@ registerServiceWorker();
 if (PORTAL !== 'buyer') {
   const key = PORTAL === 'seller' ? 'agent' : 'admin';
   document.querySelector('link[rel="manifest"]')?.setAttribute('href', `/manifest-${key}.webmanifest`);
+  document.querySelector('link[rel="apple-touch-icon"]')?.setAttribute('href', `/icons/apple-touch-icon-${key}.png`);
   document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', `Broom Broom ${PORTAL === 'seller' ? 'Agent' : 'Admin'}`);
 }
 import { Footer } from './components/Footer.tsx';
