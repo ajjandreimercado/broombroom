@@ -4,6 +4,7 @@ import { PORTAL, PORTAL_LABEL, portalUrl } from '../portals.ts';
 import { AnimatePresence, motion } from 'motion/react';
 import { popoverMotion, indicatorTransition, EASE_OUT } from '../motion.ts';
 import { GroomBroomLogo } from './GroomBroomLogo.tsx';
+import { InstallAppButton } from './PushToggle.tsx';
 import {
   Bookmark,
   Bell,
@@ -429,6 +430,11 @@ export const Navbar: React.FC = () => {
                 <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
               </a>
             )}
+
+            <InstallAppButton
+              onDone={() => setMobileMenuOpen(false)}
+              className="w-full text-left px-1 py-3 flex items-center justify-between font-display text-[18px] text-[#1D5FD1] cursor-pointer"
+            />
           </div>
         </motion.div>
       )}

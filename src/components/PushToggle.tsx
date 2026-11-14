@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supported, isIos, standalone, local, currentSub, enablePush, disablePush } from '../push.ts';
 import { useApp } from '../context/AppContext.tsx';
+import { PORTAL } from '../portals.ts';
 import { Bell, BellOff, Download, X } from 'lucide-react';
 
 const usePushState = () => {
@@ -70,6 +71,35 @@ if (typeof window !== 'undefined')
     window.dispatchEvent(new Event('bb-installable'));
   });
 
+if (typeof window !== 'undefined') window.addEventListener('appinstalled', () => ((installEvent = null), window.dispatchEvent(new Event('bb-installable'))));
+
+// "Install app" button for any menu: Chrome's install prompt on Android, the Add to Home Screen steps on iPhone.
+// Hidden once installed (opened from the home screen) or when the browser cannot install.
+export const InstallAppButton: React.FC<{ className?: string; onDone?: () => void }> = ({ className, onDone }) => {
+  const { showToast } = useApp();
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const on = () => refresh((n) => n + 1);
+    window.addEventListener('bb-installable', on);
+    return () => window.removeEventListener('bb-installable', on);
+  }, []);
+  const ios = isIos();
+  if (standalone() || (!installEvent && !ios)) return null;
+  const install = async () => {
+    onDone?.();
+    if (ios) return showToast('Install Broom Broom', 'In Safari, tap Share, then “Add to Home Screen”. Open Broom Broom from your home screen.');
+    await installEvent?.prompt();
+    installEvent = null;
+    refresh((n) => n + 1);
+  };
+  return (
+    <button onClick={install} className={className}>
+      Install app
+      <Download className="w-4 h-4" aria-hidden="true" />
+    </button>
+  );
+};
+
 // After sign-in on a phone: one friendly card to install the app and turn notifications on. Never shown again once
 // dismissed or done (per device).
 const PROMPT_KEY = 'bb-app-prompt';
@@ -83,17 +113,25 @@ export const AppPrompt: React.FC = () => {
     window.addEventListener('bb-installable', on);
     return () => window.removeEventListener('bb-installable', on);
   }, []);
+  // Agents and admins: the install card comes back on every sign-in (any device) until the app is installed.
+  const staff = PORTAL !== 'buyer';
+  const [closedFor, setClosedFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!currentUser) setClosedFor(null);
+  }, [currentUser]);
   const phone = window.matchMedia('(max-width: 900px)').matches || 'ontouchstart' in window;
   const wantsPush = state === 'off' || state === 'ios-install';
-  if (!currentUser || hidden || !phone || (!wantsPush && !installable)) return null;
+  if (!currentUser) return null;
+  if (staff ? closedFor === currentUser.id || standalone() || (!installable && !isIos()) : hidden || !phone || (!wantsPush && !installable)) return null;
   const close = () => {
+    if (staff) return setClosedFor(currentUser.id);
     local.set(PROMPT_KEY, 'done');
     setHidden(true);
   };
   return (
     <div role="dialog" aria-label="Get the Broom Broom app" className="fixed inset-x-3 z-[60] p-4 bg-white border border-[#141517] shadow-[0_8px_30px_rgba(0,0,0,0.18)] sm:max-w-sm sm:left-auto sm:right-4" style={{ bottom: 'calc(12px + env(safe-area-inset-bottom))' }}>
       <button onClick={close} aria-label="Not now" className="absolute top-2 right-2 p-1.5 text-[#4E585E] cursor-pointer"><X className="w-4 h-4" /></button>
-      <p className="font-semibold text-[15px] text-[#141517] pr-6">Never miss an update</p>
+      <p className="font-semibold text-[15px] text-[#141517] pr-6">{staff ? 'Install the Broom Broom app' : 'Never miss an update'}</p>
       <p className="mt-1 text-[13.5px] text-[#4E585E]">
         {state === 'ios-install'
           ? 'Tap Share, then “Add to Home Screen”. Open Broom Broom from there to get notified about messages, due dates and receipts.'
