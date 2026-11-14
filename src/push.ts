@@ -34,7 +34,7 @@ export const currentSub = async () => (supported() ? (await navigator.serviceWor
 export const enablePush = async (): Promise<'on' | 'denied' | 'unavailable'> => {
   if (!supported()) return 'unavailable';
   const { key } = await api<{ key: string | null }>('/push/key');
-  if (!key) return 'unavailable';
+  if (!key) throw new Error('Phone notifications are not set up on the server yet (VAPID keys missing on Render).');
   if ((await Notification.requestPermission()) !== 'granted') return 'denied';
   const reg = await navigator.serviceWorker.register('/sw.js');
   await navigator.serviceWorker.ready;
