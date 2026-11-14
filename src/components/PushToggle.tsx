@@ -87,7 +87,7 @@ export const InstallAppButton: React.FC<{ className?: string; onDone?: () => voi
   if (standalone() || (!installEvent && !ios)) return null;
   const install = async () => {
     onDone?.();
-    if (ios) return showToast('Install Broom Broom', 'In Safari, tap Share, then “Add to Home Screen”. Open Broom Broom from your home screen.');
+    if (ios) return showToast('Install Broom Broom', 'Tap Share (in the address bar or toolbar), then “Add to Home Screen”. Open it from your home screen.');
     await installEvent?.prompt();
     installEvent = null;
     refresh((n) => n + 1);

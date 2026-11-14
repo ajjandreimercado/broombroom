@@ -8,6 +8,12 @@ import { AppPrompt } from './components/PushToggle.tsx';
 import { registerServiceWorker } from './push.ts';
 
 registerServiceWorker();
+// Each portal installs as its own app (own name and start page): swap the manifest before the browser reads it.
+if (PORTAL !== 'buyer') {
+  const key = PORTAL === 'seller' ? 'agent' : 'admin';
+  document.querySelector('link[rel="manifest"]')?.setAttribute('href', `/manifest-${key}.webmanifest`);
+  document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', `Broom Broom ${PORTAL === 'seller' ? 'Agent' : 'Admin'}`);
+}
 import { Footer } from './components/Footer.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import { ReportModal } from './components/ReportModal.tsx';
