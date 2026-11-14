@@ -3,9 +3,10 @@
 // one Node process serves the built site (dist/) and the API.
 import express from 'express';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { boot } from './boot.ts';
 import { createApp, startJobs } from './app.ts';
+import { portalHtml } from './portalHtml.ts';
 
 const dist = path.resolve(process.cwd(), 'dist');
 if (!existsSync(dist)) throw new Error('dist/ is missing. Run "npm run build" first.');
@@ -41,8 +42,9 @@ app.use((_req, res, next) => {
 // visitors download nothing again (Render's free bandwidth is 5 GB a month). index.html is revalidated each visit.
 app.use('/assets', express.static(path.join(dist, 'assets'), { index: false, immutable: true, maxAge: '1y', fallthrough: false }));
 app.use(express.static(dist, { index: false, maxAge: '1h' }));
-// Single-page app: every other path gets index.html.
-app.get(/^(?!\/(api|files)\/).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+// Single-page app: every other path gets index.html, with the agent or admin app's manifest when ?portal= asks.
+const indexHtml = readFileSync(path.join(dist, 'index.html'), 'utf8');
+app.get(/^(?!\/(api|files)\/).*/, (req, res) => res.type('html').send(portalHtml(indexHtml, req.query.portal)));
 
 startJobs();
 const port = Number(process.env.PORT) || 3000;

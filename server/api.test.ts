@@ -1796,3 +1796,18 @@ test('phone notifications: only signed-in users subscribe; bell notifications an
   assert.equal((await ca.post('/api/push/unsubscribe', { endpoint: 'https://push.example.test/carlo' })).status, 200);
   assert.equal(await store.one('push_subs', { endpoint: 'https://push.example.test/carlo' }), undefined);
 });
+
+test('install: agent and admin pages carry their own manifest, iPhone icon and app name in the HTML', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { portalHtml } = await import('./portalHtml.ts');
+  const source = readFileSync('index.html', 'utf8');
+  const built = source.replace(/href="\//g, 'href="./'); // vite build (base './') writes ./ links
+  assert.equal(portalHtml(source, undefined), source);
+  assert.equal(portalHtml(source, ['admin']), source);
+  for (const [html, dot] of [[source, ''], [built, '.']] as const) for (const p of ['agent', 'admin'] as const) {
+    const out = portalHtml(html, p);
+    assert.ok(out.includes(`href="${dot}/manifest-${p}.webmanifest"`) && !out.includes('manifest.webmanifest"'));
+    assert.ok(out.includes(`href="${dot}/icons/apple-touch-icon-${p}.png"`));
+    assert.ok(out.includes(`content="Broom Broom ${p === 'agent' ? 'Agent' : 'Admin'}"`));
+  }
+});
