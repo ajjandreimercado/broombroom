@@ -1128,6 +1128,18 @@ test('paluwagan: admin lists a unit, clients apply through the form and take slo
   assert.equal(joined.months.length, 36);
   const dm = (await d.post(`/api/paluwagan-units/${unit.id}/join`, { ref: 'carlo-santos' })).data;
   assert.equal(dm.referredBy, 'Carlo Santos', 'joined through the agent link');
+  // the agent sees their client and is told as soon as they press Apply, before the Google Form comes back
+  const early = await (await carlo()).state();
+  assert.equal(early.paluwagan.find((x: any) => x.id === dm.id)?.status, 'pending');
+  assert.ok(early.notifications.some((n: any) => n.title === 'Client from your paluwagan link'));
+  assert.ok(!early.paluwagan.some((x: any) => x.id === m.id), 'not other clients');
+  // a client who applied without a link and comes back through one is recorded as that agent's
+  const late = await newClient();
+  const lm = (await late.post(`/api/paluwagan-units/${unit.id}/join`)).data;
+  assert.equal(lm.referredBy, undefined);
+  assert.equal((await late.post(`/api/paluwagan-units/${unit.id}/join`, { ref: 'carlo-santos' })).data.referredBy, 'Carlo Santos');
+  assert.equal((await late.post(`/api/paluwagan-units/${unit.id}/join`, { ref: 'bea-villanueva' })).data.referredBy, 'Carlo Santos', 'the first agent keeps them');
+  await store.remove('paluwagan_members', lm.id);
   assert.equal((await d.post(`/api/paluwagan-members/${dm.id}/confirm`)).data.slot, 2, 'the next slot');
   assert.deepEqual((await client('buyer').state()).paluwaganUnits.find((u: any) => u.id === unit.id).taken, [1, 2]);
   assert.ok((await ad.state()).notifications.some((n: any) => n.title === 'Paluwagan member to verify'));

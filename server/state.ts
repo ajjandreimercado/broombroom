@@ -69,9 +69,11 @@ export const buildState = async (me?: User) => {
     // Agents get no quotations, only whether one is out with the client (their add-ons edits are then locked).
     const sent = await store.all<Quotation>('quotations', { applicationRef: { $in: applications.map((a) => a.referenceNo) }, status: { $in: ['sent', 'returned', 'confirmed', 'accepted'] } });
     const forAgent = applications.map(({ infoSheet, ciComments, ...a }) => ({ ...a, quoteSent: sent.some((q) => q.applicationRef === a.referenceNo) }));
-    // Members they referred (commission), care for (customer care: with the phone and history, never the email), or
+    // Members they referred (commission; from the moment the client presses Apply, so a client who never comes back
+    // from the Google Form still shows), care for (customer care: with the phone and history, never the email), or
     // can claim (verified, no care agent yet: name, unit and slot only).
-    const paluwagan = (await store.all<PaluwaganMember>('paluwagan_members', { $or: [{ referredBy: me.name }, { careAgent: me.name }, { verifiedAt: { $exists: true }, careAgent: { $exists: false } }], status: { $nin: ['pending', 'waitlist'] } }, NEWEST('createdAt')))
+    const inPool = { status: { $nin: ['pending', 'waitlist'] } };
+    const paluwagan = (await store.all<PaluwaganMember>('paluwagan_members', { $or: [{ referredBy: me.name }, { careAgent: me.name, ...inPool }, { verifiedAt: { $exists: true }, careAgent: { $exists: false }, ...inPool }] }, NEWEST('createdAt')))
       .map(({ clientEmail, clientPhone, history, ...m }) => (m.careAgent === me.name ? { ...m, clientPhone, history } : m));
     const careLogs = await store.all<CareLog>('care_logs', { agentName: me.name }, NEWEST('createdAt'));
     return { ...base, notifications, agents, conversations, leads, applyRequests, applications: forAgent, commissions, listingRequests, preorders, preorderSettings: settings, paluwagan, careLogs };

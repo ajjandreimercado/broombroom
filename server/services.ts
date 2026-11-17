@@ -1250,21 +1250,29 @@ export const joinPaluwagan = (me: User, unitId: string, ref?: unknown, waitlist?
     const u = need(await store.get<StoredUnit>('paluwagan_units', idOf(unitId)), 'Unit');
     const full = (await takenSlots(u.id)).length >= PALUWAGAN_SLOTS;
     const mine = await store.one<PaluwaganMember>('paluwagan_members', { unitId: u.id, clientId: me.id, status: { $ne: 'removed' } });
+    const referredBy = await agentBySlug(ref);
+    // An earlier Apply without a link keeps no agent; the first agent link used afterwards is recorded.
+    const referral = mine && !mine.referredBy && referredBy ? { referredBy, history: logged(mine, `Came back through ${referredBy}'s link`) } : {};
+    if (referral.referredBy) await notifyReferrer(me, u.title, referral.referredBy);
     if (mine?.status === 'waitlist' && !full && waitlist !== true)
-      return store.put<PaluwaganMember>('paluwagan_members', { ...mine, status: 'pending', history: logged(mine, 'Off the waitlist: opened the Google Form') });
-    if (mine) return mine;
+      return store.put<PaluwaganMember>('paluwagan_members', { ...mine, ...referral, status: 'pending', history: logged({ ...mine, ...referral }, 'Off the waitlist: opened the Google Form') });
+    if (mine) return referral.referredBy ? store.put<PaluwaganMember>('paluwagan_members', { ...mine, ...referral }) : mine;
     if (u.hidden) bad('This paluwagan is closed.');
     if (full && waitlist !== true) bad(`All ${PALUWAGAN_SLOTS} slots of this paluwagan are taken. Join the waitlist instead.`);
     const at = now();
-    const referredBy = await agentBySlug(ref);
     const saved = await store.put<PaluwaganMember>('paluwagan_members', {
       id: newId('palm'), unitId: u.id, unitTitle: u.title, clientId: me.id, clientName: me.name, clientEmail: me.email, clientPhone: me.phone ?? '',
       status: full ? 'waitlist' : 'pending', months: blankMonths(), createdAt: at, referredBy,
       history: [{ at, text: `${full ? 'Joined the waitlist' : 'Opened the Google Form'}${referredBy ? ` (through ${referredBy}'s link)` : ''}` }],
     });
     if (full) await notify('admin', 'Paluwagan waitlist', `${me.name} joined the waitlist for the ${u.title} paluwagan.`, 'paluwagan');
+    if (referredBy) await notifyReferrer(me, u.title, referredBy);
     return saved;
   });
+
+// The referring agent hears as soon as their client presses Apply (before the Google Form is sent back).
+const notifyReferrer = (me: User, unitTitle: string, agent: string) =>
+  notify('agent', 'Client from your paluwagan link', `${me.name} applied for the ${unitTitle} paluwagan through your link. They show under Listings > Paluwagan and get a slot once they send the Google Form.`, 'vehicles', agent);
 
 // Client: back from the Google Form. Takes the lowest free slot; the admin checks the form's answers.
 export const confirmPaluwagan = (me: User, memberId: string) =>

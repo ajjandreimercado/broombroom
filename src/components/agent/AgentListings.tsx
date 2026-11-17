@@ -23,13 +23,17 @@ const ReferredMember: React.FC<{ m: PaluwaganMember }> = ({ m }) => {
   const [amount, setAmount] = useState(m.commission && m.commission.status !== 'approved' ? String(m.commission.amount) : '');
   const [busy, setBusy] = useState(false);
   const c = m.commission;
-  const status = m.status === 'released' ? 'released' : m.status === 'removed' ? 'removed' : `paid ${m.months.filter((x) => x.paid).length}/${PALUWAGAN_SLOTS}`;
+  const status = m.status === 'released' ? 'released' : m.status === 'removed' ? 'removed' : m.status === 'pending' ? 'applied' : m.status === 'waitlist' ? 'on the waitlist' : `paid ${m.months.filter((x) => x.paid).length}/${PALUWAGAN_SLOTS}`;
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 py-2 border-t border-[#DDE3E6] text-[13px] text-[#2A2E31]">
       <span>Slot {m.slot ?? '–'}: <strong>{m.clientName}</strong> · {status}</span>
       {c?.status === 'approved' ? (
         <span className="text-[#1B7F35] font-semibold">₱{c.amount.toLocaleString()} approved · see Commissions</span>
-      ) : m.status === 'removed' ? null : !m.verifiedAt ? (
+      ) : m.status === 'removed' ? null : m.status === 'pending' ? (
+        <span className="text-[#6B767D]">Opened the Google Form; gets a slot once they send it</span>
+      ) : m.status === 'waitlist' ? (
+        <span className="text-[#6B767D]">Waiting for a slot to open</span>
+      ) : !m.verifiedAt ? (
         <span className="text-[#6B767D]">Waiting for the admin to verify their first payment</span>
       ) : (
         <form
