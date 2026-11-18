@@ -465,6 +465,8 @@ export interface ClientLead {
   escalatedAt?: string; // admin was told it sat unclaimed
   history: { at: string; text: string }[];
   preview?: string; // the client's latest chat message, shown to agents in Open leads
+  question?: string; // a client with no agent wrote a message: it waits here until an agent claims them
+  questionVehicleId?: string; // the unit that question is about, if any
   // Locked: the client applied through their agent's apply link, so no one else can take them (and the
   // 24-hour rule does not apply) until that application is completed, declined or withdrawn, or the admin unlocks.
   lockedTo?: string;

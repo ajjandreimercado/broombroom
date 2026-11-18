@@ -56,6 +56,7 @@ export const AccountView: React.FC = () => {
     setActiveConversationId,
     writeToAgent,
     myAgent,
+    myQuestion,
     markConversationRead,
     sendMessage,
     applyThroughAgent,
@@ -607,7 +608,15 @@ export const AccountView: React.FC = () => {
                   <div className="flex-1 overflow-y-auto divide-y divide-[#DDE3E6]">
                     {conversations.length === 0 ? (
                       <div className="p-6 text-center text-xs text-[#4E585E]">
-                        No conversations yet. Press “Request to apply” on a vehicle: the first agent to take you on starts the chat here with your application link.
+                        {myQuestion ? (
+                          <>
+                            <p className="font-semibold text-[#141517]">Waiting for an agent</p>
+                            <p className="mt-1">Your question: “{myQuestion}”</p>
+                            <p className="mt-2">Our agents have it. The first one to take you on will answer it here.</p>
+                          </>
+                        ) : (
+                          'No conversations yet. Press “New message” to ask us anything, or “Request to apply” on a vehicle. The first agent to take you on answers you here.'
+                        )}
                       </div>
                     ) : (
                       conversations.map((conv) => (
@@ -652,14 +661,15 @@ export const AccountView: React.FC = () => {
                         setComposeBusy(true);
                         const id = await writeToAgent(composeAbout, composeText.trim());
                         setComposeBusy(false);
-                        if (!id) return;
-                        setActiveConversationId(id);
+                        if (id === null) return;
                         setComposing(false);
+                        if (id) setActiveConversationId(id);
+                        else setChatOpen(false); // no agent yet: the question waits for one
                       }}
                     >
                       <div>
                         <p className="text-[15px] font-bold text-[#141517]">New message</p>
-                        <p className="text-xs text-[#4E585E] mt-0.5">{myAgent ? `To ${myAgent}, your agent.` : 'To the Broom Broom sales team. An agent will reply.'}</p>
+                        <p className="text-xs text-[#4E585E] mt-0.5">{myAgent ? `To ${myAgent}, your agent.` : myQuestion ? 'Your question is already with our agents. The first one to take you on will answer it here.' : 'You have no agent yet. Your message goes to our agents, and the first one to take you on answers it here.'}</p>
                       </div>
                       <label className="block">
                         <span className="gb-label block mb-1.5">About</span>
@@ -683,7 +693,7 @@ export const AccountView: React.FC = () => {
                         />
                       </label>
                       <div className="flex gap-3">
-                        <button type="submit" disabled={!composeText.trim() || composeBusy} className="px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:bg-[#8C989F] text-white text-[13px] font-semibold rounded-[2px] cursor-pointer">
+                        <button type="submit" disabled={!composeText.trim() || composeBusy || (!myAgent && !!myQuestion)} className="px-5 py-2.5 bg-[#1D5FD1] hover:bg-[#174CA8] disabled:bg-[#8C989F] text-white text-[13px] font-semibold rounded-[2px] cursor-pointer">
                           {composeBusy ? 'Sending…' : 'Send'}
                         </button>
                         <button type="button" onClick={() => { setComposing(false); setChatOpen(false); }} className="px-3 py-2.5 text-[13px] text-[#4E585E] hover:text-[#141517] cursor-pointer">Cancel</button>

@@ -408,8 +408,8 @@ test('payments: running AR numbers, cannot exceed the price; sale completion; co
 test('request to apply: no chat and no agent until the first claim, which sends the apply link and keeps the client', async () => {
   const c = await newClient();
   const v = await freeVehicle();
-  // clients cannot start a chat on their own
-  assert.equal((await c.post('/api/conversations', { vehicleId: v.id, text: 'Hi' })).status, 400);
+  // clients cannot open a chat on a listing without an agent (a written question waits for one instead)
+  assert.equal((await c.post('/api/conversations', { vehicleId: v.id })).status, 400);
   assert.equal((await c.post('/api/apply-requests', { vehicleId: v.id, ref: 'bea-villanueva' })).status, 200);
   const st = await c.state();
   assert.equal(st.myAgent, null, 'not assigned to anyone');
@@ -1026,9 +1026,47 @@ test('conversations: claiming a client starts a chat with the agent; clients can
   assert.equal(l.data.id, g.data.id, 'a listing question goes in the same chat');
   assert.equal(l.data.vehicleId, other.id, 'which is now about that unit');
   assert.equal((await ca.state()).conversations.filter((x: any) => x.buyerId === c.id).length, 1);
-  // a client with no agent cannot write at all
+});
+
+test('new message with no agent: the question waits in Open leads; the first agent to claim gets it as the first message', async () => {
   const lone = await newClient();
-  assert.equal((await lone.post('/api/conversations', { text: 'Hello?' })).status, 400);
+  const v = await freeVehicle();
+  const sent = await lone.post('/api/conversations', { vehicleId: v.id, text: 'Is this still available?' });
+  assert.equal(sent.status, 200, JSON.stringify(sent.json));
+  assert.equal(sent.data.waiting, true);
+  let st = await lone.state();
+  assert.equal(st.myAgent, null);
+  assert.equal(st.myQuestion, 'Is this still available?', 'the client sees it is waiting');
+  assert.equal(st.conversations.length, 0, 'no chat until an agent takes them');
+  assert.equal((await lone.post('/api/conversations', { text: 'Hello?' })).status, 400, 'one waiting question');
+  // every agent sees the question in Open leads and is told
+  const ca = await carlo();
+  const open = (await ca.state()).leads.find((l: any) => l.clientId === lone.id);
+  assert.equal(open.agentName, undefined);
+  assert.equal(open.preview, 'Is this still available?');
+  assert.equal(open.interest, v.title);
+  assert.ok((await ca.state()).notifications.some((n: any) => n.title === 'New lead' && n.message.includes(v.title)));
+  // the first to claim gets the chat, opened by the client's question, then the introduction
+  assert.equal((await ca.post(`/api/leads/${lone.id}/claim`)).status, 200);
+  st = await lone.state();
+  assert.equal(st.myAgent, 'Carlo Santos');
+  assert.equal(st.myQuestion, null, 'taken off the lead');
+  const chat = st.conversations[0];
+  assert.equal(chat.vehicleId, v.id, 'about the unit they asked about');
+  assert.deepEqual(chat.messages.map((m: any) => m.isSeller), [false, true]);
+  assert.equal(chat.messages[0].text, 'Is this still available?');
+  assert.match(chat.messages[1].text, /I'm Carlo Santos/);
+  assert.equal((await ca.state()).conversations.find((x: any) => x.id === chat.id).unreadSeller, 1, 'the agent sees the question unread');
+  // the client now writes to their agent normally
+  assert.equal((await lone.post('/api/conversations', { text: 'Thanks!' })).data.id, chat.id);
+
+  // the admin assigning an agent also delivers a waiting question
+  const other = await newClient();
+  assert.equal((await other.post('/api/conversations', { text: 'Do you deliver to Cebu?' })).status, 200);
+  assert.equal((await (await admin()).post(`/api/leads/${other.id}/assign`, { agentName: 'Bea Villanueva' })).status, 200);
+  const ochat = (await other.state()).conversations[0];
+  assert.equal(ochat.sellerName, 'Bea Villanueva');
+  assert.equal(ochat.messages[0].text, 'Do you deliver to Cebu?');
 });
 
 test('editing a listing: details, photos and videos change; removing every photo brings back the placeholder', async () => {

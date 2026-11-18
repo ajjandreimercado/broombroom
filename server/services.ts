@@ -226,6 +226,7 @@ export const assignLead = (clientId: string, agentName: string | null, reason?: 
       history: [...lead.history, { at, text: note }],
     });
     await moveClient(lead.clientId, agentName ?? undefined);
+    if (agentName && lead.question) await introduceAgent(lead.clientId, agentName); // their waiting question goes to the agent
     if (lead.agentName) await notify('agent', 'Client reassigned', `${lead.clientName} is no longer your client. ${note}.`, 'leads', lead.agentName);
     if (agentName) await notify('agent', 'New client assigned', `${lead.clientName} (${lead.interest}) is now your client.`, 'leads', agentName);
     else await notify('agent', 'New lead', `${lead.clientName} is back in Open leads (${lead.interest}).`, 'leads');
@@ -1807,10 +1808,13 @@ export const GENERAL_TOPIC = 'General inquiry';
 const NEEDS_AGENT = 'You can chat once an agent takes you on. Press "Request to apply" on a vehicle; the agent who claims you starts the chat.';
 export const startConversation = (me: User, vehicleId: unknown, ref: unknown, message?: unknown) =>
   tx(async () => {
-    if (!(await ownerOf(me.id))) bad(NEEDS_AGENT);
     const v = vehicleId ? need(await store.get<Vehicle>('vehicles', idOf(vehicleId)), 'Listing') : undefined;
     const first = text(message, 'Message', 2000, false);
     if (!v && !first) bad('Write your message.');
+    if (!(await ownerOf(me.id))) {
+      if (!first) bad(NEEDS_AGENT);
+      return askAgents(me, v, first, ref);
+    }
     const existing = (await store.all<Conversation>('conversations', { buyerId: me.id, closedAt: { $exists: false }, paluwagan: { $exists: false } }, { updatedAt: -1 }))[0];
     if (existing) {
       if (v && v.id !== existing.vehicleId) await store.put<Conversation>('conversations', aboutUnit(existing, v));
@@ -1837,6 +1841,24 @@ export const startConversation = (me: User, vehicleId: unknown, ref: unknown, me
       messages: [{ id: newId('msg'), senderId: me.id, senderName: me.name, text: t, timestamp: at, isSeller: false }],
     });
   });
+
+// No agent yet: the client's message waits on their lead in Open leads (every agent is told). The first agent to claim
+// them (or the agent the admin assigns) gets it as the first message of their chat. One waiting question per client.
+const askAgents = async (me: User, v: Vehicle | undefined, question: string, ref: unknown) => {
+  rateLimit(`question|${me.id}`, 10, 60 * 60e3, 'Too many messages. Please try again later.');
+  const before = await store.get<ClientLead>('leads', me.id);
+  if (before?.question) bad('Your question is already with our agents. The first one to take you on will answer it in Messages.');
+  const topic = v?.title ?? GENERAL_TOPIC;
+  if (before?.doneAt) {
+    // Their last purchase is done (not in Open leads): the question brings them back.
+    await store.put<ClientLead>('leads', { ...before, doneAt: undefined, pooledAt: now(), escalatedAt: undefined });
+    await notify('agent', 'New lead', `${me.name} has a question about the ${topic}. Claim them in Open leads.`, 'leads');
+  } else await touchLead(me, topic, false, ref);
+  const lead = (await store.get<ClientLead>('leads', me.id))!;
+  const at = now();
+  await store.put<ClientLead>('leads', { ...lead, interest: topic, question, questionVehicleId: v?.id, lastClientAt: at, history: [...lead.history, { at, text: `Asked: ${question.slice(0, 120)}` }] });
+  return { waiting: true as const };
+};
 
 // A client talks to each agent in one chat. The chat's vehicle is the unit being discussed now; every unit the agent
 // sent a link for stays in the thread as an apply-link message.
@@ -1881,7 +1903,8 @@ export const mergeChats = async () => {
 const introduceAgent = async (clientId: string, agent: string): Promise<string | undefined> => {
   const client = await users.byId(clientId);
   if (!client) return undefined;
-  const wanted = (await store.get<ClientLead>('leads', clientId))?.applyVehicleId;
+  const lead = await store.get<ClientLead>('leads', clientId);
+  const wanted = lead?.applyVehicleId ?? lead?.questionVehicleId;
   let conv = (await store.all<Conversation>('conversations', { buyerId: clientId, closedAt: { $exists: false }, paluwagan: { $exists: false } }, { updatedAt: -1 }))[0];
   if (!conv) {
     const app = (await store.all<VehicleApplication>('applications', { applicantId: clientId }, { submittedAt: -1 }))[0];
@@ -1894,6 +1917,12 @@ const introduceAgent = async (clientId: string, agent: string): Promise<string |
     };
   }
   if (wanted) conv = aboutUnit(conv, await store.get<Vehicle>('vehicles', wanted));
+  // The question the client wrote before they had an agent opens the chat (and is taken off the lead).
+  if (lead?.question) {
+    const q = lead.question;
+    conv = { ...conv, lastMessage: q, unreadSeller: conv.unreadSeller + 1, messages: [...conv.messages, { id: newId('msg'), senderId: clientId, senderName: client.name, text: q, timestamp: now(), isSeller: false }] };
+    await store.put<ClientLead>('leads', { ...lead, question: undefined, questionVehicleId: undefined });
+  }
   // Already their agent in this chat (another unit): no second introduction.
   if (introducedBy(conv, agent)) {
     await store.put<Conversation>('conversations', { ...conv, sellerId: agentSlug(agent), sellerName: agent });

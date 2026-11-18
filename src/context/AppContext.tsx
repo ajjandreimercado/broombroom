@@ -164,6 +164,7 @@ interface ServerState {
   agents?: string[];
   users?: AccountSummary[];
   myAgent?: string | null;
+  myQuestion?: string | null;
 }
 
 export type ApplicationInput = {
@@ -276,6 +277,7 @@ interface AppContextType {
   agents: string[];
   accounts: AccountSummary[];
   myAgent: string | null;
+  myQuestion: string | null; // written before they had an agent; waiting in Open leads
 
   // User & Auth
   currentUser: UserProfile | null;
@@ -376,8 +378,9 @@ interface AppContextType {
 
   // Messaging
   startOrOpenConversation: (vehicleId: string) => Promise<string>;
-  // A new message to the client's agent: about a listing, or a general question ('' vehicle). Returns the chat id.
-  writeToAgent: (vehicleId: string, text: string) => Promise<string>;
+  // A new message to the client's agent: about a listing, or a general question ('' vehicle). Returns the chat id, ''
+  // when the client has no agent yet (the question waits for one), or null when it was not sent.
+  writeToAgent: (vehicleId: string, text: string) => Promise<string | null>;
   sendMessage: (conversationId: string, text: string) => Promise<boolean>;
   sendApplyLink: (conversationId: string, vehicleId: string) => Promise<boolean>;
   applyThroughAgent: (vehicleId: string, agentSlug: string) => void;
@@ -984,13 +987,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return conv?.id ?? '';
   };
   const writeToAgent = async (vehicleId: string, text: string) => {
-    if (!data.myAgent) {
-      showToast('No agent yet', 'Press “Request to apply” on a vehicle. The agent who takes you on starts the chat.', 'error');
+    const res = await run(() => api<Conversation | { waiting: true }>('/conversations', { body: { vehicleId, text, ref: takeRef() } }), undefined, 'Message not sent');
+    if (!res) return null;
+    clearRef();
+    if ('waiting' in res) {
+      showToast('Question sent', 'Our agents are told now. The first one to take you on will answer it here in Messages.');
       return '';
     }
-    const conv = await run(() => api<Conversation>('/conversations', { body: { vehicleId, text, ref: takeRef() } }), ['Message sent'], 'Message not sent');
-    if (conv) clearRef();
-    return conv?.id ?? '';
+    showToast('Message sent');
+    return res.id;
   };
   const sendMessage = async (conversationId: string, text: string) =>
     done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { text } }), undefined, 'Message not sent'));
@@ -1136,6 +1141,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         agents: data.agents ?? [],
         accounts: data.users ?? [],
         myAgent: data.myAgent ?? null,
+        myQuestion: data.myQuestion ?? null,
 
         currentUser,
         isAuthenticated: !!currentUser,

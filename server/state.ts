@@ -2,7 +2,7 @@
 import type { Vehicle, VehicleApplication, Conversation, Commission, ListingRequest, VehicleReport, AppNotification, Expense, Quotation, ClientLead, ManualReceipt, SalesEntry, LedgerAccount, Referral, ApplyRequest, PreOrder, PaluwaganMember, CareLog } from '../src/types.ts';
 import { store } from './db.ts';
 import { users, publicUser, type User } from './auth.ts';
-import { notificationScope, ownerOf, preorderSettings, paluwaganUnits } from './services.ts';
+import { notificationScope, preorderSettings, paluwaganUnits } from './services.ts';
 
 const NEWEST = (field: string) => ({ [field]: -1 as const });
 
@@ -29,17 +29,17 @@ export const buildState = async (me?: User) => {
   const notifications = (await store.all<AppNotification>('notifications', notificationScope(me), NEWEST('createdAt'))).slice(0, 200);
 
   if (role === 'buyer') {
-    const [applications, conversations, quotations, myAgent, preorders, settings, paluwagan, receipts] = await Promise.all([
+    const [applications, conversations, quotations, lead, preorders, settings, paluwagan, receipts] = await Promise.all([
       store.all<VehicleApplication>('applications', { applicantId: me.id }, NEWEST('submittedAt')),
       store.all<Conversation>('conversations', { buyerId: me.id }, NEWEST('updatedAt')),
       store.all<Quotation>('quotations', { clientId: me.id }, NEWEST('requestedAt')),
-      ownerOf(me.id),
+      store.get<ClientLead>('leads', me.id),
       withAgents({ clientId: me.id }),
       preorderSettings(),
       store.all<PaluwaganMember>('paluwagan_members', { clientId: me.id }, NEWEST('createdAt')),
       store.all<ManualReceipt>('receipts', { clientId: me.id }, NEWEST('date')),
     ]);
-    return { ...base, notifications, applications, conversations, quotations, myAgent: myAgent ?? null, preorders, preorderSettings: settings, paluwagan, receipts };
+    return { ...base, notifications, applications, conversations, quotations, myAgent: lead?.agentName ?? null, myQuestion: lead?.question ?? null, preorders, preorderSettings: settings, paluwagan, receipts };
   }
 
   const agents = (await users.agents()).map((a) => a.name);
@@ -59,7 +59,7 @@ export const buildState = async (me?: User) => {
         const last = (await store.all<Conversation>('conversations', { buyerId: l.clientId, paluwagan: { $exists: false } }))
           .flatMap((c) => c.messages.filter((m) => !m.isSeller))
           .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
-        return { ...l, preview: last?.text };
+        return { ...l, preview: l.question ?? last?.text };
       })
     );
     const applyRequests = await store.all<ApplyRequest>('apply_requests', { doneAt: { $exists: false }, $or: [{ claimedBy: null }, { claimedBy: me.name }] }, NEWEST('createdAt'));
