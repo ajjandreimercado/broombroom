@@ -1017,7 +1017,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
     if (!out) return;
     clearRef();
-    showToast('Request sent', out.agent ? `${out.agent} will send you the application link in Messages.` : 'The first agent to take you on sends you the application link in Messages.');
+    showToast('Request sent', out.agent ? `${out.agent} is your agent and sent you the application link in Messages.` : 'The first agent to take you on sends you the application link in Messages.');
   };
   const takeOverConversation = async (id: string) =>
     done(await run(() => api(`/conversations/${id}/takeover`, { body: {} }), ['Chat taken over', 'You can now reply to the client.']));

@@ -410,14 +410,13 @@ test('request to apply: no chat and no agent until the first claim, which sends 
   const v = await freeVehicle();
   // clients cannot open a chat on a listing without an agent (a written question waits for one instead)
   assert.equal((await c.post('/api/conversations', { vehicleId: v.id })).status, 400);
-  assert.equal((await c.post('/api/apply-requests', { vehicleId: v.id, ref: 'bea-villanueva' })).status, 200);
+  assert.equal((await c.post('/api/apply-requests', { vehicleId: v.id })).status, 200);
   const st = await c.state();
   assert.equal(st.myAgent, null, 'not assigned to anyone');
   assert.equal(st.conversations.length, 0, 'no chat yet');
   const req = (await (await carlo()).state()).applyRequests.find((r: any) => r.clientId === c.id);
   assert.equal(req.vehicleId, v.id, 'agents see which car');
   assert.equal((await c.post('/api/apply-requests', { vehicleId: v.id })).status, 400, 'one request per car');
-  assert.ok((await (await bea()).state()).notifications.some((n: any) => n.title === 'Client from your link'));
   assert.equal((await (await bea()).post(`/api/leads/${c.id}/claim`)).status, 200);
   const convs = (await c.state()).conversations;
   assert.equal(convs.length, 1, 'the claim opened the chat');
@@ -1028,6 +1027,37 @@ test('conversations: claiming a client starts a chat with the agent; clients can
   assert.equal((await ca.state()).conversations.filter((x: any) => x.buyerId === c.id).length, 1);
 });
 
+test('a client who came through an agent\'s link goes straight to that agent: request to apply and new message', async () => {
+  // request to apply through Bea's link: Bea takes it at once (chat, introduction, apply link); nobody else is offered it
+  const c = await newClient();
+  const v = await freeVehicle();
+  const out = await c.post('/api/apply-requests', { vehicleId: v.id, ref: 'bea-villanueva' });
+  assert.equal(out.status, 200, JSON.stringify(out.json));
+  assert.equal(out.data.agent, 'Bea Villanueva');
+  const st = await c.state();
+  assert.equal(st.myAgent, 'Bea Villanueva');
+  assert.equal(st.conversations[0].sellerName, 'Bea Villanueva');
+  assert.equal(st.conversations[0].messages.at(-1).applyVehicleId, v.id, 'the apply link is in the chat');
+  assert.ok((await (await bea()).state()).notifications.some((n: any) => n.title === 'Client from your link' && n.message.includes(v.title)));
+  const ca = await carlo();
+  assert.ok(!(await ca.state()).leads.some((l: any) => l.clientId === c.id && !l.agentName), 'not in Open leads');
+  assert.ok(!(await ca.state()).notifications.some((n: any) => n.title === 'New lead' && n.message.includes(v.title) && n.createdAt > st.conversations[0].messages[0].timestamp), 'no Open leads notice');
+  assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 409, 'already Bea\'s');
+
+  // new message through Carlo's link: Carlo gets the question as the first message of his chat
+  const q = await newClient();
+  const sent = await q.post('/api/conversations', { text: 'Can I view it on Saturday?', ref: 'carlo-santos' });
+  assert.equal(sent.status, 200, JSON.stringify(sent.json));
+  assert.equal(sent.data.waiting, undefined, 'no waiting');
+  assert.equal(sent.data.sellerName, 'Carlo Santos');
+  assert.deepEqual(sent.data.messages.map((m: any) => [m.isSeller, m.isSeller ? 'intro' : m.text]), [[false, 'Can I view it on Saturday?'], [true, 'intro']]);
+  assert.equal((await q.state()).myQuestion, null);
+
+  // a client who already has an agent keeps them for chats; a link only takes that unit's request
+  const keep = await c.post('/api/conversations', { text: 'Hi again', ref: 'carlo-santos' });
+  assert.equal(keep.data.sellerName, 'Bea Villanueva', 'their agent keeps the chat');
+});
+
 test('new message with no agent: the question waits in Open leads; the first agent to claim gets it as the first message', async () => {
   const lone = await newClient();
   const v = await freeVehicle();
@@ -1059,6 +1089,16 @@ test('new message with no agent: the question waits in Open leads; the first age
   assert.equal((await ca.state()).conversations.find((x: any) => x.id === chat.id).unreadSeller, 1, 'the agent sees the question unread');
   // the client now writes to their agent normally
   assert.equal((await lone.post('/api/conversations', { text: 'Thanks!' })).data.id, chat.id);
+
+  // a waiting question plus an open request to apply: claiming the request delivers the question too
+  const both = await newClient();
+  assert.equal((await both.post('/api/conversations', { text: 'Is financing available?' })).status, 200);
+  const v2 = await freeVehicle();
+  assert.equal((await both.post('/api/apply-requests', { vehicleId: v2.id })).status, 200);
+  assert.equal((await ca.post(`/api/leads/${both.id}/claim`)).status, 200);
+  const bchat = (await both.state()).conversations[0];
+  assert.ok(bchat.messages.some((m: any) => !m.isSeller && m.text === 'Is financing available?'), 'question delivered');
+  assert.equal((await both.state()).myQuestion, null);
 
   // the admin assigning an agent also delivers a waiting question
   const other = await newClient();
@@ -1286,15 +1326,22 @@ test('paluwagan: due dates and reminders, a receipt per month, release in slot o
   assert.equal((await (await newClient()).state()).receipts.length, 0, 'never another client\'s');
   assert.equal((await ad.patch(`/api/paluwagan-members/${m.id}/months/1`, { note: 'GCash' })).data.months[0].arNo, r.arNo, 'not twice');
 
-  // claiming: kept 24 hours for the agent whose link they used, then open to every agent
-  const pool = (await be.state()).paluwagan.find((x: any) => x.id === m.id);
-  assert.deepEqual([pool.clientPhone, pool.clientEmail, pool.history], [undefined, undefined, undefined], 'claimable: no contact details');
-  assert.equal((await be.post(`/api/paluwagan-members/${m.id}/claim`)).status, 403, 'reserved for Carlo');
-  assert.equal(await svc.paluwaganClaimAlerts(Date.now() + 25 * 3600e3), false, 'not yet 2 hours after it opened');
-  assert.equal(await svc.paluwaganClaimAlerts(Date.now() + 27 * 3600e3), true, 'the admin is told nobody claimed them');
-  assert.equal((await ca.post(`/api/paluwagan-members/${m.id}/claim`)).data.careAgent, 'Carlo Santos');
-  assert.equal((await be.post(`/api/paluwagan-members/${m.id}/claim`)).status, 400, 'already claimed');
+  // joined through Carlo's link: verifying makes Carlo their customer care at once, no claiming
+  assert.equal(verified.careAgent, 'Carlo Santos');
+  assert.ok((await ca.state()).notifications.some((n: any) => n.title === 'Your paluwagan client' && n.message.includes(m.clientName)));
   assert.ok((await c.state()).notifications.some((n: any) => n.title === 'Your paluwagan agent'));
+  assert.equal((await be.post(`/api/paluwagan-members/${m.id}/claim`)).status, 400, 'already his');
+  assert.ok(!(await be.state()).paluwagan.some((x: any) => x.id === m.id), 'not in anyone else\'s claim list');
+  assert.equal(await svc.paluwaganClaimAlerts(Date.now() + 27 * 3600e3), false, 'nothing for the admin to chase');
+  // without a link, a verified member waits for any agent to claim them, without contact details
+  const solo = await join(await newClient());
+  await ad.post(`/api/paluwagan-members/${solo.id}/verify`);
+  const pool = (await be.state()).paluwagan.find((x: any) => x.id === solo.id);
+  assert.deepEqual([pool.careAgent, pool.clientPhone, pool.clientEmail, pool.history], [undefined, undefined, undefined, undefined], 'claimable: no contact details');
+  assert.equal(await svc.paluwaganClaimAlerts(Date.now() + 3 * 3600e3), true, 'the admin is told nobody claimed them');
+  assert.equal((await be.post(`/api/paluwagan-members/${solo.id}/claim`)).data.careAgent, 'Bea Villanueva');
+  assert.equal((await ca.post(`/api/paluwagan-members/${solo.id}/claim`)).status, 400, 'already claimed');
+  await store.remove('paluwagan_members', solo.id); // keep the slot count the rest of this test expects
   // their care agent is now told before each due date too
   assert.equal(await svc.paluwaganReminders(new Date(2026, 1, 8)), true);
   assert.ok((await ca.state()).notifications.some((n: any) => n.title === 'Client payment due soon' && n.message.includes(m.clientName)));

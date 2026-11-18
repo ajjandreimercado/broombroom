@@ -68,7 +68,7 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
       window.prompt('Copy your link', link);
     }
   };
-  const copyLink = (v: Vehicle) => copy(referralLink(v.id, currentUser?.name || ''), 'Clients who use it show up in Open leads and you are told; claim them to start the chat.');
+  const copyLink = (v: Vehicle) => copy(referralLink(v.id, currentUser?.name || ''), 'Clients who use it become your clients right away: you are told, and your introduction and the apply link are sent in the chat.');
   const [panel, setPanel] = useState<Panel>(null);
   // Listings, Paluwagan and My requests are tabs, so agents switch instead of scrolling past every listing.
   const [tab, setTab] = useState<'listings' | 'paluwagan' | 'requests'>('listings');
@@ -115,7 +115,7 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
         ]}
       />
       {tab === 'listings' && <div className="space-y-4">
-        <SectionHeader title="Listings" hint="Every listing is open to every agent. Share one with your own link: you are told when a client uses it, then claim them in Open leads. The admin team posts listings and sets their status.">
+        <SectionHeader title="Listings" hint="Every listing is open to every agent. Share one with your own link: a client who uses it becomes yours right away, no claiming needed. The admin team posts listings and sets their status.">
           <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => setPanel({ kind: 'add' })}>
             <PlusCircle className="w-4 h-4" aria-hidden="true" /> Request new listing
           </button>
@@ -172,7 +172,7 @@ export const AgentListings: React.FC<{ vehicles: Vehicle[] }> = ({ vehicles }) =
                         <p className="text-[12.5px] text-[#4E585E] tabular-nums mt-0.5">{u.taken.length} of {PALUWAGAN_SLOTS} slots taken · {mine.length} through your link</p>
                       </div>
                     </div>
-                    <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-auto`} onClick={() => copy(paluwaganLink(u.id, currentUser?.name || ''), 'Clients who join this paluwagan through it are noted as yours.')}>
+                    <button className={`${btn.primary} flex items-center gap-1.5 self-start sm:self-auto`} onClick={() => copy(paluwaganLink(u.id, currentUser?.name || ''), 'Clients who join this paluwagan through it are yours: once the admin verifies them, you are their customer care.')}>
                       <Link2 className="w-4 h-4" aria-hidden="true" /> Copy my link
                     </button>
                   </div>

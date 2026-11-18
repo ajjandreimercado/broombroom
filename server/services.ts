@@ -131,8 +131,9 @@ export const removeAbandonedUploads = async () => {
 };
 
 // ---------- leads (who each client belongs to) ----------
-const agentBySlug = async (slug: unknown) =>
-  typeof slug === 'string' && slug ? (await users.agents()).find((a) => agentSlug(a.name) === slug.toLowerCase())?.name : undefined;
+const agentBySlugUser = async (slug: unknown) =>
+  typeof slug === 'string' && slug ? (await users.agents()).find((a) => agentSlug(a.name) === slug.toLowerCase()) : undefined;
+const agentBySlug = async (slug: unknown) => (await agentBySlugUser(slug))?.name;
 export const ownerOf = async (clientId: string) => (await store.get<ClientLead>('leads', clientId))?.agentName;
 
 // A client's chats, open applications and not-yet-earned commissions follow their owner (or go back to the team).
@@ -149,8 +150,8 @@ const moveClient = async (clientId: string, owner: string | undefined) => {
   }
 };
 
-// The client did something (first message, application). New clients always go to Open leads: an agent must claim
-// them before any chat reaches that agent. A referral link only tells that agent to claim them.
+// The client did something (first message, application). New clients go to Open leads for an agent to claim, except
+// a client who came through an agent's link: the caller hands them straight to that agent (no Open leads notice).
 // Only a chat message starts the 24-hour reply clock.
 const touchLead = async (client: User, interest: string, isMessage: boolean, refSlug: unknown): Promise<string | undefined> => {
   const existing = await store.get<ClientLead>('leads', client.id);
@@ -171,12 +172,15 @@ const touchLead = async (client: User, interest: string, isMessage: boolean, ref
     pooledAt: at,
     interest,
     lastClientAt: isMessage ? at : undefined,
-    history: [{ at, text: referrer ? `Entered Open leads through ${referrer}'s link` : 'Entered Open leads' }],
+    history: [{ at, text: referrer ? `Came through ${referrer}'s link` : 'Entered Open leads' }],
   });
-  if (referrer) await notify('agent', 'Client from your link', `${client.name} came through your link about the ${interest}. Claim them in Open leads to start the chat.`, 'leads', referrer);
-  await notify('agent', 'New lead', `${client.name} is asking about the ${interest}. Claim them in Open leads.`, 'leads');
+  if (!referrer) await notify('agent', 'New lead', `${client.name} is asking about the ${interest}. Claim them in Open leads.`, 'leads');
   return undefined;
 };
+
+// The agent hears that a client from their link was given to them, with the chat already started.
+const linkClientNote = (client: User, agent: string, about: string) =>
+  notify('agent', 'Client from your link', `${client.name} came through your link about the ${about} and is now your client. Your introduction is in the chat: reply in Messages.`, 'messages', agent);
 
 // Two agents claiming at once: both transactions write the same lead, MongoDB lets one commit and reruns the other,
 // which then finds the lead taken.
@@ -1288,7 +1292,7 @@ export const confirmPaluwagan = (me: User, memberId: string) =>
     if (!slot) bad(`All ${PALUWAGAN_SLOTS} slots of this paluwagan are taken.`);
     const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...m, status: 'joined', slot, joinedAt: now(), history: logged(m, `Sent the Google Form: slot ${slot}`) });
     await notify('admin', 'Paluwagan member to verify', `${me.name} joined the ${m.unitTitle} paluwagan (slot ${slot} of ${PALUWAGAN_SLOTS}). Check their Google Form answers and month 1 payment, then verify them.`, 'paluwagan');
-    if (m.referredBy) await notify('agent', 'Paluwagan referral', `${me.name} joined the ${m.unitTitle} paluwagan through your link (slot ${slot}). Once the admin verifies their first payment, claim them in Leads.`, 'leads', m.referredBy);
+    if (m.referredBy) await notify('agent', 'Paluwagan referral', `${me.name} joined the ${m.unitTitle} paluwagan through your link (slot ${slot}). Once the admin verifies their first payment, they become your client automatically.`, 'leads', m.referredBy);
     return saved;
   });
 
@@ -1422,10 +1426,14 @@ export const verifyPaluwagan = (me: User, memberId: string) =>
     if (!HOLDS_SLOT.includes(m.status)) bad('Only a member with a slot can be verified.');
     if (m.verifiedAt) return m;
     const paid = m.months[0].paid ? m : await setPaluwaganMonth(me, m.id, 1, { paid: true });
-    const saved = await store.put<PaluwaganMember>('paluwagan_members', { ...paid, verifiedAt: now(), history: logged(paid, 'Verified by the admin: form checked, month 1 paid') });
+    let saved = await store.put<PaluwaganMember>('paluwagan_members', { ...paid, verifiedAt: now(), history: logged(paid, 'Verified by the admin: form checked, month 1 paid') });
     if (!saved.careAgent) {
-      if (m.referredBy) await notify('agent', 'Claim your paluwagan client', `${m.clientName} (${m.unitTitle}, slot ${m.slot}) is verified. They joined through your link: claim them in Leads within 24 hours.`, 'leads', m.referredBy);
-      else await notify('agent', 'Paluwagan client to claim', `${m.clientName} (${m.unitTitle}, slot ${m.slot}) is verified. Claim them in Leads to be their customer care.`, 'leads');
+      // Joined through an agent's link: that agent becomes their customer care now (no claiming).
+      if (m.referredBy && (await users.agents()).some((a) => a.name === m.referredBy)) {
+        saved = await store.put<PaluwaganMember>('paluwagan_members', { ...saved, careAgent: m.referredBy, history: logged(saved, `Care agent: ${m.referredBy} (joined through their link)`) });
+        await notify('agent', 'Your paluwagan client', `${m.clientName} (${m.unitTitle}, slot ${m.slot}) is verified and is now your client: you are their customer care. See them in your Care desk.`, 'leads', m.referredBy);
+        await notify('client', 'Your paluwagan agent', `${m.referredBy} is now your Broom Broom agent for the ${m.unitTitle} paluwagan and will keep you updated on your payments.`, 'paluwagan', m.clientId);
+      } else await notify('agent', 'Paluwagan client to claim', `${m.clientName} (${m.unitTitle}, slot ${m.slot}) is verified. Claim them in Leads to be their customer care.`, 'leads');
     }
     return saved;
   });
@@ -1849,15 +1857,30 @@ const askAgents = async (me: User, v: Vehicle | undefined, question: string, ref
   const before = await store.get<ClientLead>('leads', me.id);
   if (before?.question) bad('Your question is already with our agents. The first one to take you on will answer it in Messages.');
   const topic = v?.title ?? GENERAL_TOPIC;
+  const linkAgent = await agentBySlugUser(ref);
   if (before?.doneAt) {
     // Their last purchase is done (not in Open leads): the question brings them back.
     await store.put<ClientLead>('leads', { ...before, doneAt: undefined, pooledAt: now(), escalatedAt: undefined });
-    await notify('agent', 'New lead', `${me.name} has a question about the ${topic}. Claim them in Open leads.`, 'leads');
+    if (!linkAgent) await notify('agent', 'New lead', `${me.name} has a question about the ${topic}. Claim them in Open leads.`, 'leads');
   } else await touchLead(me, topic, false, ref);
   const lead = (await store.get<ClientLead>('leads', me.id))!;
   const at = now();
   await store.put<ClientLead>('leads', { ...lead, interest: topic, question, questionVehicleId: v?.id, lastClientAt: at, history: [...lead.history, { at, text: `Asked: ${question.slice(0, 120)}` }] });
+  // Came through an agent's link: that agent takes them now and the question opens their chat.
+  if (linkAgent) {
+    const { conversationId } = await claimLead(linkAgent, me.id);
+    await linkClientNote(me, linkAgent.name, topic);
+    if (conversationId) return (await store.get<Conversation>('conversations', conversationId))!;
+  }
   return { waiting: true as const };
+};
+
+// The question the client wrote before they had an agent opens the chat (and is taken off the lead).
+const withQuestion = async (conv: Conversation, lead: ClientLead | null | undefined, client: User): Promise<Conversation> => {
+  if (!lead?.question) return conv;
+  await store.put<ClientLead>('leads', { ...lead, question: undefined, questionVehicleId: undefined });
+  const q = lead.question;
+  return { ...conv, lastMessage: q, unreadSeller: conv.unreadSeller + 1, messages: [...conv.messages, { id: newId('msg'), senderId: client.id, senderName: client.name, text: q, timestamp: now(), isSeller: false }] };
 };
 
 // A client talks to each agent in one chat. The chat's vehicle is the unit being discussed now; every unit the agent
@@ -1917,12 +1940,7 @@ const introduceAgent = async (clientId: string, agent: string): Promise<string |
     };
   }
   if (wanted) conv = aboutUnit(conv, await store.get<Vehicle>('vehicles', wanted));
-  // The question the client wrote before they had an agent opens the chat (and is taken off the lead).
-  if (lead?.question) {
-    const q = lead.question;
-    conv = { ...conv, lastMessage: q, unreadSeller: conv.unreadSeller + 1, messages: [...conv.messages, { id: newId('msg'), senderId: clientId, senderName: client.name, text: q, timestamp: now(), isSeller: false }] };
-    await store.put<ClientLead>('leads', { ...lead, question: undefined, questionVehicleId: undefined });
-  }
+  conv = await withQuestion(conv, lead, client);
   // Already their agent in this chat (another unit): no second introduction.
   if (introducedBy(conv, agent)) {
     await store.put<Conversation>('conversations', { ...conv, sellerId: agentSlug(agent), sellerName: agent });
@@ -2027,7 +2045,14 @@ export const requestToApply = (me: User, input: any) =>
     const lead = (await store.get<ClientLead>('leads', me.id))!;
     const at = now();
     await store.put<ClientLead>('leads', { ...lead, interest: v.title, lastClientAt: at, history: [...lead.history, { at, text: `Asked to apply for the ${v.title}` }] });
-    await store.put<ApplyRequest>('apply_requests', { id: newId('ar'), clientId: me.id, clientName: me.name, vehicleId: v.id, vehicleTitle: v.title, createdAt: at });
+    const req = await store.put<ApplyRequest>('apply_requests', { id: newId('ar'), clientId: me.id, clientName: me.name, vehicleId: v.id, vehicleTitle: v.title, createdAt: at });
+    // Came through an agent's link: that agent takes the request now (chat, introduction and apply link).
+    const linkAgent = await agentBySlugUser(input?.ref);
+    if (linkAgent) {
+      await claimRequest(linkAgent, req.id);
+      await linkClientNote(me, linkAgent.name, v.title);
+      return { agent: linkAgent.name };
+    }
     if (!isNew) await notify('agent', 'New lead', `${me.name} wants to apply for the ${v.title}. Claim them in Open leads.`, 'leads');
     return { agent: null };
   });
@@ -2059,6 +2084,7 @@ export const claimRequest = (me: User, id: string) =>
         id: newId('conv'), vehicleId: r.vehicleId, vehicleTitle: r.vehicleTitle, vehiclePrice: v?.price ?? 0, vehicleImage: v?.images[0] ?? '',
         buyerId: r.clientId, buyerName: client.name, sellerId: agentSlug(me.name), sellerName: me.name, lastMessage: '', updatedAt: at, unreadBuyer: 0, unreadSeller: 0, messages: [],
       };
+    if (lead && !lead.agentName) conv = await withQuestion(conv, await store.get<ClientLead>('leads', r.clientId), client);
     const t = `Hi ${client.name.split(' ')[0]}! I'm ${me.name}, your Broom Broom agent for the ${r.vehicleTitle}. I can help you with viewings, quotations and your application. How can I help?`;
     // The same agent already in this chat (another unit): no second introduction, just the new apply link below.
     await store.put<Conversation>('conversations', introducedBy(conv, me.name)
