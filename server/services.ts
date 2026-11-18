@@ -130,6 +130,17 @@ export const removeAbandonedUploads = async () => {
   }
 };
 
+// Chat photos and videos are kept 30 days, then deleted (the message stays and says it expired), so storage never fills up.
+export const CHAT_MEDIA_DAYS = 30;
+export const removeOldChatMedia = async (at = Date.now()) => {
+  const old = await raw('uploads').find({ visibility: 'chat', createdAt: { $lt: new Date(at - CHAT_MEDIA_DAYS * 864e5) } }, { projection: { _id: 1, store: 1 } }).limit(200).toArray();
+  for (const u of old) {
+    await deleteFile({ _id: u._id as string, store: u.store }).catch((e) => console.error('could not delete', u._id, e.message));
+    await raw('uploads').deleteOne({ _id: u._id });
+  }
+};
+export const chatOf = (id: string) => store.get<Conversation>('conversations', id);
+
 // ---------- leads (who each client belongs to) ----------
 const agentBySlugUser = async (slug: unknown) =>
   typeof slug === 'string' && slug ? (await users.agents()).find((a) => agentSlug(a.name) === slug.toLowerCase()) : undefined;
@@ -1990,16 +2001,28 @@ export const sendMessage = (me: User, convId: string, input: any) =>
       if (unit.status !== 'available') bad('That vehicle is not available to apply for.');
       link = { applyVehicleId: unit.id, applyVehicleTitle: unit.title, applyAgent: agentSlug(me.name) };
     }
+    // A photo or video: uploaded first (visibility "chat"), then attached to this chat so only its people can open it.
+    let media: ChatMessage['media'];
+    if (input?.fileId) {
+      rateLimit(`chatmedia|${me.id}`, 40, 864e5, 'You sent a lot of photos and videos today. Please try again tomorrow.');
+      const row = await attachUpload(input.fileId, me, conv.buyerId, /^(image|video)\//);
+      if (row.visibility !== 'chat') bad('Upload the file again.');
+      await raw('uploads').updateOne({ _id: row._id }, { $set: { convId: conv.id } }, opts());
+      media = { id: row._id, url: fileUrl(row._id), kind: row.mime.startsWith('video/') ? 'video' : 'image' };
+    }
     const t = link.applyVehicleId
       ? text(input.text, 'Message', 2000, false) || `Here is the link to apply for the ${link.applyVehicleTitle}. Fill it in and I will take care of the rest.`
-      : text(input?.text, 'Message', 2000);
+      : media
+        ? text(input?.text, 'Message', 2000, false)
+        : text(input?.text, 'Message', 2000);
+    const preview = t || (media?.kind === 'video' ? 'Sent a video' : 'Sent a photo');
     const at = now();
     const isAdmin = me.role === 'admin';
     const reply = isAgent || isAdmin;
-    const msg: ChatMessage = { id: newId('msg'), senderId: me.id, senderName: isAdmin ? 'Broom Broom' : me.name, text: t, timestamp: at, isSeller: reply, ...link, ...(isAdmin ? { byAdmin: true } : {}) };
+    const msg: ChatMessage = { id: newId('msg'), senderId: me.id, senderName: isAdmin ? 'Broom Broom' : me.name, text: t, timestamp: at, isSeller: reply, ...link, ...(media ? { media } : {}), ...(isAdmin ? { byAdmin: true } : {}) };
     await store.put('conversations', {
       ...aboutUnit(conv, unit),
-      lastMessage: t,
+      lastMessage: preview,
       updatedAt: at,
       unreadBuyer: reply ? conv.unreadBuyer + 1 : 0,
       unreadSeller: isAgent ? 0 : conv.unreadSeller + 1,
@@ -2007,7 +2030,7 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     });
     // Track who is waiting on whom for the 24-hour reply rule.
     if (conv.paluwagan) {
-      if (!reply) await notify('admin', 'Paluwagan message', `${me.name}: ${t.slice(0, 120)}`, 'conversations');
+      if (!reply) await notify('admin', 'Paluwagan message', `${me.name}: ${preview.slice(0, 120)}`, 'conversations');
       else await notify('client', 'New message', `Broom Broom replied about ${conv.vehicleTitle}.`, 'messages', conv.buyerId);
       return;
     }
@@ -2016,8 +2039,8 @@ export const sendMessage = (me: User, convId: string, input: any) =>
     if (reply) await notify('client', 'New message', `${msg.senderName} replied about the ${conv.vehicleTitle}.`, 'messages', conv.buyerId);
     // A client's message is not a bell notification (the chat shows it unread), but it still goes to the phones of
     // whoever answers: their agent, or the admins while the chat is with the team.
-    else if (conv.sellerName === TEAM_NAME || conv.takenOverAt) pushLater('admin', undefined, { title: `Message from ${me.name}`, body: t, url: linkFor('admin', 'conversations') });
-    else pushLater('agent', conv.sellerName, { title: `Message from ${me.name}`, body: t, url: linkFor('agent', 'messages') });
+    else if (conv.sellerName === TEAM_NAME || conv.takenOverAt) pushLater('admin', undefined, { title: `Message from ${me.name}`, body: preview, url: linkFor('admin', 'conversations') });
+    else pushLater('agent', conv.sellerName, { title: `Message from ${me.name}`, body: preview, url: linkFor('agent', 'messages') });
   });
 
 // Client: "Request to apply". No chat yet: the client waits in Open leads (or their agent is told) with the vehicle noted.

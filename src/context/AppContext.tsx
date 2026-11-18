@@ -30,7 +30,8 @@ import {
   PaluwaganMember,
   CareLog,
 } from '../types.ts';
-import { api, uploadFile, ApiError } from '../api.ts';
+import { api, uploadFile, dataUrlToBlob, ApiError } from '../api.ts';
+import { compressVideo, photoDataUrl } from '../media.ts';
 import { disablePush } from '../push.ts';
 import type { InfoSheet } from '../components/infoSheet.ts';
 import { GUIDES } from '../data/guides.ts';
@@ -382,6 +383,7 @@ interface AppContextType {
   // when the client has no agent yet (the question waits for one), or null when it was not sent.
   writeToAgent: (vehicleId: string, text: string) => Promise<string | null>;
   sendMessage: (conversationId: string, text: string) => Promise<boolean>;
+  sendMedia: (conversationId: string, file: File) => Promise<boolean>;
   sendApplyLink: (conversationId: string, vehicleId: string) => Promise<boolean>;
   applyThroughAgent: (vehicleId: string, agentSlug: string) => void;
   requestToApply: (vehicleId: string) => Promise<void>;
@@ -999,6 +1001,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
   const sendMessage = async (conversationId: string, text: string) =>
     done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { text } }), undefined, 'Message not sent'));
+  // A photo (shrunk to a JPEG, about 200-400 KB) or a video (re-encoded to 720-1280 px MP4), at most 25 MB, kept 30 days.
+  const sendMedia = async (conversationId: string, file: File) =>
+    done(
+      await run(async () => {
+        let blob: Blob = file;
+        let name = file.name;
+        if (file.type.startsWith('video/')) {
+          blob = await compressVideo(file, () => {});
+          name = (blob as File).name ?? name;
+        } else {
+          const url = await photoDataUrl(file, 1600).catch(() => {
+            throw new Error('This photo could not be read. Try a JPG or PNG.');
+          });
+          blob = await dataUrlToBlob(url);
+          name = name.replace(/\.\w+$/, '') + '.jpg';
+        }
+        if (blob.size > 25 * 1024 * 1024) throw new Error('Videos in chats can be up to 25 MB. Send a shorter clip.');
+        const up = await uploadFile(blob, name, 'chat');
+        return api(`/conversations/${conversationId}/messages`, { body: { fileId: up.id } });
+      }, undefined, 'Not sent')
+    );
   const sendApplyLink = async (conversationId: string, vehicleId: string) =>
     done(await run(() => api(`/conversations/${conversationId}/messages`, { body: { applyVehicleId: vehicleId } }), ['Apply link sent', 'Once the client applies through it, they are locked to you.'], 'Link not sent'));
   const applyThroughAgent = (vehicleId: string, agentSlug: string) => {
@@ -1232,6 +1255,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         startOrOpenConversation,
         writeToAgent,
         sendMessage,
+        sendMedia,
         sendApplyLink,
         applyThroughAgent,
         requestToApply,

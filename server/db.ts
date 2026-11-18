@@ -69,6 +69,7 @@ export const connectDb = async (uri: string, dbName = process.env.MONGODB_DB || 
     raw('sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }), // expired sign-ins delete themselves
     raw('sessions').createIndex({ userId: 1 }),
     raw('uploads').createIndex({ uploadedBy: 1 }),
+    raw('uploads').createIndex({ visibility: 1, createdAt: 1 }), // the daily clean-up of 30-day-old chat media
     // GridFS would build these on the first upload; doing it here keeps that first upload fast.
     raw('files.files').createIndex({ filename: 1, uploadDate: 1 }),
     raw('files.chunks').createIndex({ files_id: 1, n: 1 }, { unique: true }),

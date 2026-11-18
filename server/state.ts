@@ -59,7 +59,7 @@ export const buildState = async (me?: User) => {
         const last = (await store.all<Conversation>('conversations', { buyerId: l.clientId, paluwagan: { $exists: false } }))
           .flatMap((c) => c.messages.filter((m) => !m.isSeller))
           .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
-        return { ...l, preview: l.question ?? last?.text };
+        return { ...l, preview: l.question ?? (last?.text || (last?.media ? `Sent a ${last.media.kind === 'video' ? 'video' : 'photo'}` : undefined)) };
       })
     );
     const applyRequests = await store.all<ApplyRequest>('apply_requests', { doneAt: { $exists: false }, $or: [{ claimedBy: null }, { claimedBy: me.name }] }, NEWEST('createdAt'));

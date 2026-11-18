@@ -1,4 +1,5 @@
 import { chatUnits } from '../components/chatUnits.ts';
+import { ChatMediaView, AttachButton } from '../components/ChatMedia.tsx';
 import React, { useEffect, useState } from 'react';
 import { goodPassword, PASSWORD_RULE } from '../components/password.ts';
 import { PasswordInput } from '../components/PasswordInput.tsx';
@@ -59,6 +60,7 @@ export const AccountView: React.FC = () => {
     myQuestion,
     markConversationRead,
     sendMessage,
+    sendMedia,
     applyThroughAgent,
     notifications: allNotifications,
     markNotificationRead,
@@ -755,7 +757,8 @@ export const AccountView: React.FC = () => {
                                   : 'bg-[#1D5FD1] text-white rounded-tr-xs'
                               }`}
                             >
-                              <p>{msg.text}</p>
+                              <ChatMediaView msg={msg} />
+                              {msg.text && <p className={msg.media ? 'mt-2' : ''}>{msg.text}</p>}
                               {msg.applyVehicleId && msg.applyAgent && (
                                 <button
                                   type="button"
@@ -786,6 +789,7 @@ export const AccountView: React.FC = () => {
                         onSubmit={handleSendMessage}
                         className="p-3 sm:p-3.5 border-t border-[#C9D1D6] flex gap-2 sm:gap-2.5 bg-[#F7F8F8]/30 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
                       >
+                        <AttachButton send={(f) => sendMedia(selectedConversation.id, f)} />
                         <input
                           type="text"
                           placeholder="Type your inquiry message..."

@@ -1,4 +1,5 @@
 import { chatUnits } from '../components/chatUnits.ts';
+import { ChatMediaView, AttachButton } from '../components/ChatMedia.tsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import { StatusMark } from '../components/StatusMark.tsx';
 import { useApp } from '../context/AppContext.tsx';
@@ -39,6 +40,7 @@ export const SellerDashboardView: React.FC = () => {
     activeConversationId,
     setActiveConversationId,
     sendMessage,
+    sendMedia,
     sendApplyLink,
     leads,
     applyRequests,
@@ -349,7 +351,8 @@ export const SellerDashboardView: React.FC = () => {
                                   : 'bg-[#EEF1F2] text-[#141517] rounded-tl-xs'
                               }`}
                             >
-                              {m.text}
+                              <ChatMediaView msg={m} />
+                              {m.text && <span className={m.media ? 'block mt-2' : ''}>{m.text}</span>}
                               {m.byAdmin && <span className="block mb-1 text-[10px] font-semibold opacity-80">Admin</span>}
                               {m.applyVehicleId && <span className="block mt-1.5 text-[10px] font-semibold opacity-80">Apply link: {m.applyVehicleTitle}</span>}
                             </div>
@@ -360,6 +363,7 @@ export const SellerDashboardView: React.FC = () => {
                         ))}
                       </div>
                       <form onSubmit={handleSendSellerReply} className="p-3 sm:p-3.5 border-t border-[#C9D1D6] flex gap-2 sm:gap-2.5 bg-[#F7F8F8]/30 shrink-0">
+                        <AttachButton send={(f) => sendMedia(selectedConv.id, f)} />
                         <input
                           type="text"
                           placeholder="Reply to client..."

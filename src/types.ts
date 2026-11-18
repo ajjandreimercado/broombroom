@@ -207,6 +207,7 @@ export interface ChatMessage {
   applyVehicleTitle?: string;
   applyAgent?: string; // agent slug
   byAdmin?: boolean; // sent by the admin during a takeover
+  media?: { id: string; url: string; kind: 'image' | 'video' }; // deleted after 30 days; the message then says so
 }
 
 export interface Conversation {

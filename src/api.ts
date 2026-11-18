@@ -38,7 +38,7 @@ export type Uploaded = { id: string; url: string; name: string; mime: string };
 
 // Sends one file. Private files (documents, receipts) can only be opened by their owner and admins;
 // public files (listing photos and videos) by anyone.
-export const uploadFile = async (file: Blob, name: string, visibility: 'public' | 'private' = 'private'): Promise<Uploaded> => {
+export const uploadFile = async (file: Blob, name: string, visibility: 'public' | 'private' | 'chat' = 'private'): Promise<Uploaded> => {
   let res: Response;
   try {
     res = await fetch(`/api/uploads?visibility=${visibility}&name=${encodeURIComponent(name)}`, {

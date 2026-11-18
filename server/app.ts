@@ -65,6 +65,9 @@ const UPLOAD_TYPES: Record<string, number> = {
   'video/mp4': 100, 'video/webm': 100, 'video/quicktime': 100,
 };
 
+// Chat photos and videos are compressed in the browser first; this keeps storage small (they are deleted after 30 days).
+const CHAT_MAX_MB = 25;
+
 // Call connectDb() and seedIfEmpty() before this (see server/index.ts).
 export const createApp = () => {
   const app = express();
@@ -98,7 +101,14 @@ export const createApp = () => {
     handle(async (req, res) => {
       const row = await raw('uploads').findOne({ _id: String(req.params.id) });
       if (!row) return void res.status(404).send('Not found');
-      if (row.visibility === 'private') {
+      if (row.visibility === 'chat') {
+        // A photo or video sent in a chat: only that chat's client, its agent and admins. Sent from R2 when it is there.
+        const conv = row.convId ? await svc.chatOf(String(row.convId)) : null;
+        const viewers = ((await Promise.all((['buyer', 'seller', 'admin'] as Portal[]).map((p) => sessionUser(req, p)))).filter(Boolean) as User[]).filter((u) => !u.mustChangePassword);
+        if (!conv || !viewers.some((u) => u.role === 'admin' || u.id === conv.buyerId || (u.role === 'seller' && u.name === conv.sellerName))) return void res.status(403).send('Not allowed');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        if (row.store === 'r2') return void res.redirect(302, await r2Link(row as any));
+      } else if (row.visibility === 'private') {
         const viewers = ((await Promise.all((['buyer', 'seller', 'admin'] as Portal[]).map((p) => sessionUser(req, p)))).filter(Boolean) as User[]).filter((u) => !u.mustChangePassword);
         if (!viewers.some((u) => u.role === 'admin' || u.id === row.ownerId)) return void res.status(403).send('Not allowed');
         res.setHeader('Cache-Control', 'private, no-store');
@@ -166,23 +176,26 @@ export const createApp = () => {
       const maxMb = UPLOAD_TYPES[mime];
       if (!req.user) return next(new HttpError(401, 'Please sign in first.'));
       if (!maxMb) return next(new HttpError(415, 'Use a photo (JPG, PNG, WebP), a PDF, or a video (MP4, MOV, WebM).'));
-      if (Number(req.get('content-length') || 0) > (req.user.role === 'buyer' ? 10 : maxMb) * 1024 * 1024) return next(new HttpError(413, `Files of this type can be up to ${maxMb} MB.`));
+      const cap = req.query.visibility === 'chat' ? CHAT_MAX_MB : req.user.role === 'buyer' ? 10 : maxMb;
+      if (Number(req.get('content-length') || 0) > cap * 1024 * 1024) return next(new HttpError(413, `Files of this type can be up to ${maxMb} MB.`));
       next();
     },
     express.raw({ type: () => true, limit: '101mb' }),
     handle(async (req, res) => {
       const u = req.user;
-      const visibility = req.query.visibility === 'public' ? 'public' : 'private';
+      const visibility = req.query.visibility === 'public' ? 'public' : req.query.visibility === 'chat' ? 'chat' : 'private';
       if (!u) throw new HttpError(401, 'Please sign in first.');
       if (visibility === 'public' && u.role === 'buyer') throw new HttpError(403, 'Your account cannot upload listing media.');
       const mime = String(req.get('content-type') || '').split(';')[0].trim().toLowerCase();
       const maxMb = UPLOAD_TYPES[mime];
       if (!maxMb) throw new HttpError(415, 'Use a photo (JPG, PNG, WebP), a PDF, or a video (MP4, MOV, WebM).');
-      if (mime.startsWith('video/') && u.role === 'buyer') throw new HttpError(415, 'Upload a photo or a PDF.');
+      if (visibility === 'chat' && !/^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime))$/.test(mime)) throw new HttpError(415, 'Send a photo (JPG, PNG, WebP) or a video (MP4, MOV, WebM).');
+      if (mime.startsWith('video/') && u.role === 'buyer' && visibility !== 'chat') throw new HttpError(415, 'Upload a photo or a PDF.');
       rateLimit(`upload|${u.id}`, 120, 60 * 60e3, 'Too many uploads in the last hour. Please try again later.');
       const buf = req.body as Buffer;
       if (!Buffer.isBuffer(buf) || !buf.length) throw new HttpError(400, 'The file is empty.');
       if (buf.length > maxMb * 1024 * 1024) throw new HttpError(413, `Files of this type can be up to ${maxMb} MB.`);
+      if (visibility === 'chat' && buf.length > CHAT_MAX_MB * 1024 * 1024) throw new HttpError(413, `Photos and videos in chats can be up to ${CHAT_MAX_MB} MB. Send a shorter video.`);
       if (!SIGNATURE[mime](buf)) throw new HttpError(415, 'That file is damaged or is not the type its name says. Try another file.');
       const name = String(req.query.name || 'file').replace(/[\\/\r\n"]/g, '_').slice(0, 150);
       const id = svc.newId('f');
@@ -502,6 +515,7 @@ export const startJobs = () => {
       .then(() => svc.paluwaganClaimAlerts())
       .then((changed) => changed && broadcastChange())
       .then(() => svc.removeAbandonedUploads())
+      .then(() => svc.removeOldChatMedia())
       .catch((e) => console.error('background jobs failed', e));
   run();
   return setInterval(run, 60_000);

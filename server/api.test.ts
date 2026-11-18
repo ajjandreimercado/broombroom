@@ -991,6 +991,46 @@ test('change email: an address held by a client can be freed and given to an adm
   assert.equal((await client('admin').login('company@test.local', 'TempAdmin123')).status, 401, 'its temporary password was retired');
 });
 
+test('chat photos and videos: only that chat can open them, other files are refused, and they are deleted after 30 days', async () => {
+  const ca = await carlo();
+  const c = await newClient();
+  await c.post('/api/apply-requests', { vehicleId: (await freeVehicle()).id });
+  assert.equal((await ca.post(`/api/leads/${c.id}/claim`)).status, 200);
+  const conv = (await c.state()).conversations[0];
+  // the client sends a photo with no text
+  const up = await c.upload(PNG, 'image/png', 'car.png', 'chat');
+  assert.equal(up.status, 200, JSON.stringify(up.json));
+  const sent = await c.post(`/api/conversations/${conv.id}/messages`, { fileId: up.data.id });
+  assert.equal(sent.status, 200, JSON.stringify(sent.json));
+  const seen = (await ca.state()).conversations.find((x: any) => x.id === conv.id);
+  assert.deepEqual(seen.messages.at(-1).media, { id: up.data.id, url: `/files/${up.data.id}`, kind: 'image' });
+  assert.equal(seen.lastMessage, 'Sent a photo');
+  // only the client, their agent and admins can open it
+  assert.equal((await c.get(`/files/${up.data.id}`)).status, 200);
+  assert.equal((await ca.get(`/files/${up.data.id}`)).status, 200);
+  assert.equal((await (await admin()).get(`/files/${up.data.id}`)).status, 200);
+  assert.equal((await (await bea()).get(`/files/${up.data.id}`)).status, 403, 'another agent');
+  assert.equal((await (await newClient()).get(`/files/${up.data.id}`)).status, 403, 'another client');
+  // the agent sends a video back, with a caption
+  const MP4 = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109]);
+  const vid = await ca.upload(MP4, 'video/mp4', 'walkaround.mp4', 'chat');
+  assert.equal((await ca.post(`/api/conversations/${conv.id}/messages`, { fileId: vid.data.id, text: 'Walkaround' })).status, 200);
+  const last = (await c.state()).conversations.find((x: any) => x.id === conv.id).messages.at(-1);
+  assert.deepEqual([last.media.kind, last.text], ['video', 'Walkaround']);
+  // refused: a PDF in a chat, a file used twice, someone else's upload, a non-chat upload
+  assert.equal((await c.upload(PDF, 'application/pdf', 'x.pdf', 'chat')).status, 415);
+  assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { fileId: up.data.id })).status, 400, 'already attached');
+  const theirs = await ca.upload(PNG, 'image/png', 'a.png', 'chat');
+  assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { fileId: theirs.data.id })).status, 400, 'not their upload');
+  const priv = await c.upload(PNG, 'image/png', 'b.png');
+  assert.equal((await c.post(`/api/conversations/${conv.id}/messages`, { fileId: priv.data.id })).status, 400, 'not a chat upload');
+  // after 30 days the file is gone (the message stays)
+  await svc.removeOldChatMedia(Date.now() + 31 * 864e5);
+  assert.equal((await c.get(`/files/${up.data.id}`)).status, 404);
+  assert.equal(await raw('uploads').countDocuments({ _id: up.data.id as any }), 0);
+  assert.ok((await c.state()).conversations.find((x: any) => x.id === conv.id).messages.some((m: any) => m.media?.id === up.data.id));
+});
+
 test('conversations: claiming a client starts a chat with the agent; clients can write to their agent about anything', async () => {
   const ca = await carlo();
   // a client who asked to apply has no chat until an agent claims them; the claim starts it

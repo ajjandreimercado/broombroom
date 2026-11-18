@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext.tsx';
+import { ChatMediaView, AttachButton } from '../ChatMedia.tsx';
 import { SectionHeader, EmptyState, btn, shortDate } from './ui.tsx';
 import { canTakeOver, duration, unansweredSince } from '../leads.ts';
 import { Eye } from 'lucide-react';
@@ -8,7 +9,7 @@ import { Eye } from 'lucide-react';
 // has waited 2 days for a reply, the admin can take the chat over and answer; the agent is told about a takeover.
 // Paluwagan chats are between the client and Broom Broom only: the admin answers them directly.
 export const ConversationsMonitor: React.FC = () => {
-  const { conversations, agents, sendMessage, takeOverConversation, endTakeover } = useApp();
+  const { conversations, agents, sendMessage, sendMedia, takeOverConversation, endTakeover } = useApp();
   const [reply, setReply] = useState('');
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -92,7 +93,10 @@ export const ConversationsMonitor: React.FC = () => {
                 {open.messages.map((m) => (
                   <li key={m.id} className={`flex flex-col ${m.isSeller ? 'items-end' : 'items-start'}`}>
                     <span className="text-[11px] text-[#6B767D] mb-1">{m.byAdmin ? 'You · admin' : m.isSeller ? `${open.sellerName} · agent` : `${open.buyerName} · client`}</span>
-                    <p className={`max-w-[70%] px-3.5 py-2.5 text-[13px] leading-relaxed ${m.byAdmin ? 'bg-[#141517] text-white' : m.isSeller ? 'bg-[#1D5FD1] text-white' : 'bg-[#EEF1F2] text-[#141517]'}`}>{m.text}</p>
+                    <div className={`max-w-[70%] px-3.5 py-2.5 text-[13px] leading-relaxed ${m.byAdmin ? 'bg-[#141517] text-white' : m.isSeller ? 'bg-[#1D5FD1] text-white' : 'bg-[#EEF1F2] text-[#141517]'}`}>
+                      <ChatMediaView msg={m} />
+                      {m.text && <p className={m.media ? 'mt-2' : ''}>{m.text}</p>}
+                    </div>
                     <span className="text-[11px] text-[#6B767D] mt-1 tabular-nums">{new Date(m.timestamp).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</span>
                   </li>
                 ))}
@@ -106,6 +110,7 @@ export const ConversationsMonitor: React.FC = () => {
                     if (await sendMessage(open.id, reply.trim())) setReply('');
                   }}
                 >
+                  <AttachButton send={(f) => sendMedia(open.id, f)} />
                   <input
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
