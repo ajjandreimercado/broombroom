@@ -1067,7 +1067,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     done(await run(() => api(`/vehicles/${id}`, { method: 'PATCH', body: updates }), ['Listing updated']));
   const deleteVehicleListing = async (id: string) => done(await run(() => api(`/vehicles/${id}`, { method: 'DELETE' }), ['Listing deleted', 'It was removed from the marketplace.']));
   const setVehicleStatus = async (id: string, status: VehicleStatus) => {
-    const label = { available: 'approved', reserved: 'reserved', sold: 'released', unpublished: 'disapproved' }[status];
+    const label = { available: 'available', reserved: 'reserved', sold: 'sold', unpublished: 'hidden' }[status];
     return done(await run(() => api(`/vehicles/${id}/status`, { body: { status } }), ['Listing status updated', `The listing is now ${label}.`]));
   };
   const submitListingRequest: AppContextType['submitListingRequest'] = async (req) =>

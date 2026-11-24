@@ -9,15 +9,15 @@ import { AddVehicleForm } from '../AddVehicleForm.tsx';
 
 // How the admin talks about listing states (stored values stay the same).
 export const STATUS_LABEL: Record<VehicleStatus, string> = {
-  available: 'Approved',
+  available: 'Available',
   reserved: 'Reserved',
-  sold: 'Released',
-  unpublished: 'Disapproved',
+  sold: 'Sold',
+  unpublished: 'Hidden',
 };
 const STATUS_HELP: Record<VehicleStatus, string> = {
   available: 'Live on the marketplace; clients can apply.',
   reserved: 'Held for a client whose application was approved.',
-  sold: 'Sale completed and the unit released to the client.',
+  sold: 'Sale completed; the unit is sold.',
   unpublished: 'Hidden from the marketplace.',
 };
 const ORDER: VehicleStatus[] = ['available', 'reserved', 'sold', 'unpublished'];
@@ -124,7 +124,7 @@ export const ListingsManager: React.FC = () => {
 
   return (
     <section className="space-y-5">
-      <SectionHeader title="Listings" hint="Only admins post listings and change them. Click a listing to edit its details, photos and videos, or to approve, reserve, disapprove or release it.">
+      <SectionHeader title="Listings" hint="Only admins post listings and change them. Click a listing to edit its details, photos and videos, or to mark it available, reserved, sold or hidden.">
         <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => navigateTo('admin', { adminTab: 'add_vehicle' })}>
           <PlusCircle className="w-4 h-4" aria-hidden="true" /> Add listing
         </button>

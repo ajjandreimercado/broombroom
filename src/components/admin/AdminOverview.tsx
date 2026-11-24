@@ -58,7 +58,7 @@ export const AdminOverview: React.FC = () => {
           {[
             { label: 'Approved listings', value: vehicles.filter((v) => v.status === 'available').length, tab: 'vehicles' as AdminTab },
             { label: 'Reserved', value: vehicles.filter((v) => v.status === 'reserved').length, tab: 'vehicles' as AdminTab },
-            { label: 'Released', value: vehicles.filter((v) => v.status === 'sold').length, tab: 'vehicles' as AdminTab },
+            { label: 'Sold', value: vehicles.filter((v) => v.status === 'sold').length, tab: 'vehicles' as AdminTab },
             { label: 'Commission owed', value: peso(owed), tab: 'commissions' as AdminTab },
           ].map((m, i) => (
             <button
