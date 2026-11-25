@@ -439,7 +439,7 @@ export const AddVehicleForm: React.FC<{ mode?: 'admin' | 'request'; editing?: Ve
                         onClick={(e) => handleCreateVehicle(e, true)}
                         className="py-3 px-5 border border-[#141517] hover:bg-[#EEF1F2] text-[#141517] font-semibold text-[13px] cursor-pointer transition-colors"
                       >
-                        Save hidden
+                        Save as upcoming
                       </button>
                     )}
                     <button

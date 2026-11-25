@@ -1,8 +1,8 @@
 import React from 'react';
 
 const DONE = ['approved', 'completed', 'available', 'resolved', 'completed & transferred', 'payment cleared', 'verified', 'paid', 'released', 'sold', 'accepted'];
-const ONGOING = ['ongoing'];
-const VOID = ['declined', 'withdrawn', 'unpublished', 'rejected', 'suspended', 'disapproved', 'expired', 'disabled', 'hidden'];
+const ONGOING = ['ongoing', 'upcoming'];
+const VOID = ['declined', 'withdrawn', 'unpublished', 'rejected', 'suspended', 'disapproved', 'expired', 'disabled'];
 
 // Record status in the booklet's language: finished states are stamped in green ink,
 // voided ones in red, unpaid reservations in blue, open ones in plain carbon ink.

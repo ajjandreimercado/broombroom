@@ -12,13 +12,13 @@ export const STATUS_LABEL: Record<VehicleStatus, string> = {
   available: 'Available',
   reserved: 'Reserved',
   sold: 'Sold',
-  unpublished: 'Hidden',
+  unpublished: 'Upcoming',
 };
 const STATUS_HELP: Record<VehicleStatus, string> = {
   available: 'Live on the marketplace; clients can apply.',
   reserved: 'Held for a client whose application was approved.',
   sold: 'Sale completed; the unit is sold.',
-  unpublished: 'Hidden from the marketplace.',
+  unpublished: 'Coming soon; not on the marketplace yet.',
 };
 const ORDER: VehicleStatus[] = ['available', 'reserved', 'sold', 'unpublished'];
 
@@ -124,7 +124,7 @@ export const ListingsManager: React.FC = () => {
 
   return (
     <section className="space-y-5">
-      <SectionHeader title="Listings" hint="Only admins post listings and change them. Click a listing to edit its details, photos and videos, or to mark it available, reserved, sold or hidden.">
+      <SectionHeader title="Listings" hint="Only admins post listings and change them. Click a listing to edit its details, photos and videos, or to mark it available, reserved, sold or upcoming.">
         <button className={`${btn.primary} flex items-center gap-1.5`} onClick={() => navigateTo('admin', { adminTab: 'add_vehicle' })}>
           <PlusCircle className="w-4 h-4" aria-hidden="true" /> Add listing
         </button>

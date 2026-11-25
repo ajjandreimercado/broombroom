@@ -1062,12 +1062,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ----- Listings -----
   const createVehicleListing = (v: Partial<Vehicle>) =>
-    run(() => api<Vehicle>('/vehicles', { body: v }), v.status === 'unpublished' ? ['Listing saved', 'It is hidden until you approve it.'] : ['Listing published', `${v.title} is now on the marketplace.`]);
+    run(() => api<Vehicle>('/vehicles', { body: v }), v.status === 'unpublished' ? ['Listing saved', 'It is marked upcoming and stays off the marketplace until you make it available.'] : ['Listing published', `${v.title} is now on the marketplace.`]);
   const updateVehicleListing = async (id: string, updates: Partial<Vehicle>) =>
     done(await run(() => api(`/vehicles/${id}`, { method: 'PATCH', body: updates }), ['Listing updated']));
   const deleteVehicleListing = async (id: string) => done(await run(() => api(`/vehicles/${id}`, { method: 'DELETE' }), ['Listing deleted', 'It was removed from the marketplace.']));
   const setVehicleStatus = async (id: string, status: VehicleStatus) => {
-    const label = { available: 'available', reserved: 'reserved', sold: 'sold', unpublished: 'hidden' }[status];
+    const label = { available: 'available', reserved: 'reserved', sold: 'sold', unpublished: 'upcoming' }[status];
     return done(await run(() => api(`/vehicles/${id}/status`, { body: { status } }), ['Listing status updated', `The listing is now ${label}.`]));
   };
   const submitListingRequest: AppContextType['submitListingRequest'] = async (req) =>
